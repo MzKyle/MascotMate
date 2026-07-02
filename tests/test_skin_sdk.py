@@ -93,6 +93,14 @@ class SkinSdkTests(unittest.TestCase):
 
         self.assertTrue(any("Fallback chain contains a loop" in item for item in result["warnings"]))
 
+    def test_used_rects_are_validated(self) -> None:
+        skin = self.base_skin()
+        skin["actions"]["idle"]["used_rects"] = [[0, 0, 12, 12]]
+
+        result = self.sdk.validate_skin_manifest(skin, self.root / "skin" / "skin.json", self.root)
+
+        self.assertTrue(any("used_rects[0] exceeds frame size" in item for item in result["errors"]))
+
 
 if __name__ == "__main__":
     unittest.main()

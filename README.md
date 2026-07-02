@@ -21,12 +21,12 @@ Godot 4 驱动的本地透明桌宠：支持长按抱起、甩飞、重力落地
 - 透明、置顶、无边框 Godot 桌宠窗口，支持安全窗口模式兜底
 - 长按抱起、弹簧跟随、快速甩飞、重力落地、墙面反弹和贴边吸附
 - 拖到屏幕边缘释放后进入贴边偷看，点击或拖拽即可唤回
-- 安静、活泼、捣乱三种行为模式，默认安静启动
+- 安静、活泼、捣乱三种行为模式，行为会感知时间段、状态、互动记忆和打扰冷却
 - 右键菜单支持散步、投喂、睡觉、唤醒、接球挑战、显示大小、重力开关和退出
 - 皮肤管理支持 Shimeji-ee zip/文件夹导入、运行时切换和 Cachomon 官方目录入口
 - 皮肤 SDK 支持 `schema_version: 2`、兼容评分、导入报告、作者/授权信息和行为配方
 - 跨平台截图贴图：`F1` 区域截图并复制图片、`F3` 轮换贴图、`F4` 关闭当前贴图
-- 心情、饥饿、体力、亲密度本地持久化
+- 心情、饥饿、体力、亲密度、被动衰减和互动记忆本地持久化
 - `skin.json` 用能力标签组织动作，旧 `resource_hd/` 动作帧作为默认兼容皮肤
 - portable Godot runtime bundle 打包，也支持安装 export templates 后走 Godot export
 
@@ -109,6 +109,7 @@ CRAYON_PET_SAFE_WINDOW=1 scripts/run_godot_pet.sh
 python3 scripts/generate_godot_manifest.py
 python3 scripts/generate_godot_manifest.py --check
 python3 scripts/validate_resources.py
+python3 scripts/run_godot_smoke.py
 python3 scripts/import_shimeji_skin.py /path/to/shimeji.zip
 python3 scripts/import_shimeji_skin.py /path/to/shimeji.zip --json-report
 scripts/run_godot_pet.sh
@@ -202,13 +203,15 @@ scripts/install_desktop_entry.sh
 ~/.config/crayon-shinchan-desktop-pet/skins/
 ```
 
-行为模式不写入状态文件，每次启动都会回到安静模式。
+状态文件同时保存互动记忆和上次被动衰减时间。行为模式不写入状态文件，每次启动都会回到安静模式。
 
 自动行为权重保存在项目内：
 
 ```text
 godot_pet/assets/behavior.json
 ```
+
+`behavior.json` 还包含陪伴模型的默认 tick、打扰冷却和工作时段冷却倍率。
 
 ## 文档
 

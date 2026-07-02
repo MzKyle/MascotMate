@@ -7,6 +7,8 @@ import re
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "godot_pet" / "assets" / "actions.json"
@@ -23,9 +25,27 @@ def natural_key(path: Path) -> list[tuple[int, int | str]]:
     return parts
 
 
-def frames(relative_dir: str) -> list[str]:
+def frame_files(relative_dir: str) -> list[Path]:
     root = ROOT / "resource_hd" / relative_dir
-    return [str(Path(relative_dir) / path.name) for path in sorted(root.glob("*.png"), key=natural_key)]
+    return sorted(root.glob("*.png"), key=natural_key)
+
+
+def frames(relative_dir: str) -> list[str]:
+    return [str(Path(relative_dir) / path.name) for path in frame_files(relative_dir)]
+
+
+def used_rects(relative_dir: str) -> list[list[int]]:
+    rects: list[list[int]] = []
+    for path in frame_files(relative_dir):
+        with Image.open(path) as image:
+            rgba = image.convert("RGBA")
+            bbox = rgba.getchannel("A").getbbox()
+            if bbox is None:
+                rects.append([0, 0, rgba.width, rgba.height])
+            else:
+                left, top, right, bottom = bbox
+                rects.append([left, top, right - left, bottom - top])
+    return rects
 
 
 def action(
@@ -46,6 +66,7 @@ def action(
         "loop_start": loop_start,
         "next_action": next_action,
         "frames": frames(resource),
+        "used_rects": used_rects(resource),
     }
 
 

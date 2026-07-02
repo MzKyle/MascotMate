@@ -33,9 +33,10 @@ python -m py_compile scripts/*.py
 python -m unittest discover tests
 python scripts/generate_godot_manifest.py --check
 python scripts/validate_resources.py
+python scripts/run_godot_smoke.py
 ```
 
-资源缺失、动作清单过期或 PNG 损坏都会阻断打包。
+资源缺失、动作清单过期、PNG 损坏或 Godot 核心脚本 smoke 失败都会阻断打包。
 
 ## portable bundle 流程
 
@@ -101,7 +102,7 @@ python3 scripts/build_portable.py --target linux --private-skins-dir private_ski
 
 `private_skins/` 应该包含若干皮肤目录，每个目录都有自己的 `skin.json`。
 
-GitHub Actions 工作流 `.github/workflows/package.yml` 支持手动触发，也会在推送 `v*` 标签时构建三平台 zip artifact。
+GitHub Actions 工作流 `.github/workflows/package.yml` 支持手动触发，也会在推送 `v*` 标签时构建三平台 zip artifact。每个平台在打包前都会运行 Python 校验和 Godot headless runtime smoke test。
 
 ## desktop entry
 

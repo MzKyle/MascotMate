@@ -96,11 +96,14 @@ my-skin/
 | `durations_ms` | 逐帧时长，长度必须等于 `frames` |
 | `anchors` | 逐帧锚点，长度必须等于 `frames` |
 | `velocities` | Shimeji 原始逐帧速度，长度必须等于 `frames` |
+| `used_rects` | 逐帧非透明区域 `[x, y, width, height]`，长度必须等于 `frames` |
 | `mirror_x` | 水平镜像播放 |
 | `native_edge_pose` | 动作本身已经是墙面/边缘姿态，不再旋转 |
 | `source_action` | 原始动作名 |
 
 `anchors` 使用 Shimeji 的图片坐标系。运行时会把当前帧 anchor 映射到角色节点原点，用于减少脚底、墙面和投喂碰撞漂移。
+
+`used_rects` 可由导入器或资源生成器预计算。旧皮肤缺失时，运行时首次加载动作会计算一次并放入动作缓存。
 
 ## Fallback
 

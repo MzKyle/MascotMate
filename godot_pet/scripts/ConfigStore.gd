@@ -126,6 +126,9 @@ func _merged_config(source: Dictionary) -> Dictionary:
 
 
 func _config_dir() -> String:
+	var override_dir = OS.get_environment("CRAYON_PET_CONFIG_DIR").strip_edges()
+	if override_dir != "":
+		return override_dir
 	if OS.get_name() != "Windows" and OS.get_name() != "macOS":
 		var home = OS.get_environment("HOME")
 		if home != "":

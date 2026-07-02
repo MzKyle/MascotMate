@@ -106,6 +106,8 @@ func _process(delta: float) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		if state_store != null and state_store.has_method("flush_save"):
+			state_store.flush_save()
 		get_tree().quit()
 
 
@@ -174,9 +176,11 @@ func _create_nodes() -> void:
 	brain = BehaviorBrainScript.new()
 	add_child(brain)
 	brain.configure(behavior_manifest)
+	brain.set_context_provider(Callable(self, "_behavior_context"))
 	brain.set_skin_behavior_profile(skin_manager.current_skin.get("behavior_profile", {}))
 	brain.action_requested.connect(_on_behavior_action)
 	brain.mischief_requested.connect(_on_mischief)
+	brain.prompt_requested.connect(_on_behavior_prompt)
 	brain.set_mode(behavior_mode)
 
 	screenshot_pins = ScreenshotPinsScript.new()
@@ -298,10 +302,12 @@ func _on_single_clicked(local_pos: Vector2) -> void:
 	var pet_local = pet_sprite.to_local(local_pos)
 	if pet_local.y < pet_sprite.pet_rect().position.y + pet_sprite.pet_rect().size.y * 0.42:
 		var changes = state_store.pet()
+		_record_interaction("pet")
 		show_bubble("摸摸头。" + _format_changes(changes))
 		feedback.spawn_heart()
 	else:
 		var changes = state_store.poke()
+		_record_interaction("poke")
 		show_bubble("戳到了。" + _format_changes(changes))
 		_jiggle()
 
@@ -309,6 +315,7 @@ func _on_single_clicked(local_pos: Vector2) -> void:
 func _on_double_clicked() -> void:
 	if peek_mode:
 		_exit_peek_mode(true)
+	_record_interaction("play")
 	mini_games.start_catch()
 	_sync_window_size(true)
 	_update_mouse_passthrough()
@@ -322,6 +329,7 @@ func _on_right_clicked(_local_pos: Vector2) -> void:
 func _on_grab_started(global_pos: Vector2) -> void:
 	if peek_mode:
 		_exit_peek_mode(false)
+	_record_interaction("grab")
 	brain.set_paused(true)
 	drag_offset = get_viewport().get_mouse_position()
 	physics.begin_grab(global_pos - drag_offset)
@@ -338,15 +346,18 @@ func _on_grab_released(velocity: Vector2, held: bool, global_pos: Vector2) -> vo
 	brain.set_paused(false)
 	var hide_edge = _hide_edge_for_release(global_pos)
 	if held and hide_edge != "":
+		_record_interaction("peek")
 		_enter_peek_mode(hide_edge)
 		return
 	if speed > 420.0:
+		_record_interaction("throw")
 		physics.release(velocity, true)
 		_play_capability("falling")
 		show_bubble("飞出去啦！")
 	else:
 		physics.release(velocity, false)
 		if held:
+			_record_interaction("release")
 			show_bubble("轻轻放下。")
 
 
@@ -391,8 +402,23 @@ func _on_behavior_action(action_name: String) -> void:
 			physics.attach_to_wall(side)
 			physics.start_edge_walk(70.0 if rng.randf() < 0.5 else -70.0)
 			_play_wall_walk_action()
+		"sleep":
+			physics.idle()
+			_play_capability("sleeping")
+			state_store.sleep_tick()
+			_sync_window_size(true)
+		"companion":
+			physics.idle()
+			_play_capability("companion")
+			_sync_window_size(true)
 		"invite":
 			show_bubble("要不要玩一会儿？")
+
+
+func _on_behavior_prompt(kind: String, message: String) -> void:
+	if kind == "hungry":
+		feedback.spawn_note()
+	show_bubble(message, 2.4)
 
 
 func _on_mischief(kind: String) -> void:
@@ -407,6 +433,7 @@ func _on_mischief(kind: String) -> void:
 
 func _on_feed_success() -> void:
 	var changes = state_store.feed()
+	_record_interaction("feed")
 	_play_capability("feeding")
 	_sync_window_size(true)
 	show_bubble("吃到啦。" + _format_changes(changes))
@@ -414,6 +441,7 @@ func _on_feed_success() -> void:
 
 func _on_catch_success(count: int) -> void:
 	var changes = state_store.play()
+	_record_interaction("play")
 	show_bubble("接住 %d/3。%s" % [count, _format_changes(changes)])
 
 
@@ -440,20 +468,25 @@ func _show_menu() -> void:
 func _on_menu_command(command: String) -> void:
 	match command:
 		"walk":
+			_record_interaction("menu_walk")
 			_on_behavior_action("walk")
 		"feed":
+			_record_interaction("menu_feed")
 			mini_games.start_feed()
 			_sync_window_size(true)
 			_update_mouse_passthrough()
 		"sleep":
+			_record_interaction("sleep")
 			_play_capability("sleeping")
 			physics.idle()
 			state_store.sleep_tick()
 			_sync_window_size(true)
 		"wake":
+			_record_interaction("wake")
 			_play_capability("waking")
 			_sync_window_size(true)
 		"catch":
+			_record_interaction("play")
 			mini_games.start_catch()
 			_sync_window_size(true)
 			_update_mouse_passthrough()
@@ -754,6 +787,25 @@ func _jiggle() -> void:
 
 func _busy() -> bool:
 	return mischief_grab_active or physics.state in ["Grabbed", "Flinging", "Falling", "Landing", "Peeking"] or mini_games.active != ""
+
+
+func _behavior_context() -> Dictionary:
+	return {
+		"mode": behavior_mode,
+		"busy": _busy(),
+		"physics_state": str(physics.state) if physics != null else "",
+		"mini_game": str(mini_games.active) if mini_games != null else "",
+		"peek_mode": peek_mode,
+		"state": state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {},
+		"state_store": state_store,
+	}
+
+
+func _record_interaction(kind: String) -> void:
+	if state_store != null and state_store.has_method("record_interaction"):
+		state_store.record_interaction(kind)
+	if brain != null and brain.has_method("record_interaction"):
+		brain.record_interaction(kind)
 
 
 func _format_changes(changes: Dictionary) -> String:

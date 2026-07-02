@@ -37,14 +37,34 @@ def load_json(path: Path, errors: list[str]) -> dict:
         return {}
 
 
-def verify_png(path: Path, errors: list[str]) -> None:
+def verify_png(path: Path, errors: list[str]) -> tuple[int, int] | None:
     try:
         with Image.open(path) as image:
+            size = image.size
             image.verify()
             if image.format != "PNG":
                 error(f"Not a PNG image: {path.relative_to(ROOT)}", errors)
+                return None
+            return size
     except (OSError, UnidentifiedImageError) as exc:
         error(f"Cannot read PNG {path.relative_to(ROOT)}: {exc}", errors)
+    return None
+
+
+def validate_used_rect(action_id: str, index: int, value: object, size: tuple[int, int] | None, errors: list[str]) -> None:
+    if not isinstance(value, list) or len(value) < 4:
+        error(f"Action {action_id} used_rects[{index}] must be [x, y, width, height].", errors)
+        return
+    try:
+        x, y, width, height = [int(value[offset]) for offset in range(4)]
+    except (TypeError, ValueError):
+        error(f"Action {action_id} used_rects[{index}] must contain integers.", errors)
+        return
+    if x < 0 or y < 0 or width <= 0 or height <= 0:
+        error(f"Action {action_id} used_rects[{index}] has invalid bounds.", errors)
+        return
+    if size is not None and (x + width > size[0] or y + height > size[1]):
+        error(f"Action {action_id} used_rects[{index}] exceeds frame size.", errors)
 
 
 def validate_actions(manifest: dict, errors: list[str]) -> set[Path]:
@@ -62,11 +82,14 @@ def validate_actions(manifest: dict, errors: list[str]) -> set[Path]:
         if not isinstance(frames, list) or not frames:
             error(f"Action {action_id} has no frames.", errors)
             continue
+        used_rects = action.get("used_rects", [])
+        if used_rects and (not isinstance(used_rects, list) or len(used_rects) != len(frames)):
+            error(f"Action {action_id} used_rects length must match frames length.", errors)
         resource = action.get("resource", "")
         if not isinstance(resource, str) or resource == "":
             error(f"Action {action_id} has an invalid resource directory.", errors)
         expected_prefix = Path(resource)
-        for frame in frames:
+        for index, frame in enumerate(frames):
             if not isinstance(frame, str) or not is_safe_relative_png(frame):
                 error(f"Action {action_id} has unsafe frame path: {frame!r}", errors)
                 continue
@@ -77,7 +100,9 @@ def validate_actions(manifest: dict, errors: list[str]) -> set[Path]:
                 error(f"Missing frame for {action_id}: {frame}", errors)
                 continue
             referenced.add(frame_path.resolve())
-            verify_png(frame_path, errors)
+            size = verify_png(frame_path, errors)
+            if isinstance(used_rects, list) and index < len(used_rects):
+                validate_used_rect(action_id, index, used_rects[index], size, errors)
     return referenced
 
 
@@ -109,6 +134,23 @@ def validate_behavior_config(errors: list[str]) -> None:
     for mode in ("安静", "活泼", "捣乱"):
         if mode not in modes:
             error(f"behavior.json is missing mode: {mode}", errors)
+    companion = behavior.get("companion", {})
+    if companion and not isinstance(companion, dict):
+        error("behavior.json companion must be an object.", errors)
+    if isinstance(companion, dict) and "cooldowns" in companion:
+        cooldowns = companion.get("cooldowns", {})
+        if not isinstance(cooldowns, dict):
+            error("behavior.json companion.cooldowns must be an object.", errors)
+        else:
+            for mode in ("安静", "活泼", "捣乱"):
+                if mode in cooldowns:
+                    try:
+                        value = float(cooldowns[mode])
+                    except (TypeError, ValueError):
+                        error(f"behavior.json companion cooldown for {mode} must be numeric.", errors)
+                        continue
+                    if value < 30.0:
+                        error(f"behavior.json companion cooldown for {mode} must be at least 30 seconds.", errors)
 
 
 def main() -> int:

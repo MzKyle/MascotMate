@@ -77,7 +77,7 @@ sequenceDiagram
 
 ## 状态数据
 
-角色状态只有四个数值：
+角色状态以四个核心数值为主，并附带互动记忆：
 
 | 字段 | 含义 | 范围 |
 | --- | --- | --- |
@@ -86,4 +86,4 @@ sequenceDiagram
 | `energy` | 体力 | 0-100 |
 | `affection` | 亲密度 | 0-100 |
 
-`StateStore.gd` 每次应用变化后立即保存。行为模式不保存，每次启动默认回到安静模式。
+`StateStore.gd` 还保存 `last_decay_at` 和 `memory`，用于被动衰减、最近互动、投喂、提示和自动行为冷却。保存采用短 debounce，并在退出时 flush。行为模式不保存，每次启动默认回到安静模式。

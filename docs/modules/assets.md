@@ -50,6 +50,7 @@ godot_pet/assets/skins/classic_shinchan/skin.json
 | `durations_ms` | 可选，逐帧时长，Shimeji 导入资源会使用 |
 | `anchors` | 可选，逐帧锚点，Shimeji 导入资源会使用 |
 | `velocities` | 可选，逐帧速度，供导入报告和后续行为调优使用 |
+| `used_rects` | 可选，逐帧非透明区域 `[x, y, width, height]`，用于运行时碰撞和点击区域缓存 |
 
 每个皮肤包含：
 

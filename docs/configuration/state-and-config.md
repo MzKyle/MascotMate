@@ -16,14 +16,27 @@
 
 ```json
 {
+  "version": 2,
   "mood": 70,
   "hunger": 60,
   "energy": 80,
-  "affection": 30
+  "affection": 30,
+  "last_decay_at": 1761998400,
+  "memory": {
+    "last_interaction_at": 0,
+    "last_interaction_kind": "",
+    "last_feed_at": 0,
+    "last_play_at": 0,
+    "last_prompt_at": 0,
+    "last_action_at": 0,
+    "interaction_counts": {}
+  }
 }
 ```
 
-字段范围固定为 0-100。`StateStore.gd` 会在读取和写入时做边界保护。
+四个核心数值范围固定为 0-100。`StateStore.gd` 会在读取和写入时做边界保护；旧版只有四个数值的状态文件会自动补齐为 v2。
+
+行为脑 tick 时会按时间段做被动衰减：清醒时饥饿缓慢上升、体力缓慢下降；休息时段体力恢复、饥饿慢升。离线补算最多 8 小时，避免长时间未启动后状态一次性打穿。
 
 行为模式不保存。每次启动都会回到安静模式。
 

@@ -29,8 +29,9 @@ python3 scripts/import_shimeji_skin.py /path/to/shimeji-folder --json-report
 - `ImageAnchor` -> `anchors`
 - `Velocity` -> `velocities`
 - 动作名 -> `source_action`
+- PNG alpha bbox -> `used_rects`
 
-缺少方向动作时会生成 `mirror_x` 镜像动作。墙面、天花板和边缘动作会标记 `native_edge_pose`。
+缺少方向动作时会生成 `mirror_x` 镜像动作。墙面、天花板和边缘动作会标记 `native_edge_pose`。导入器会在复制帧时预计算非透明区域，减少运行时切动作时的图片扫描。
 
 ## 行为映射
 

@@ -158,24 +158,29 @@ def validate_skin_manifest(
         anchors = action.get("anchors", [])
         durations = action.get("durations_ms", [])
         velocities = action.get("velocities", [])
+        used_rects = action.get("used_rects", [])
         _validate_optional_sequence_length(action_id, "anchors", anchors, frames, errors)
         _validate_optional_sequence_length(action_id, "durations_ms", durations, frames, errors)
         _validate_optional_sequence_length(action_id, "velocities", velocities, frames, errors)
+        _validate_optional_sequence_length(action_id, "used_rects", used_rects, frames, errors)
         if bool(action.get("mirror_x", False)):
             mirrored_actions.append(str(action_id))
         fallback_targets.extend(_fallback_marker_for_action(action_id, capabilities))
-        for frame in frames:
+        for index, frame in enumerate(frames):
             if not isinstance(frame, str) or not is_safe_relative_png(frame):
                 errors.append(f"Action {action_id} has unsafe frame path: {frame!r}")
                 continue
             frame_count += 1
+            image_size: tuple[int, int] | None = None
             if check_files:
                 frame_path = frame_root / frame
                 if not frame_path.is_file():
                     errors.append(f"Missing skin frame for {action_id}: {frame}")
                     missing_frames += 1
                     continue
-                _verify_png(frame_path, errors)
+                image_size = _verify_png(frame_path, errors)
+            if isinstance(used_rects, list) and index < len(used_rects):
+                _validate_used_rect(action_id, index, used_rects[index], image_size, errors)
 
     preview = str(normalized.get("preview", ""))
     if preview:
@@ -275,11 +280,37 @@ def _fallback_marker_for_action(action_id: str, capabilities: dict[str, Any]) ->
     return result
 
 
-def _verify_png(path: Path, errors: list[str]) -> None:
+def _validate_used_rect(
+    action_id: str,
+    index: int,
+    value: Any,
+    image_size: tuple[int, int] | None,
+    errors: list[str],
+) -> None:
+    if not isinstance(value, list) or len(value) < 4:
+        errors.append(f"Action {action_id} used_rects[{index}] must be [x, y, width, height].")
+        return
+    try:
+        x, y, width, height = [int(value[offset]) for offset in range(4)]
+    except (TypeError, ValueError):
+        errors.append(f"Action {action_id} used_rects[{index}] must contain integers.")
+        return
+    if x < 0 or y < 0 or width <= 0 or height <= 0:
+        errors.append(f"Action {action_id} used_rects[{index}] has invalid bounds.")
+        return
+    if image_size is not None and (x + width > image_size[0] or y + height > image_size[1]):
+        errors.append(f"Action {action_id} used_rects[{index}] exceeds frame size.")
+
+
+def _verify_png(path: Path, errors: list[str]) -> tuple[int, int] | None:
     try:
         with Image.open(path) as image:
+            size = image.size
             image.verify()
             if image.format != "PNG":
                 errors.append(f"Not a PNG image: {path}")
+                return None
+            return size
     except (OSError, UnidentifiedImageError) as exc:
         errors.append(f"Cannot read PNG {path}: {exc}")
+    return None

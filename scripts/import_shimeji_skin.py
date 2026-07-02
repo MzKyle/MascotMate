@@ -428,6 +428,7 @@ def copy_action_frames(
     durations: list[int] = []
     anchors: list[list[int]] = []
     velocities: list[list[float]] = []
+    used_rects: list[list[int]] = []
     failed_frames: list[str] = []
     max_width = 1
     max_height = 1
@@ -439,9 +440,16 @@ def copy_action_frames(
         dest_name = f"{index:03d}_{safe_id(source.stem)}.png"
         dest = action_dir / dest_name
         with Image.open(source) as image:
-            image.convert("RGBA").save(dest)
-            max_width = max(max_width, image.width)
-            max_height = max(max_height, image.height)
+            rgba = image.convert("RGBA")
+            rgba.save(dest)
+            bbox = rgba.getchannel("A").getbbox()
+            if bbox is None:
+                used_rects.append([0, 0, rgba.width, rgba.height])
+            else:
+                left, top, right, bottom = bbox
+                used_rects.append([left, top, right - left, bottom - top])
+            max_width = max(max_width, rgba.width)
+            max_height = max(max_height, rgba.height)
         frames.append(str(Path(aid) / dest_name))
         durations.append(pose.duration_ms)
         anchors.append([int(pose.anchor[0]), int(pose.anchor[1])])
@@ -464,6 +472,7 @@ def copy_action_frames(
         "durations_ms": durations,
         "anchors": anchors,
         "velocities": velocities,
+        "used_rects": used_rects,
         "source_action": source_name,
     }
     lower = source_name.lower()

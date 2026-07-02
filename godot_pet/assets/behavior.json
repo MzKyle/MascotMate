@@ -22,5 +22,14 @@
         { "type": "mischief", "name": "grab", "weight": 1 }
       ]
     }
+  },
+  "companion": {
+    "tick_seconds": 60,
+    "cooldowns": {
+      "安静": 600,
+      "活泼": 120,
+      "捣乱": 300
+    },
+    "work_cooldown_multiplier": 3
   }
 }
