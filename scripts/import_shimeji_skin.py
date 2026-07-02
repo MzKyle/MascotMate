@@ -7,18 +7,32 @@ import argparse
 import json
 import re
 import shutil
+import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from xml.etree import ElementTree
 
 from PIL import Image
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from skin_sdk import (
+    CORE_CAPABILITIES,
+    SCHEMA_VERSION,
+    apply_quality_metadata,
+    validate_skin_manifest,
+)
 
 
 CONFIG_DIR_NAME = "crayon-shinchan-desktop-pet"
 SHIMEJI_DURATION_MS = 40
 SAFE_ID_RE = re.compile(r"[^a-z0-9_-]+")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 @dataclass
@@ -27,6 +41,12 @@ class Pose:
     duration_ms: int
     anchor: list[int]
     velocity: list[float]
+
+
+@dataclass
+class ImportResult:
+    path: Path
+    report: dict[str, Any]
 
 
 def natural_key(path: Path) -> list[tuple[int, int | str]]:
@@ -68,11 +88,10 @@ def find_image_sets(root: Path) -> list[Path]:
     if not img_dirs and any(root.glob("*.png")):
         return [root]
     for img_dir in img_dirs:
-        direct_pngs = list(img_dir.glob("*.png"))
-        if direct_pngs:
+        if _looks_like_image_set(img_dir):
             candidates.append(img_dir)
         for child in sorted(img_dir.iterdir(), key=natural_key):
-            if child.is_dir() and child.name.lower() != "unused" and any(child.glob("*.png")):
+            if child.is_dir() and child.name.lower() != "unused" and _looks_like_image_set(child):
                 candidates.append(child)
     seen: set[Path] = set()
     unique: list[Path] = []
@@ -82,6 +101,15 @@ def find_image_sets(root: Path) -> list[Path]:
             seen.add(resolved)
             unique.append(candidate)
     return unique
+
+
+def _looks_like_image_set(path: Path) -> bool:
+    pngs = list(path.glob("*.png"))
+    if not pngs:
+        return False
+    if any(candidate.name.lower().startswith("shime") for candidate in pngs):
+        return True
+    return (path / "conf" / "actions.xml").is_file()
 
 
 def find_actions_xml(root: Path, image_set: Path) -> Path | None:
@@ -95,6 +123,21 @@ def find_actions_xml(root: Path, image_set: Path) -> Path | None:
         candidates.append(image_set.parent.parent / "conf" / "actions.xml")
     for name in names:
         candidates.append(root / "conf" / name / "actions.xml")
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def find_behaviors_xml(root: Path, image_set: Path) -> Path | None:
+    candidates = [
+        image_set / "conf" / "behaviors.xml",
+        root / "conf" / image_set.name / "behaviors.xml",
+        root / "conf" / "behaviors.xml",
+    ]
+    if image_set.parent.name == "img":
+        candidates.append(image_set.parent.parent / "conf" / "behaviors.xml")
+    candidates.append(root / "conf" / image_set.name / "behaviors.xml")
     for candidate in candidates:
         if candidate.is_file():
             return candidate
@@ -160,6 +203,122 @@ def parse_actions_xml(path: Path) -> dict[str, list[Pose]]:
     return actions
 
 
+def parse_behaviors_xml(path: Path) -> list[dict[str, Any]]:
+    tree = ElementTree.parse(path)
+    root = tree.getroot()
+    behaviors: list[dict[str, Any]] = []
+    for behavior in root.iter():
+        if local_name(behavior) != "Behavior":
+            continue
+        name = attr_value(behavior, "Name")
+        if not name:
+            continue
+        references: list[dict[str, Any]] = []
+        for ref in behavior.iter():
+            if local_name(ref) != "BehaviorReference":
+                continue
+            ref_name = attr_value(ref, "Name")
+            if not ref_name:
+                continue
+            references.append({
+                "name": ref_name,
+                "frequency": _parse_frequency(attr_value(ref, "Frequency", "1"), 1.0),
+                "condition": attr_value(ref, "Condition"),
+            })
+        behaviors.append({
+            "name": name,
+            "frequency": _parse_frequency(attr_value(behavior, "Frequency", "0"), 0.0),
+            "condition": attr_value(behavior, "Condition"),
+            "references": references,
+        })
+    return behaviors
+
+
+def _parse_frequency(value: str, default: float) -> float:
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        return default
+
+
+def build_behavior_profile(behaviors: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    buckets = {
+        "walk": 0.0,
+        "idle": 0.0,
+        "edge": 0.0,
+        "mischief": 0.0,
+    }
+    warnings: list[str] = []
+    mapped: list[dict[str, Any]] = []
+    for behavior in behaviors:
+        names = [str(behavior.get("name", ""))]
+        names.extend(str(ref.get("name", "")) for ref in behavior.get("references", []))
+        kind = ""
+        for candidate in names:
+            kind = _behavior_kind(candidate)
+            if kind != "":
+                break
+        if kind == "":
+            continue
+        frequency = float(behavior.get("frequency", 0.0))
+        if frequency <= 0.0:
+            frequency = sum(float(ref.get("frequency", 0.0)) for ref in behavior.get("references", []))
+        frequency = max(1.0, frequency)
+        buckets[kind] += frequency
+        mapped.append({
+            "source": str(behavior.get("name", "")),
+            "kind": kind,
+            "weight": round(frequency, 2),
+        })
+        if str(behavior.get("condition", "")):
+            warnings.append("Ignored Shimeji condition on behavior: %s" % behavior.get("name", ""))
+        for ref in behavior.get("references", []):
+            if str(ref.get("condition", "")):
+                warnings.append("Ignored Shimeji condition on behavior reference: %s -> %s" % (
+                    behavior.get("name", ""),
+                    ref.get("name", ""),
+                ))
+
+    active_actions: list[dict[str, Any]] = []
+    if buckets["walk"] > 0:
+        active_actions.append({"type": "action", "name": "walk", "weight": round(buckets["walk"], 2)})
+    if buckets["idle"] > 0:
+        active_actions.append({"type": "action", "name": "idle", "weight": round(buckets["idle"], 2)})
+    if buckets["edge"] > 0:
+        active_actions.append({"type": "action", "name": "edge", "weight": round(buckets["edge"], 2)})
+    if buckets["mischief"] > 0:
+        active_actions.append({"type": "mischief", "name": "footprint", "weight": round(buckets["mischief"], 2)})
+    profile: dict[str, Any] = {
+        "version": 1,
+        "modes": {},
+    }
+    if active_actions:
+        profile["modes"]["活泼"] = {"actions": active_actions}
+    if buckets["mischief"] > 0:
+        profile["modes"]["捣乱"] = {
+            "actions": [{"type": "mischief", "name": "grab", "weight": round(buckets["mischief"], 2)}]
+        }
+    summary = {
+        "mapped": mapped,
+        "weights": {key: round(value, 2) for key, value in buckets.items()},
+        "behavior_count": len(behaviors),
+    }
+    return profile, summary, sorted(set(warnings))
+
+
+def _behavior_kind(name: str) -> str:
+    lower = name.lower()
+    if any(token in lower for token in ["throw", "pull", "split", "chase", "ie"]):
+        return "mischief"
+    if any(token in lower for token in ["wall", "ceiling", "edge", "climb", "grab"]):
+        return "edge"
+    if any(token in lower for token in ["walk", "run", "crawl"]):
+        return "walk"
+    if any(token in lower for token in ["stand", "sit", "lie", "look", "face", "sprawl"]):
+        return "idle"
+    return ""
+
+
 def fallback_standard_actions(image_set: Path) -> dict[str, list[Pose]]:
     def pose(name: str, duration: int = 180, velocity: tuple[float, float] = (0.0, 0.0)) -> Pose:
         return Pose(name, duration, [64, 128], [velocity[0], velocity[1]])
@@ -203,12 +362,41 @@ def classify_action(name: str, poses: list[Pose]) -> list[dict]:
             item["direction"] = direction_value
         result.append(item)
 
-    if any(token in lower for token in ["stand", "sit", "sprawl", "lie", "face", "look"]):
-        add("resting", 85.0)
-    if any(token in lower for token in ["walk", "run", "dash", "creep", "crawl", "climb"]):
-        add("locomotion", 95.0, direction or "left")
-    if "fall" in lower or "thrown" in lower or "jumping" in lower:
-        add("falling", 95.0)
+    if lower in ["stand"]:
+        add("resting", 125.0)
+    elif lower in ["sit", "sprawl", "lie", "liedown"]:
+        add("resting", 105.0)
+    elif any(token in lower for token in ["face", "look"]):
+        add("resting", 72.0)
+    elif "spin" in lower:
+        add("resting", 50.0)
+
+    vertical_or_interactive = any(token in lower for token in [
+        "wall",
+        "ceiling",
+        "edge",
+        "ie",
+        "grab",
+        "hold",
+        "pull",
+        "throw",
+    ])
+    floor_motion = "workareafloor" in lower or lower in ["walk", "run", "dash", "creep", "crawl"]
+    if any(token in lower for token in ["walk", "run", "dash", "creep", "crawl"]) and (floor_motion or not vertical_or_interactive):
+        if lower == "walk":
+            add("locomotion", 125.0, direction or "left")
+        elif lower == "run":
+            add("locomotion", 112.0, direction or "left")
+        elif lower == "dash":
+            add("locomotion", 104.0, direction or "left")
+        elif "creep" in lower:
+            add("locomotion", 68.0, direction or "left")
+        else:
+            add("locomotion", 80.0, direction or "left")
+    if lower == "falling":
+        add("falling", 115.0)
+    elif "fall" in lower or "thrown" in lower or "jumping" in lower:
+        add("falling", 72.0 if "ie" in lower else 95.0)
     if any(token in lower for token in ["drag", "pinch", "resist"]):
         add("held", 95.0)
     if any(token in lower for token in ["sleep", "lie", "sprawl"]):
@@ -232,17 +420,21 @@ def copy_action_frames(
     output_frames: Path,
     source_name: str,
     poses: list[Pose],
-) -> tuple[dict, tuple[int, int]]:
+) -> tuple[dict, tuple[int, int], list[str]]:
     aid = action_id(source_name)
     action_dir = output_frames / aid
     action_dir.mkdir(parents=True, exist_ok=True)
     frames: list[str] = []
     durations: list[int] = []
+    anchors: list[list[int]] = []
+    velocities: list[list[float]] = []
+    failed_frames: list[str] = []
     max_width = 1
     max_height = 1
     for index, pose in enumerate(poses, start=1):
         source = image_set / pose.image
         if not source.is_file():
+            failed_frames.append(pose.image)
             continue
         dest_name = f"{index:03d}_{safe_id(source.stem)}.png"
         dest = action_dir / dest_name
@@ -252,6 +444,8 @@ def copy_action_frames(
             max_height = max(max_height, image.height)
         frames.append(str(Path(aid) / dest_name))
         durations.append(pose.duration_ms)
+        anchors.append([int(pose.anchor[0]), int(pose.anchor[1])])
+        velocities.append([float(pose.velocity[0]), float(pose.velocity[1])])
 
     if not frames:
         raise ValueError(f"Action {source_name} has no readable frames")
@@ -268,9 +462,14 @@ def copy_action_frames(
         "next_action": "",
         "frames": frames,
         "durations_ms": durations,
+        "anchors": anchors,
+        "velocities": velocities,
         "source_action": source_name,
     }
-    return action, (max_width, max_height)
+    lower = source_name.lower()
+    if any(token in lower for token in ["wall", "ceiling", "edge", "grabwall", "holdontowall"]):
+        action["native_edge_pose"] = True
+    return action, (max_width, max_height), failed_frames
 
 
 def add_capability(capabilities: dict[str, list[dict]], capability: str, action: str, score: float, direction: str = "") -> None:
@@ -280,12 +479,41 @@ def add_capability(capabilities: dict[str, list[dict]], capability: str, action:
     capabilities.setdefault(capability, []).append(item)
 
 
-def ensure_locomotion_mirror(actions: dict, capabilities: dict[str, list[dict]]) -> None:
+def ensure_directional_mirror(actions: dict, capabilities: dict[str, list[dict]], capability: str) -> list[str]:
+    candidates = capabilities.get(capability, [])
+    has_left = any(str(item.get("direction", "")) == "left" for item in candidates)
+    has_right = any(str(item.get("direction", "")) == "right" for item in candidates)
+    if has_left and has_right:
+        return []
+    source = ""
+    source_direction = ""
+    best_score = -1.0
+    for item in candidates:
+        direction = str(item.get("direction", ""))
+        score = float(item.get("score", 0.0))
+        if direction in ["left", "right"] and score > best_score:
+            source = str(item.get("action", ""))
+            source_direction = direction
+            best_score = score
+    if source == "" or source not in actions:
+        return []
+    target_direction = "right" if source_direction == "left" else "left"
+    target = f"{source}_mirror_{target_direction}"
+    if target not in actions:
+        mirrored = actions[source].copy()
+        mirrored["name"] = f"{mirrored.get('name', source)} mirrored {target_direction}"
+        mirrored["mirror_x"] = not bool(mirrored.get("mirror_x", False))
+        actions[target] = mirrored
+    add_capability(capabilities, capability, target, max(70.0, best_score - 15.0), target_direction)
+    return [target]
+
+
+def ensure_locomotion_mirror(actions: dict, capabilities: dict[str, list[dict]]) -> list[str]:
     locomotion = capabilities.get("locomotion", [])
     has_left = any(str(item.get("direction", "")) == "left" for item in locomotion)
     has_right = any(str(item.get("direction", "")) == "right" for item in locomotion)
     if has_left and has_right:
-        return
+        return []
     source = ""
     source_direction = ""
     for item in locomotion:
@@ -295,7 +523,7 @@ def ensure_locomotion_mirror(actions: dict, capabilities: dict[str, list[dict]])
             source_direction = direction
             break
     if source == "" or source not in actions:
-        return
+        return []
     target_direction = "right" if source_direction == "left" else "left"
     target = f"{source}_mirror_{target_direction}"
     mirrored = actions[source].copy()
@@ -303,7 +531,7 @@ def ensure_locomotion_mirror(actions: dict, capabilities: dict[str, list[dict]])
     mirrored["mirror_x"] = not bool(mirrored.get("mirror_x", False))
     actions[target] = mirrored
     add_capability(capabilities, "locomotion", target, 85.0, target_direction)
-    add_capability(capabilities, "edge", target, 75.0, target_direction)
+    return [target]
 
 
 def ensure_minimum_capabilities(actions: dict, capabilities: dict[str, list[dict]]) -> None:
@@ -327,7 +555,7 @@ def preview_for(capabilities: dict, actions: dict) -> str:
     return str(first.get("frames", [""])[0])
 
 
-def build_skin(root: Path, image_set: Path, output_root: Path, forced_id: str | None, forced_name: str | None) -> Path:
+def build_skin(root: Path, image_set: Path, output_root: Path, forced_id: str | None, forced_name: str | None) -> ImportResult:
     skin_id = safe_id(forced_id or image_set.name)
     skin_name = forced_name or image_set.name
     output_dir = output_root / skin_id
@@ -337,17 +565,22 @@ def build_skin(root: Path, image_set: Path, output_root: Path, forced_id: str | 
     output_frames.mkdir(parents=True, exist_ok=True)
 
     actions_xml = find_actions_xml(root, image_set)
+    behaviors_xml = find_behaviors_xml(root, image_set)
     source_actions = parse_actions_xml(actions_xml) if actions_xml else {}
     if not source_actions:
         source_actions = fallback_standard_actions(image_set)
+    source_behaviors = parse_behaviors_xml(behaviors_xml) if behaviors_xml else []
+    behavior_profile, behavior_mapping, behavior_warnings = build_behavior_profile(source_behaviors)
 
     actions: dict[str, dict] = {}
     capabilities: dict[str, list[dict]] = {}
+    failed_frames: list[str] = []
     for source_name, poses in source_actions.items():
         try:
-            action, _size = copy_action_frames(image_set, output_frames, source_name, poses)
+            action, _size, failures = copy_action_frames(image_set, output_frames, source_name, poses)
         except ValueError:
             continue
+        failed_frames.extend(f"{source_name}:{failure}" for failure in failures)
         aid = action_id(source_name)
         actions[aid] = action
         for classified in classify_action(source_name, poses):
@@ -362,25 +595,37 @@ def build_skin(root: Path, image_set: Path, output_root: Path, forced_id: str | 
     if not actions:
         raise SystemExit(f"No usable actions found in {image_set}")
 
-    ensure_locomotion_mirror(actions, capabilities)
+    generated_mirrors: list[str] = []
+    generated_mirrors.extend(ensure_locomotion_mirror(actions, capabilities))
+    generated_mirrors.extend(ensure_directional_mirror(actions, capabilities, "edge"))
     ensure_minimum_capabilities(actions, capabilities)
 
     skin = {
+        "schema_version": SCHEMA_VERSION,
         "version": 1,
         "id": skin_id,
         "name": skin_name,
         "description": "Imported from a Shimeji-ee image set.",
+        "metadata": {
+            "package_version": "1.0.0",
+            "authors": [],
+            "compatibility_level": "minimal",
+            "compatibility_score": 0,
+        },
         "preview": preview_for(capabilities, actions),
         "frame_root": "frames",
         "license": {
             "type": "user-provided",
             "summary": "User-provided Shimeji assets. Keep distribution rights separate from the app.",
+            "redistributable": False,
         },
         "source": {
             "format": "shimeji-ee",
             "image_set": image_set.name,
             "actions_xml": str(actions_xml) if actions_xml else "",
+            "behaviors_xml": str(behaviors_xml) if behaviors_xml else "",
         },
+        "behavior_profile": behavior_profile,
         "capabilities": capabilities,
         "fallbacks": {
             "locomotion": "resting",
@@ -396,8 +641,28 @@ def build_skin(root: Path, image_set: Path, output_root: Path, forced_id: str | 
         },
         "actions": actions,
     }
+    validation = validate_skin_manifest(skin, output_dir / "skin.json", PROJECT_ROOT)
+    skin = apply_quality_metadata(skin, validation)
+    report = {
+        "schema_version": SCHEMA_VERSION,
+        "skin_id": skin_id,
+        "skin_name": skin_name,
+        "source": skin["source"],
+        "action_count": validation["action_count"],
+        "frame_count": validation["frame_count"],
+        "capability_coverage": validation["capability_coverage"],
+        "missing_capabilities": validation["missing_capabilities"],
+        "generated_mirrors": sorted(set(generated_mirrors)),
+        "failed_frames": failed_frames,
+        "behavior_mapping": behavior_mapping,
+        "compatibility_score": validation["score"],
+        "compatibility_level": validation["level"],
+        "errors": validation["errors"],
+        "warnings": sorted(set(validation["warnings"] + behavior_warnings)),
+    }
     (output_dir / "skin.json").write_text(json.dumps(skin, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return output_dir
+    (output_dir / "import_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return ImportResult(output_dir, report)
 
 
 def main() -> int:
@@ -406,6 +671,7 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, default=output_root_default())
     parser.add_argument("--id", dest="skin_id", help="Override generated skin id. Only valid for one image set.")
     parser.add_argument("--name", dest="skin_name", help="Override generated skin name. Only valid for one image set.")
+    parser.add_argument("--json-report", action="store_true", help="Print imported skin paths and reports as JSON.")
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory(prefix="shimeji-import-") as temp_dir:
@@ -416,13 +682,19 @@ def main() -> int:
         if len(image_sets) > 1 and (args.skin_id or args.skin_name):
             raise SystemExit("--id and --name can only be used when importing one image set.")
         args.output_root.mkdir(parents=True, exist_ok=True)
-        imported = [
+        imported: list[ImportResult] = [
             build_skin(root, image_set, args.output_root, args.skin_id, args.skin_name)
             for image_set in image_sets
         ]
 
-    for path in imported:
-        print(path)
+    if args.json_report:
+        print(json.dumps([
+            {"path": str(item.path), "report": item.report}
+            for item in imported
+        ], ensure_ascii=False, indent=2))
+    else:
+        for item in imported:
+            print(item.path)
     return 0
 
 

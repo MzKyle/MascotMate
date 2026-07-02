@@ -34,6 +34,8 @@ copy_external_assets() {
 
   mkdir -p "$DIST_DIR/scripts"
   cp "$ROOT_DIR/scripts/pet_helper.py" "$DIST_DIR/scripts/pet_helper.py"
+  cp "$ROOT_DIR/scripts/import_shimeji_skin.py" "$DIST_DIR/scripts/import_shimeji_skin.py"
+  cp "$ROOT_DIR/scripts/skin_sdk.py" "$DIST_DIR/scripts/skin_sdk.py"
   chmod +x "$DIST_DIR/scripts/pet_helper.py"
   if [[ ! -x "$ROOT_DIR/build/helper/pet_helper" ]]; then
     if command -v pyinstaller >/dev/null 2>&1; then

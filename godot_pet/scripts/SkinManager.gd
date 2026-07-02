@@ -5,6 +5,7 @@ signal skin_selected(skin_id)
 
 const DEFAULT_SKIN_ID := "classic_shinchan"
 const DEFAULT_SKIN_PATH := "res://assets/skins/classic_shinchan/skin.json"
+const CORE_CAPABILITIES := ["resting", "locomotion", "falling", "held", "edge"]
 
 var repo_root := ""
 var config_dir := ""
@@ -82,7 +83,7 @@ func delete_user_skin(skin_id: String) -> bool:
 func _load_builtin_default() -> void:
 	var loaded = _load_skin_file(DEFAULT_SKIN_PATH, "builtin")
 	if loaded.is_empty():
-		loaded = _legacy_default_skin()
+		loaded = _normalized_skin(_legacy_default_skin(), DEFAULT_SKIN_PATH, "builtin")
 	_add_skin(loaded)
 
 
@@ -119,6 +120,8 @@ func _load_skin_file(path: String, kind: String) -> Dictionary:
 
 func _normalized_skin(source: Dictionary, path: String, kind: String) -> Dictionary:
 	var skin = source.duplicate(true)
+	if not skin.has("schema_version"):
+		skin["schema_version"] = int(skin.get("version", 1))
 	if str(skin.get("id", "")) == "":
 		return {}
 	if typeof(skin.get("actions", {})) != TYPE_DICTIONARY:
@@ -127,10 +130,89 @@ func _normalized_skin(source: Dictionary, path: String, kind: String) -> Diction
 		skin["capabilities"] = {}
 	if not skin.has("fallbacks") or typeof(skin["fallbacks"]) != TYPE_DICTIONARY:
 		skin["fallbacks"] = {}
+	if not skin.has("metadata") or typeof(skin["metadata"]) != TYPE_DICTIONARY:
+		skin["metadata"] = {}
+	var metadata: Dictionary = skin["metadata"]
+	metadata["package_version"] = str(metadata.get("package_version", "1.0.0"))
+	if not metadata.has("authors") or typeof(metadata["authors"]) != TYPE_ARRAY:
+		metadata["authors"] = []
+	if not skin.has("license") or typeof(skin["license"]) != TYPE_DICTIONARY:
+		skin["license"] = {"type": str(skin.get("license", "unknown"))}
+	var license: Dictionary = skin["license"]
+	license["type"] = str(license.get("type", "unknown"))
+	license["summary"] = str(license.get("summary", license.get("type", "unknown")))
+	license["redistributable"] = bool(license.get("redistributable", false))
+	if not skin.has("source") or typeof(skin["source"]) != TYPE_DICTIONARY:
+		skin["source"] = {}
+	if not skin.has("behavior_profile") or typeof(skin["behavior_profile"]) != TYPE_DICTIONARY:
+		skin["behavior_profile"] = {}
+	var report = _load_import_report(path)
+	if not report.is_empty():
+		skin["import_report"] = report
+		metadata["compatibility_level"] = str(report.get("compatibility_level", metadata.get("compatibility_level", "minimal")))
+		metadata["compatibility_score"] = int(report.get("compatibility_score", metadata.get("compatibility_score", 0)))
+		metadata["capability_coverage"] = report.get("capability_coverage", _capability_coverage(skin))
+		metadata["missing_capabilities"] = report.get("missing_capabilities", _missing_capabilities(skin))
+	else:
+		var score = _compatibility_score(skin)
+		metadata["compatibility_score"] = int(metadata.get("compatibility_score", score))
+		metadata["compatibility_level"] = str(metadata.get("compatibility_level", _compatibility_level(score)))
+		metadata["capability_coverage"] = metadata.get("capability_coverage", _capability_coverage(skin))
+		metadata["missing_capabilities"] = metadata.get("missing_capabilities", _missing_capabilities(skin))
 	skin["_kind"] = kind
 	skin["_skin_path"] = path
 	skin["_frame_root_abs"] = _resolve_frame_root(str(skin.get("frame_root", "")), path)
 	return skin
+
+
+func _load_import_report(skin_path: String) -> Dictionary:
+	var report_path = skin_path.get_base_dir().path_join("import_report.json")
+	if not FileAccess.file_exists(report_path):
+		return {}
+	var file = FileAccess.open(report_path, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed = JSON.parse_string(file.get_as_text())
+	if typeof(parsed) == TYPE_DICTIONARY:
+		return parsed
+	return {}
+
+
+func _capability_coverage(skin: Dictionary) -> Dictionary:
+	var coverage := {}
+	var capabilities = skin.get("capabilities", {})
+	for capability in CORE_CAPABILITIES:
+		var candidates = capabilities.get(capability, []) if typeof(capabilities) == TYPE_DICTIONARY else []
+		coverage[capability] = typeof(candidates) == TYPE_ARRAY and not candidates.is_empty()
+	return coverage
+
+
+func _missing_capabilities(skin: Dictionary) -> Array:
+	var missing := []
+	var coverage = _capability_coverage(skin)
+	for capability in CORE_CAPABILITIES:
+		if not bool(coverage.get(capability, false)):
+			missing.append(capability)
+	return missing
+
+
+func _compatibility_score(skin: Dictionary) -> int:
+	var score := 100
+	score -= _missing_capabilities(skin).size() * 14
+	var actions = skin.get("actions", {})
+	if typeof(actions) != TYPE_DICTIONARY or actions.is_empty():
+		score = min(score, 20)
+	return clampi(score, 0, 100)
+
+
+func _compatibility_level(score: int) -> String:
+	if score >= 90:
+		return "excellent"
+	if score >= 72:
+		return "good"
+	if score >= 45:
+		return "partial"
+	return "minimal"
 
 
 func _resolve_frame_root(frame_root: String, manifest_path: String) -> String:
@@ -153,6 +235,7 @@ func _add_skin(skin: Dictionary) -> void:
 func _legacy_default_skin() -> Dictionary:
 	var actions = legacy_manifest.get("actions", {})
 	return {
+		"schema_version": 1,
 		"version": 1,
 		"id": DEFAULT_SKIN_ID,
 		"name": "蜡笔小新默认皮肤",

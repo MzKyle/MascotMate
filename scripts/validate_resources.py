@@ -9,6 +9,11 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
+from skin_sdk import (
+    is_safe_relative_png,
+    validate_skin_manifest as validate_skin_package,
+)
+
 
 ROOT = Path(__file__).resolve().parent.parent
 RESOURCE_ROOT = ROOT / "resource_hd"
@@ -30,16 +35,6 @@ def load_json(path: Path, errors: list[str]) -> dict:
     except json.JSONDecodeError as exc:
         error(f"Invalid JSON in {path.relative_to(ROOT)}: {exc}", errors)
         return {}
-
-
-def is_safe_relative_png(path_text: str) -> bool:
-    path = Path(path_text)
-    return (
-        path_text != ""
-        and not path.is_absolute()
-        and ".." not in path.parts
-        and path.suffix.lower() == ".png"
-    )
 
 
 def verify_png(path: Path, errors: list[str]) -> None:
@@ -86,58 +81,13 @@ def validate_actions(manifest: dict, errors: list[str]) -> set[Path]:
     return referenced
 
 
-def resolve_skin_frame_root(skin: dict, skin_path: Path, errors: list[str]) -> Path:
-    frame_root = skin.get("frame_root", "")
-    if not isinstance(frame_root, str) or frame_root == "":
-        error(f"{skin_path.relative_to(ROOT)} has an invalid frame_root.", errors)
-        return RESOURCE_ROOT
-    if frame_root.startswith("$repo/"):
-        return ROOT / frame_root.removeprefix("$repo/")
-    if Path(frame_root).is_absolute():
-        return Path(frame_root)
-    return skin_path.parent / frame_root
-
-
 def validate_skin_manifest(errors: list[str]) -> None:
     skin = load_json(DEFAULT_SKIN_PATH, errors)
     if not skin:
         return
-    for key in ("id", "name", "frame_root", "capabilities", "fallbacks", "actions"):
-        if key not in skin:
-            error(f"{DEFAULT_SKIN_PATH.relative_to(ROOT)} is missing {key}.", errors)
-    capabilities = skin.get("capabilities", {})
-    if not isinstance(capabilities, dict) or "resting" not in capabilities:
-        error("default skin must define a resting capability.", errors)
-    actions = skin.get("actions", {})
-    if not isinstance(actions, dict) or not actions:
-        error("default skin must contain actions.", errors)
-        return
-    frame_root = resolve_skin_frame_root(skin, DEFAULT_SKIN_PATH, errors)
-    for capability, candidates in capabilities.items():
-        if not isinstance(candidates, list) or not candidates:
-            error(f"Capability {capability} must contain at least one candidate.", errors)
-            continue
-        for candidate in candidates:
-            if not isinstance(candidate, dict):
-                error(f"Capability {capability} candidate must be an object.", errors)
-                continue
-            action_id = candidate.get("action", "")
-            if action_id not in actions:
-                error(f"Capability {capability} references missing action: {action_id}", errors)
-    for action_id, action in actions.items():
-        frames = action.get("frames", []) if isinstance(action, dict) else []
-        if not isinstance(frames, list) or not frames:
-            error(f"Skin action {action_id} has no frames.", errors)
-            continue
-        for frame in frames:
-            if not isinstance(frame, str) or not is_safe_relative_png(frame):
-                error(f"Skin action {action_id} has unsafe frame path: {frame!r}", errors)
-                continue
-            frame_path = frame_root / frame
-            if not frame_path.is_file():
-                error(f"Missing skin frame for {action_id}: {frame_path.relative_to(ROOT)}", errors)
-                continue
-            verify_png(frame_path, errors)
+    result = validate_skin_package(skin, DEFAULT_SKIN_PATH, ROOT)
+    for item in result["errors"]:
+        error(item, errors)
 
 
 def validate_resource_coverage(referenced: set[Path], errors: list[str]) -> None:

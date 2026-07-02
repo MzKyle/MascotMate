@@ -110,6 +110,8 @@ def import_shimeji(args: argparse.Namespace) -> int:
         argv += ["--id", args.skin_id]
     if args.skin_name:
         argv += ["--name", args.skin_name]
+    if args.json_report:
+        argv += ["--json-report"]
     previous_argv = sys.argv
     try:
         sys.argv = argv
@@ -413,6 +415,7 @@ def parse_args() -> argparse.Namespace:
     import_skin.add_argument("--output-root", type=Path, required=True)
     import_skin.add_argument("--id", dest="skin_id")
     import_skin.add_argument("--name", dest="skin_name")
+    import_skin.add_argument("--json-report", action="store_true")
     return parser.parse_args()
 
 

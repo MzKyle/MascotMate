@@ -174,6 +174,7 @@ func _create_nodes() -> void:
 	brain = BehaviorBrainScript.new()
 	add_child(brain)
 	brain.configure(behavior_manifest)
+	brain.set_skin_behavior_profile(skin_manager.current_skin.get("behavior_profile", {}))
 	brain.action_requested.connect(_on_behavior_action)
 	brain.mischief_requested.connect(_on_mischief)
 	brain.set_mode(behavior_mode)
@@ -269,8 +270,7 @@ func _pet_visible_rect_for_physics() -> Rect2:
 	if physics == null:
 		return pet_sprite.visible_rect()
 	if (physics.state == "WallAttached" or physics.state == "EdgeWalk") and physics.wall_side != 0:
-		var rotation = PI * 0.5 if physics.wall_side > 0 else -PI * 0.5
-		return pet_sprite.visible_rect_for_rotation(rotation)
+		return pet_sprite.visible_rect_for_rotation(_wall_pose_rotation())
 	if physics.state == "Flinging" or physics.state == "Falling":
 		var rotation = clamp(physics.velocity.x / 1800.0, -0.35, 0.35)
 		return pet_sprite.visible_rect_for_rotation(rotation)
@@ -533,6 +533,8 @@ func _set_skin(skin_id: String) -> void:
 		show_bubble("皮肤不可用。")
 		return
 	animation_resolver.configure(skin_manager.current_skin)
+	if brain != null:
+		brain.set_skin_behavior_profile(skin_manager.current_skin.get("behavior_profile", {}))
 	pet_sprite.configure_skin(skin_manager.current_skin, skin_manager.current_frame_root)
 	pet_sprite.set_display_scale(display_scale)
 	_play_capability("resting")
@@ -602,10 +604,7 @@ func _apply_wall_walk_pose() -> void:
 		return
 	_play_wall_walk_action()
 	pet_sprite.sprite.scale = pet_sprite._base_sprite_scale()
-	if physics.wall_side > 0:
-		pet_sprite.sprite.rotation = PI * 0.5
-	else:
-		pet_sprite.sprite.rotation = -PI * 0.5
+	pet_sprite.sprite.rotation = _wall_pose_rotation()
 	var rect = _pet_visible_rect_for_physics()
 	pet_sprite.position = _pet_anchor_position_for_physics(Vector2(get_window().size), rect)
 
@@ -620,6 +619,14 @@ func _wall_walk_action() -> String:
 	else:
 		direction = "left" if physics.velocity.y > 0.0 else "right"
 	return animation_resolver.resolve("edge", {"direction": direction})
+
+
+func _wall_pose_rotation() -> float:
+	if pet_sprite != null and bool(pet_sprite.current_config.get("native_edge_pose", false)):
+		return 0.0
+	if physics == null or physics.wall_side <= 0:
+		return -PI * 0.5
+	return PI * 0.5
 
 
 func _play_capability(capability: String, constraints: Dictionary = {}) -> bool:

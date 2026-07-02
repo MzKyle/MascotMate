@@ -1,0 +1,16 @@
+{
+  "description": "External Shimeji-ee compatibility corpus. Keep third-party assets outside the repository.",
+  "skins": [
+    {
+      "name": "Local sample",
+      "path": "/absolute/path/to/shimeji.zip",
+      "min_score": 45
+    },
+    {
+      "name": "Downloaded sample",
+      "url": "https://example.com/shimeji.zip",
+      "sha256": "replace-with-expected-sha256",
+      "min_score": 72
+    }
+  ]
+}

@@ -30,6 +30,11 @@ godot_pet/assets/skins/classic_shinchan/skin.json
 
 二者都由 `scripts/generate_godot_manifest.py` 生成。`actions.json` 继续兼容旧资源管线；`skin.json` 是运行时优先使用的皮肤包接口。
 
+完整第三方皮肤接口见：
+
+- [皮肤包规范 v2](../sdk/skin-package-spec.md)
+- [Shimeji-ee 导入](../sdk/shimeji-import.md)
+
 每个动作包含：
 
 | 字段 | 说明 |
@@ -43,6 +48,8 @@ godot_pet/assets/skins/classic_shinchan/skin.json
 | `next_action` | 非循环动作结束后的下一个动作 |
 | `frames` | PNG 帧相对路径列表 |
 | `durations_ms` | 可选，逐帧时长，Shimeji 导入资源会使用 |
+| `anchors` | 可选，逐帧锚点，Shimeji 导入资源会使用 |
+| `velocities` | 可选，逐帧速度，供导入报告和后续行为调优使用 |
 
 每个皮肤包含：
 
@@ -50,9 +57,13 @@ godot_pet/assets/skins/classic_shinchan/skin.json
 | --- | --- |
 | `id` | 皮肤 ID |
 | `name` | 显示名 |
+| `schema_version` | v2 皮肤规范版本；旧皮肤缺省按 v1 兼容 |
+| `metadata` | 包版本、作者、兼容等级和评分 |
 | `preview` | 预览帧 |
 | `frame_root` | 帧根目录，支持 `$repo/` |
 | `license` | 素材来源和授权说明 |
+| `source` | 导入来源，例如 Shimeji-ee 的 image set 和 XML 路径 |
+| `behavior_profile` | 可选，皮肤自己的活泼/捣乱行为权重 |
 | `capabilities` | `resting`、`locomotion`、`falling`、`held` 等能力到动作候选的映射 |
 | `fallbacks` | 能力缺失时的回退关系 |
 | `actions` | 皮肤内动作定义 |
@@ -119,6 +130,18 @@ python3 scripts/import_shimeji_skin.py /path/to/shimeji-folder
 ```
 
 导入器会识别 `img/[NAME]`、全局 `conf/actions.xml` 和皮肤私有 `conf/actions.xml`，把原始动作保留为皮肤动作，并按素材语义归类到能力标签。缺失能力会通过 fallback 使用最接近的动作，走路方向缺失时会生成镜像动作。
+
+导入器还会读取 `behaviors.xml`，生成 `behavior_profile` 和 `import_report.json`。报告包含动作数、帧数、核心能力覆盖、兼容评分、失败帧、镜像动作和解析警告。机器可读输出：
+
+```bash
+python3 scripts/import_shimeji_skin.py /path/to/shimeji.zip --json-report
+```
+
+真实 Shimeji 包不提交进仓库。需要批量测试时使用外置清单：
+
+```bash
+python3 scripts/run_shimeji_corpus.py /path/to/shimeji_corpus.json
+```
 
 ## 资源校验
 

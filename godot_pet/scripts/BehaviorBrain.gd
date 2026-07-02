@@ -33,6 +33,8 @@ var mode := "安静"
 var rng := RandomNumberGenerator.new()
 var timer: Timer
 var paused := false
+var base_behavior_config := DEFAULT_BEHAVIOR.duplicate(true)
+var skin_behavior_profile := {}
 var behavior_config := DEFAULT_BEHAVIOR.duplicate(true)
 
 
@@ -46,7 +48,15 @@ func _ready() -> void:
 
 
 func configure(config: Dictionary) -> void:
-	behavior_config = _merged_behavior_config(config)
+	base_behavior_config = _merged_behavior_config(config)
+	_rebuild_behavior_config()
+	if timer != null:
+		schedule_next()
+
+
+func set_skin_behavior_profile(profile: Dictionary) -> void:
+	skin_behavior_profile = profile.duplicate(true)
+	_rebuild_behavior_config()
 	if timer != null:
 		schedule_next()
 
@@ -161,4 +171,40 @@ func _merged_behavior_config(source: Dictionary) -> Dictionary:
 				if action_type in ["action", "mischief"] and action_name != "" and weight > 0.0:
 					actions.append({"type": action_type, "name": action_name, "weight": weight})
 			merged["modes"][mode_name]["actions"] = actions
+	return merged
+
+
+func _rebuild_behavior_config() -> void:
+	behavior_config = base_behavior_config.duplicate(true)
+	if typeof(skin_behavior_profile) == TYPE_DICTIONARY and not skin_behavior_profile.is_empty():
+		behavior_config = _merge_skin_behavior_profile(behavior_config, skin_behavior_profile)
+
+
+func _merge_skin_behavior_profile(base: Dictionary, profile: Dictionary) -> Dictionary:
+	var merged = base.duplicate(true)
+	var modes = profile.get("modes", {})
+	if typeof(modes) != TYPE_DICTIONARY:
+		return merged
+	for mode_name in merged["modes"].keys():
+		if not modes.has(mode_name) or typeof(modes[mode_name]) != TYPE_DICTIONARY:
+			continue
+		var incoming: Dictionary = modes[mode_name]
+		if incoming.has("interval"):
+			var interval = incoming["interval"]
+			if typeof(interval) == TYPE_ARRAY and interval.size() >= 2:
+				merged["modes"][mode_name]["interval"] = [max(0.1, float(interval[0])), max(0.1, float(interval[1]))]
+		if incoming.has("initial_delay"):
+			merged["modes"][mode_name]["initial_delay"] = max(0.0, float(incoming["initial_delay"]))
+		if incoming.has("actions") and typeof(incoming["actions"]) == TYPE_ARRAY:
+			var actions := []
+			for action in incoming["actions"]:
+				if typeof(action) != TYPE_DICTIONARY:
+					continue
+				var action_type = str(action.get("type", ""))
+				var action_name = str(action.get("name", ""))
+				var weight = max(0.0, float(action.get("weight", 0.0)))
+				if action_type in ["action", "mischief"] and action_name != "" and weight > 0.0:
+					actions.append({"type": action_type, "name": action_name, "weight": weight})
+			if not actions.is_empty():
+				merged["modes"][mode_name]["actions"] = actions
 	return merged

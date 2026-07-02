@@ -24,6 +24,7 @@ Godot 4 驱动的本地透明桌宠：支持长按抱起、甩飞、重力落地
 - 安静、活泼、捣乱三种行为模式，默认安静启动
 - 右键菜单支持散步、投喂、睡觉、唤醒、接球挑战、显示大小、重力开关和退出
 - 皮肤管理支持 Shimeji-ee zip/文件夹导入、运行时切换和 Cachomon 官方目录入口
+- 皮肤 SDK 支持 `schema_version: 2`、兼容评分、导入报告、作者/授权信息和行为配方
 - 跨平台截图贴图：`F1` 区域截图并复制图片、`F3` 轮换贴图、`F4` 关闭当前贴图
 - 心情、饥饿、体力、亲密度本地持久化
 - `skin.json` 用能力标签组织动作，旧 `resource_hd/` 动作帧作为默认兼容皮肤
@@ -109,6 +110,7 @@ python3 scripts/generate_godot_manifest.py
 python3 scripts/generate_godot_manifest.py --check
 python3 scripts/validate_resources.py
 python3 scripts/import_shimeji_skin.py /path/to/shimeji.zip
+python3 scripts/import_shimeji_skin.py /path/to/shimeji.zip --json-report
 scripts/run_godot_pet.sh
 python3 scripts/build_portable.py --target linux
 scripts/build_godot_linux.sh
@@ -211,6 +213,11 @@ godot_pet/assets/behavior.json
 ## 文档
 
 完整文档见 [docs/](docs/)。
+
+皮肤 SDK：
+
+- [皮肤包规范 v2](docs/sdk/skin-package-spec.md)
+- [Shimeji-ee 导入](docs/sdk/shimeji-import.md)
 
 本地预览：
 

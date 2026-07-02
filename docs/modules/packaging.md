@@ -46,7 +46,7 @@ python scripts/validate_resources.py
 3. 复制 Godot runtime 为 `GodotPetRuntime`
 4. 复制 `godot_pet/`
 5. 复制 `resource_hd/` 和 `assets/`
-6. 复制 `scripts/pet_helper.py` 和可选的 `scripts/pet_helper`
+6. 复制 `scripts/pet_helper.py`、`scripts/import_shimeji_skin.py`、`scripts/skin_sdk.py` 和可选的 `scripts/pet_helper`
 7. 写入启动脚本 `CrayonShinchanGodotPet`
 
 启动脚本会设置：
@@ -90,7 +90,7 @@ scripts/setup_godot_export_templates.sh
 2. 生成默认皮肤 `godot_pet/assets/skins/classic_shinchan/skin.json`
 3. 用 PyInstaller 构建 `pet_helper`
 4. 调用 Godot export preset 导出 Linux、Windows 或 macOS
-5. 复制 `resource_hd/`、`assets/`、helper 和 `import_shimeji_skin.py`
+5. 复制 `resource_hd/`、`assets/`、helper、`import_shimeji_skin.py` 和 `skin_sdk.py`
 6. 输出 `dist/CrayonShinchanPet-<platform>.zip`
 
 本地私用皮肤只在显式传参时复制，不会进入公开 CI/release：

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from contextlib import redirect_stdout
 
 from PIL import Image
 
@@ -63,21 +65,45 @@ class ImportShimejiSkinTests(unittest.TestCase):
 """,
             encoding="utf-8",
         )
+        (conf / "behaviors.xml").write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Mascot>
+  <BehaviorList>
+    <Behavior Name="WalkAlongWorkAreaFloor" Frequency="100" />
+    <Behavior Name="HoldOntoWall" Frequency="50" />
+    <Behavior Name="ThrowIEFromLeft" Frequency="20" Condition="${ignored}" />
+  </BehaviorList>
+</Mascot>
+""",
+            encoding="utf-8",
+        )
         return self.root / "source"
 
     def test_imports_image_set_with_capabilities_and_durations(self) -> None:
         source = self.make_shimeji()
         output = self.root / "skins"
 
-        built = self.importer.build_skin(source, source / "img" / "Buddy", output, None, None)
+        result = self.importer.build_skin(source, source / "img" / "Buddy", output, None, None)
+        built = result.path
 
         skin = self.importer.json.loads((built / "skin.json").read_text(encoding="utf-8"))
+        report = self.importer.json.loads((built / "import_report.json").read_text(encoding="utf-8"))
+        self.assertEqual(skin["schema_version"], 2)
         self.assertEqual(skin["id"], "buddy")
         self.assertIn("stand", skin["actions"])
         self.assertIn("walk", skin["actions"])
         self.assertIn("resting", skin["capabilities"])
         self.assertIn("locomotion", skin["capabilities"])
         self.assertIn("durations_ms", skin["actions"]["walk"])
+        self.assertIn("anchors", skin["actions"]["walk"])
+        self.assertIn("velocities", skin["actions"]["walk"])
+        self.assertEqual(len(skin["actions"]["walk"]["anchors"]), len(skin["actions"]["walk"]["frames"]))
+        self.assertEqual(skin["source"]["behaviors_xml"].endswith("behaviors.xml"), True)
+        self.assertIn("behavior_profile", skin)
+        self.assertIn("活泼", skin["behavior_profile"]["modes"])
+        self.assertEqual(report["skin_id"], "buddy")
+        self.assertGreaterEqual(report["compatibility_score"], 1)
+        self.assertTrue(any("Ignored Shimeji condition" in item for item in report["warnings"]))
         self.assertTrue(any(item.get("direction") == "right" for item in skin["capabilities"]["locomotion"]))
 
     def test_falls_back_to_standard_shimeji_images_without_actions_xml(self) -> None:
@@ -86,12 +112,44 @@ class ImportShimejiSkinTests(unittest.TestCase):
             write_png(image_set / name)
         output = self.root / "skins"
 
-        built = self.importer.build_skin(self.root / "source", image_set, output, None, None)
+        built = self.importer.build_skin(self.root / "source", image_set, output, None, None).path
 
         skin = self.importer.json.loads((built / "skin.json").read_text(encoding="utf-8"))
         self.assertIn("stand", skin["actions"])
         self.assertIn("walk", skin["actions"])
         self.assertIn("resting", skin["capabilities"])
+
+    def test_ignores_img_root_with_only_icon(self) -> None:
+        img_root = self.root / "source" / "img"
+        write_png(img_root / "icon.png")
+        write_png(img_root / "Buddy" / "shime1.png")
+
+        image_sets = self.importer.find_image_sets(self.root / "source")
+
+        self.assertEqual([path.name for path in image_sets], ["Buddy"])
+
+    def test_cli_json_report_is_parseable(self) -> None:
+        source = self.make_shimeji()
+        output = self.root / "skins"
+        previous_argv = sys.argv
+        stdout = io.StringIO()
+        try:
+            sys.argv = [
+                "import_shimeji_skin.py",
+                str(source),
+                "--output-root",
+                str(output),
+                "--json-report",
+            ]
+            with redirect_stdout(stdout):
+                code = self.importer.main()
+        finally:
+            sys.argv = previous_argv
+
+        self.assertEqual(code, 0)
+        parsed = self.importer.json.loads(stdout.getvalue())
+        self.assertEqual(parsed[0]["report"]["skin_id"], "buddy")
+        self.assertTrue((output / "buddy" / "import_report.json").is_file())
 
     def test_rejects_zip_path_traversal(self) -> None:
         archive = self.root / "bad.zip"

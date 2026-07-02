@@ -21,6 +21,10 @@
   - [素材与动作](modules/assets.md)
   - [打包模块](modules/packaging.md)
 
+- **皮肤 SDK**
+  - [皮肤包规范](sdk/skin-package-spec.md)
+  - [Shimeji-ee 导入](sdk/shimeji-import.md)
+
 - **代码导读**
   - [代码导读索引](code/README.md)
   - [Godot 脚本](code/godot-scripts.md)

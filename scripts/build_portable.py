@@ -114,6 +114,9 @@ def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir
     importer = ROOT / "scripts" / "import_shimeji_skin.py"
     if importer.exists():
         shutil.copy2(importer, scripts_dir / "import_shimeji_skin.py")
+    skin_sdk = ROOT / "scripts" / "skin_sdk.py"
+    if skin_sdk.exists():
+        shutil.copy2(skin_sdk, scripts_dir / "skin_sdk.py")
     if private_skins_dir is not None:
         if not private_skins_dir.is_dir():
             raise FileNotFoundError(private_skins_dir)

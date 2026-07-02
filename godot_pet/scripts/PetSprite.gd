@@ -10,12 +10,15 @@ var display_scale := 1.0
 var current_action := "idle"
 var current_config := {}
 var textures := []
+var frame_anchors := []
 var frame_index := 0
 var elapsed := 0.0
 var sprite: Sprite2D
 var base_size := Vector2(130, 130)
+var window_extent_size := Vector2(130, 130)
 var current_texture_size := Vector2.ZERO
 var current_used_rect := Rect2()
+var current_anchor := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -47,19 +50,27 @@ func play(action_id: String) -> bool:
 		return false
 	var config = actions[action_id]
 	var loaded := []
-	for rel_path in config.get("frames", []):
+	var loaded_anchors := []
+	var frames = config.get("frames", [])
+	var anchors = config.get("anchors", [])
+	for i in range(frames.size()):
+		var rel_path = frames[i]
 		var texture = _load_texture(str(rel_path))
 		if texture != null:
 			loaded.append(texture)
+			if typeof(anchors) == TYPE_ARRAY and i < anchors.size() and _valid_anchor(anchors[i]):
+				loaded_anchors.append(Vector2(float(anchors[i][0]), float(anchors[i][1])))
 	if loaded.is_empty():
 		return false
 	current_action = action_id
 	current_config = config
 	textures = loaded
+	frame_anchors = loaded_anchors if loaded_anchors.size() == loaded.size() else []
 	frame_index = 0
 	elapsed = 0.0
 	var size_value = config.get("size", [130, 130])
 	base_size = Vector2(float(size_value[0]), float(size_value[1]))
+	window_extent_size = _window_extent_for_loaded_frames()
 	_apply_current_frame()
 	return true
 
@@ -86,13 +97,14 @@ func update_animation(delta: float) -> void:
 
 
 func window_size() -> Vector2i:
-	var padded = base_size * display_scale + Vector2(96, 84)
+	var padded = window_extent_size * display_scale + Vector2(96, 84)
 	return Vector2i(max(180, int(padded.x)), max(160, int(padded.y)))
 
 
 func pet_rect() -> Rect2:
-	var size = base_size * display_scale
-	return Rect2(-size * 0.5, size)
+	if sprite != null and sprite.texture != null and current_used_rect.size.x > 0.0 and current_used_rect.size.y > 0.0:
+		return visible_rect_for_rotation(0.0)
+	return _fallback_pet_rect()
 
 
 func visible_rect() -> Rect2:
@@ -103,11 +115,12 @@ func visible_rect() -> Rect2:
 
 func visible_rect_for_rotation(rotation: float) -> Rect2:
 	if sprite == null or sprite.texture == null or current_used_rect.size.x <= 0.0 or current_used_rect.size.y <= 0.0:
-		return _rotated_rect(pet_rect(), rotation)
+		return _rotated_rect(_fallback_pet_rect(), rotation)
 
 	var scale = sprite.scale
-	var min_source = current_used_rect.position - current_texture_size * 0.5
-	var max_source = current_used_rect.position + current_used_rect.size - current_texture_size * 0.5
+	var origin = current_anchor if _uses_frame_anchors() else current_texture_size * 0.5
+	var min_source = current_used_rect.position - origin
+	var max_source = current_used_rect.position + current_used_rect.size - origin
 	var min_scaled = Vector2(min_source.x * scale.x, min_source.y * scale.y)
 	var max_scaled = Vector2(max_source.x * scale.x, max_source.y * scale.y)
 	var rect = Rect2(
@@ -142,6 +155,13 @@ func _apply_current_frame() -> void:
 	if textures.is_empty() or sprite == null:
 		return
 	sprite.texture = textures[frame_index]
+	current_anchor = _current_frame_anchor()
+	if _uses_frame_anchors():
+		sprite.centered = false
+		sprite.offset = -current_anchor
+	else:
+		sprite.centered = true
+		sprite.offset = Vector2.ZERO
 	_cache_current_used_rect()
 	sprite.scale = _base_sprite_scale()
 
@@ -199,6 +219,11 @@ func _rotated_rect(rect: Rect2, rotation: float) -> Rect2:
 	return Rect2(min_pos, max_pos - min_pos)
 
 
+func _fallback_pet_rect() -> Rect2:
+	var size = base_size * display_scale
+	return Rect2(-size * 0.5, size)
+
+
 func _load_texture(relative_path: String):
 	var path = frame_root.path_join(relative_path) if frame_root != "" else repo_root.path_join("resource_hd").path_join(relative_path)
 	if FileAccess.file_exists(path):
@@ -214,3 +239,39 @@ func _current_frame_duration() -> float:
 		return max(0.001, float(durations[frame_index]) / 1000.0)
 	var fps = float(current_config.get("fps", 10.0))
 	return 1.0 / max(1.0, fps)
+
+
+func _uses_frame_anchors() -> bool:
+	return frame_anchors.size() == textures.size() and frame_anchors.size() > 0
+
+
+func _current_frame_anchor() -> Vector2:
+	if _uses_frame_anchors() and frame_index >= 0 and frame_index < frame_anchors.size():
+		return frame_anchors[frame_index]
+	if sprite != null and sprite.texture != null:
+		return sprite.texture.get_size() * 0.5
+	return current_texture_size * 0.5
+
+
+func _valid_anchor(value) -> bool:
+	return typeof(value) == TYPE_ARRAY and value.size() >= 2
+
+
+func _window_extent_for_loaded_frames() -> Vector2:
+	if frame_anchors.size() != textures.size() or textures.is_empty():
+		return base_size
+	var left := 0.0
+	var right := 0.0
+	var top := 0.0
+	var bottom := 0.0
+	for i in range(textures.size()):
+		var texture_size = textures[i].get_size()
+		if texture_size.x <= 0.0 or texture_size.y <= 0.0:
+			continue
+		var scale = Vector2(base_size.x / texture_size.x, base_size.y / texture_size.y)
+		var anchor: Vector2 = frame_anchors[i]
+		left = max(left, anchor.x * scale.x)
+		right = max(right, (texture_size.x - anchor.x) * scale.x)
+		top = max(top, anchor.y * scale.y)
+		bottom = max(bottom, (texture_size.y - anchor.y) * scale.y)
+	return Vector2(max(left, right) * 2.0, max(top, bottom) * 2.0)

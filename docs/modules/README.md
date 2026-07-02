@@ -13,6 +13,8 @@
 5. [素材与动作](modules/assets.md)：理解资源目录和 `actions.json`。
 6. [打包模块](modules/packaging.md)：理解 portable bundle 与 Godot export。
 
+第三方皮肤作者应优先阅读 [皮肤包规范](../sdk/skin-package-spec.md) 和 [Shimeji-ee 导入](../sdk/shimeji-import.md)。
+
 ## 运行时原则
 
 - 每帧只做必要的窗口位置、动画帧和物理更新。
