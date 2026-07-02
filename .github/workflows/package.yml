@@ -33,6 +33,13 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
 
+      - name: Validate scripts and resources
+        run: |
+          python -c "import pathlib, py_compile; [py_compile.compile(str(p), doraise=True) for p in pathlib.Path('scripts').glob('*.py')]"
+          python -m unittest discover tests
+          python scripts/generate_godot_manifest.py --check
+          python scripts/validate_resources.py
+
       - name: Set up Godot
         id: godot
         run: python scripts/setup_godot_ci.py --github-output

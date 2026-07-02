@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "modes": {
+    "安静": {
+      "interval": [4.0, 8.0],
+      "actions": []
+    },
+    "活泼": {
+      "interval": [4.0, 8.0],
+      "actions": [
+        { "type": "action", "name": "walk", "weight": 34 },
+        { "type": "action", "name": "idle", "weight": 18 },
+        { "type": "action", "name": "edge", "weight": 14 },
+        { "type": "action", "name": "invite", "weight": 14 },
+        { "type": "mischief", "name": "footprint", "weight": 20 }
+      ]
+    },
+    "捣乱": {
+      "interval": [20.0, 40.0],
+      "initial_delay": 1.0,
+      "actions": [
+        { "type": "mischief", "name": "grab", "weight": 1 }
+      ]
+    }
+  }
+}

@@ -5,6 +5,8 @@
 | 路径 | 说明 |
 | --- | --- |
 | `resource_hd/` | 运行时动作帧 |
+| `godot_pet/assets/skins/` | 内置皮肤清单 |
+| `~/.config/crayon-shinchan-desktop-pet/skins/` | 用户导入皮肤 |
 | `assets/effects/` | 爱心、闪光、波纹等互动特效 |
 | `assets/games/` | 饭团、球、靶心、奖杯等小游戏素材 |
 | `assets/character/` | 贴边偷看图和来源说明 |
@@ -12,15 +14,23 @@
 
 第三方素材来源见对应目录下的 `NOTICE.md`。
 
-## 动作清单
+## 动作与皮肤清单
 
-动作清单位于：
+旧动作清单位于：
 
 ```text
 godot_pet/assets/actions.json
 ```
 
-它由 `scripts/generate_godot_manifest.py` 生成。每个动作包含：
+默认皮肤清单位于：
+
+```text
+godot_pet/assets/skins/classic_shinchan/skin.json
+```
+
+二者都由 `scripts/generate_godot_manifest.py` 生成。`actions.json` 继续兼容旧资源管线；`skin.json` 是运行时优先使用的皮肤包接口。
+
+每个动作包含：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -32,6 +42,20 @@ godot_pet/assets/actions.json
 | `loop_start` | 循环起始帧 |
 | `next_action` | 非循环动作结束后的下一个动作 |
 | `frames` | PNG 帧相对路径列表 |
+| `durations_ms` | 可选，逐帧时长，Shimeji 导入资源会使用 |
+
+每个皮肤包含：
+
+| 字段 | 说明 |
+| --- | --- |
+| `id` | 皮肤 ID |
+| `name` | 显示名 |
+| `preview` | 预览帧 |
+| `frame_root` | 帧根目录，支持 `$repo/` |
+| `license` | 素材来源和授权说明 |
+| `capabilities` | `resting`、`locomotion`、`falling`、`held` 等能力到动作候选的映射 |
+| `fallbacks` | 能力缺失时的回退关系 |
+| `actions` | 皮肤内动作定义 |
 
 ## 当前动作
 
@@ -84,3 +108,25 @@ python3 scripts/generate_godot_manifest.py
 ```
 
 修改动作资源后一定要重新生成 `actions.json`，否则 Godot 仍会按旧清单加载。
+
+## Shimeji-ee 导入
+
+导入 Shimeji-ee zip 或已解压目录：
+
+```bash
+python3 scripts/import_shimeji_skin.py /path/to/shimeji.zip
+python3 scripts/import_shimeji_skin.py /path/to/shimeji-folder
+```
+
+导入器会识别 `img/[NAME]`、全局 `conf/actions.xml` 和皮肤私有 `conf/actions.xml`，把原始动作保留为皮肤动作，并按素材语义归类到能力标签。缺失能力会通过 fallback 使用最接近的动作，走路方向缺失时会生成镜像动作。
+
+## 资源校验
+
+发布前检查动作清单和 PNG 资源：
+
+```bash
+python3 scripts/generate_godot_manifest.py --check
+python3 scripts/validate_resources.py
+```
+
+校验会确认动作非空、帧路径安全、帧文件存在、PNG 可读取、默认皮肤能力引用有效，并检查 `resource_hd/` 中没有未被动作清单引用的 PNG。

@@ -33,17 +33,23 @@ var pins := []
 var active_pin: Window
 var paste_cursor := 0
 var udp: PacketPeerUDP
+var udp_bound := false
 var hotkey_pid := -1
 var settings_window
 var screenshot_active := false
+var config_store
 
 
-func configure(root: String) -> void:
+func configure(root: String, store = null) -> void:
 	repo_root = root
-	config_dir = _config_dir()
+	config_store = store
+	config_dir = str(config_store.config_dir) if config_store != null else _config_dir()
 	screenshot_dir = config_dir.path_join("screenshots")
 	config_path = config_dir.path_join("config.json")
-	_load_config()
+	if config_store != null:
+		config = _merged_config(config_store.get_config())
+	else:
+		_load_config()
 	_load_history()
 	_start_udp()
 	_start_hotkey_helper()
@@ -57,6 +63,7 @@ func _exit_tree() -> void:
 	_stop_hotkey_helper()
 	if udp != null:
 		udp.close()
+	udp_bound = false
 
 
 func handle_input(event: InputEvent) -> bool:
@@ -159,14 +166,18 @@ func set_pins_visible(value: bool) -> void:
 
 func _on_settings_saved(next_config: Dictionary) -> void:
 	config = _merged_config(next_config)
-	_save_config()
+	if config_store != null:
+		config_store.set_screenshot_pins_config(config)
+		config = _merged_config(config_store.get_config())
+	else:
+		_save_config()
 	_trim_pins_to_limit()
 	_restart_hotkey_helper()
 	emit_signal("notify", "截图贴图设置已保存。")
 
 
 func _on_settings_closed() -> void:
-	if hotkey_pid <= 0:
+	if hotkey_pid <= 0 and udp_bound:
 		_start_hotkey_helper()
 
 
@@ -174,7 +185,12 @@ func _start_udp() -> void:
 	udp = PacketPeerUDP.new()
 	var err = udp.bind(HOTKEY_PORT, "127.0.0.1")
 	if err != OK:
+		udp.close()
+		udp = null
+		udp_bound = false
 		emit_signal("notify", "全局快捷键端口不可用，保留应用内快捷键。")
+		return
+	udp_bound = true
 
 
 func _poll_udp() -> void:
@@ -193,6 +209,8 @@ func _poll_udp() -> void:
 
 
 func _start_hotkey_helper() -> void:
+	if not udp_bound:
+		return
 	if not _global_hotkeys_enabled():
 		return
 	var command = _helper_command(PackedStringArray([
@@ -492,6 +510,10 @@ func _merged_config(source: Dictionary) -> Dictionary:
 		for key in merged["shortcuts"].keys():
 			if source["shortcuts"].has(key):
 				merged["shortcuts"][key] = str(source["shortcuts"][key])
+	if source.has("screenshot") and typeof(source["screenshot"]) == TYPE_DICTIONARY:
+		if source["screenshot"].has("backend"):
+			var backend = str(source["screenshot"]["backend"])
+			merged["screenshot"]["backend"] = backend if backend in ["auto", "godot", "spectacle", "import"] else "auto"
 	if source.has("pins") and typeof(source["pins"]) == TYPE_DICTIONARY:
 		if source["pins"].has("max_count"):
 			merged["pins"]["max_count"] = clampi(int(source["pins"]["max_count"]), 1, 3)

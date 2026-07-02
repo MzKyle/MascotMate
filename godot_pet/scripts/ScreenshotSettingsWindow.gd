@@ -188,6 +188,10 @@ func _merged_config(config: Dictionary) -> Dictionary:
 		for key in merged["shortcuts"].keys():
 			if config["shortcuts"].has(key):
 				merged["shortcuts"][key] = str(config["shortcuts"][key])
+	if config.has("screenshot") and typeof(config["screenshot"]) == TYPE_DICTIONARY:
+		if config["screenshot"].has("backend"):
+			var backend = str(config["screenshot"]["backend"])
+			merged["screenshot"]["backend"] = backend if backend in ["auto", "godot", "spectacle", "import"] else "auto"
 	if config.has("pins") and typeof(config["pins"]) == TYPE_DICTIONARY:
 		if config["pins"].has("max_count"):
 			merged["pins"]["max_count"] = clampi(int(config["pins"]["max_count"]), 1, 3)

@@ -26,6 +26,17 @@ python3 scripts/generate_godot_manifest.py
 
 确保 `actions.json` 和当前资源目录一致。
 
+CI 打包前还会运行：
+
+```bash
+python -m py_compile scripts/*.py
+python -m unittest discover tests
+python scripts/generate_godot_manifest.py --check
+python scripts/validate_resources.py
+```
+
+资源缺失、动作清单过期或 PNG 损坏都会阻断打包。
+
 ## portable bundle 流程
 
 默认流程：
@@ -76,10 +87,19 @@ scripts/setup_godot_export_templates.sh
 `scripts/build_portable.py` 会：
 
 1. 生成 `godot_pet/assets/actions.json`
-2. 用 PyInstaller 构建 `pet_helper`
-3. 调用 Godot export preset 导出 Linux、Windows 或 macOS
-4. 复制 `resource_hd/`、`assets/` 和 helper
-5. 输出 `dist/CrayonShinchanPet-<platform>.zip`
+2. 生成默认皮肤 `godot_pet/assets/skins/classic_shinchan/skin.json`
+3. 用 PyInstaller 构建 `pet_helper`
+4. 调用 Godot export preset 导出 Linux、Windows 或 macOS
+5. 复制 `resource_hd/`、`assets/`、helper 和 `import_shimeji_skin.py`
+6. 输出 `dist/CrayonShinchanPet-<platform>.zip`
+
+本地私用皮肤只在显式传参时复制，不会进入公开 CI/release：
+
+```bash
+python3 scripts/build_portable.py --target linux --private-skins-dir private_skins
+```
+
+`private_skins/` 应该包含若干皮肤目录，每个目录都有自己的 `skin.json`。
 
 GitHub Actions 工作流 `.github/workflows/package.yml` 支持手动触发，也会在推送 `v*` 标签时构建三平台 zip artifact。
 

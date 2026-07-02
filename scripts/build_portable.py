@@ -102,7 +102,7 @@ def build_helper() -> Path:
     return helper_path
 
 
-def copy_external_assets(package_dir: Path, helper_path: Path) -> None:
+def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir: Path | None = None) -> None:
     for name in ("resource_hd", "assets"):
         source = ROOT / name
         if source.exists():
@@ -111,6 +111,13 @@ def copy_external_assets(package_dir: Path, helper_path: Path) -> None:
     scripts_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(helper_path, scripts_dir / helper_path.name)
     shutil.copy2(ROOT / "scripts" / "pet_helper.py", scripts_dir / "pet_helper.py")
+    importer = ROOT / "scripts" / "import_shimeji_skin.py"
+    if importer.exists():
+        shutil.copy2(importer, scripts_dir / "import_shimeji_skin.py")
+    if private_skins_dir is not None:
+        if not private_skins_dir.is_dir():
+            raise FileNotFoundError(private_skins_dir)
+        shutil.copytree(private_skins_dir, package_dir / "skins", dirs_exist_ok=True)
 
 
 def export_project(target: str, package_dir: Path) -> None:
@@ -145,6 +152,11 @@ def zip_package(package_dir: Path, artifact_name: str) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", choices=sorted(TARGETS), default=current_target())
+    parser.add_argument(
+        "--private-skins-dir",
+        type=Path,
+        help="Optional local-only skin directory copied into the package as skins/. Never used by CI by default.",
+    )
     args = parser.parse_args()
     if args.target != current_target() and os.environ.get("CRAYON_PET_ALLOW_CROSS_PACKAGE") != "1":
         raise SystemExit("Build each portable target on its matching OS, or set CRAYON_PET_ALLOW_CROSS_PACKAGE=1.")
@@ -159,7 +171,7 @@ def main() -> int:
     package_dir.mkdir(parents=True)
 
     export_project(args.target, package_dir)
-    copy_external_assets(package_dir, helper_path)
+    copy_external_assets(package_dir, helper_path, args.private_skins_dir)
     zip_path = zip_package(package_dir, target_info["artifact"])
     print(f"Built {zip_path}")
     return 0

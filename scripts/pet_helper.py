@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import ctypes.util
+import importlib.util
 import os
 import platform
 import shutil
@@ -19,6 +20,11 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    from PIL import Image as _PIL_IMAGE_FOR_SHIMEJI_IMPORT  # noqa: F401
+except Exception:
+    _PIL_IMAGE_FOR_SHIMEJI_IMPORT = None
 
 
 KEY_PRESS = 2
@@ -83,6 +89,33 @@ def copy_image(path: Path) -> int:
         return copy_image_linux(path)
     print(f"Unsupported clipboard platform: {system}", file=sys.stderr)
     return 1
+
+
+def import_shimeji(args: argparse.Namespace) -> int:
+    script = Path(__file__).resolve().with_name("import_shimeji_skin.py")
+    if not script.is_file() and getattr(sys, "frozen", False):
+        script = Path(sys.executable).resolve().with_name("import_shimeji_skin.py")
+    if not script.is_file():
+        print("import_shimeji_skin.py was not found.", file=sys.stderr)
+        return 2
+    spec = importlib.util.spec_from_file_location("import_shimeji_skin", script)
+    if spec == None or spec.loader == None:
+        print("Unable to load import_shimeji_skin.py.", file=sys.stderr)
+        return 2
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    argv = [str(script), str(args.source), "--output-root", str(args.output_root)]
+    if args.skin_id:
+        argv += ["--id", args.skin_id]
+    if args.skin_name:
+        argv += ["--name", args.skin_name]
+    previous_argv = sys.argv
+    try:
+        sys.argv = argv
+        return int(module.main())
+    finally:
+        sys.argv = previous_argv
 
 
 def copy_image_windows(path: Path) -> int:
@@ -374,6 +407,12 @@ def parse_args() -> argparse.Namespace:
 
     copy = subparsers.add_parser("copy-image")
     copy.add_argument("path", type=Path)
+
+    import_skin = subparsers.add_parser("import-shimeji")
+    import_skin.add_argument("source", type=Path)
+    import_skin.add_argument("--output-root", type=Path, required=True)
+    import_skin.add_argument("--id", dest="skin_id")
+    import_skin.add_argument("--name", dest="skin_name")
     return parser.parse_args()
 
 
@@ -384,6 +423,8 @@ def main() -> int:
             return run_hotkeys(args)
         if args.command == "copy-image":
             return copy_image(args.path)
+        if args.command == "import-shimeji":
+            return import_shimeji(args)
     except Exception as exc:
         print(f"pet_helper.py: {exc}", file=sys.stderr)
         return 1

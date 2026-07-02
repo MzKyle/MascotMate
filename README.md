@@ -23,29 +23,33 @@ Godot 4 驱动的本地透明桌宠：支持长按抱起、甩飞、重力落地
 - 拖到屏幕边缘释放后进入贴边偷看，点击或拖拽即可唤回
 - 安静、活泼、捣乱三种行为模式，默认安静启动
 - 右键菜单支持散步、投喂、睡觉、唤醒、接球挑战、显示大小、重力开关和退出
+- 皮肤管理支持 Shimeji-ee zip/文件夹导入、运行时切换和 Cachomon 官方目录入口
 - 跨平台截图贴图：`F1` 区域截图并复制图片、`F3` 轮换贴图、`F4` 关闭当前贴图
 - 心情、饥饿、体力、亲密度本地持久化
-- `resource_hd/` 统一保存运行时动作帧，避免低清重复资源占用体积
+- `skin.json` 用能力标签组织动作，旧 `resource_hd/` 动作帧作为默认兼容皮肤
 - portable Godot runtime bundle 打包，也支持安装 export templates 后走 Godot export
 
 ## 系统架构
 
 ```mermaid
 flowchart LR
-  Main["Main.gd<br/>窗口 / 菜单 / 生命周期"] --> Sprite["PetSprite.gd<br/>动作帧"]
+  Main["Main.gd<br/>窗口 / 菜单 / 生命周期"]
   Main --> Physics["PetPhysics.gd<br/>物理状态"]
   Main --> Input["InteractionController.gd<br/>点击 / 长按 / 甩飞"]
   Main --> Brain["BehaviorBrain.gd<br/>行为模式"]
   Main --> Games["MiniGames.gd<br/>投喂 / 接球"]
   Main --> State["StateStore.gd<br/>状态保存"]
   Main --> Pins["ScreenshotPins.gd<br/>截图贴图"]
-  Sprite --> Manifest["actions.json"]
-  Manifest --> Frames["resource_hd"]
+  Main --> Skin["SkinManager.gd<br/>皮肤发现 / 切换"]
+  Skin --> Resolver["AnimationResolver.gd<br/>能力标签 / 动作选择"]
+  Resolver --> Sprite["PetSprite.gd<br/>动作帧"]
+  Skin --> SkinJson["skin.json"]
+  SkinJson --> Frames["resource_hd / 用户 skins"]
   Pins --> Hotkeys["pet_helper<br/>全局快捷键 / 图片剪贴板"]
   Pins --> Config["~/.config/crayon-shinchan-desktop-pet"]
 ```
 
-核心链路是：`Main.gd` 编排 Godot 窗口、动画、物理、输入和菜单；`PetPhysics.gd` 计算窗口坐标；`PetSprite.gd` 加载动作帧；截图贴图模块通过 Godot 子窗口和跨平台 helper 扩展桌面能力。
+核心链路是：`Main.gd` 编排 Godot 窗口、动画、物理、输入和菜单；`SkinManager.gd` 发现并切换皮肤；`AnimationResolver.gd` 将场景能力映射到最合适的动作；`PetSprite.gd` 加载动作帧。截图贴图模块通过 Godot 子窗口和跨平台 helper 扩展桌面能力。
 
 ## 技术栈
 
@@ -64,6 +68,7 @@ flowchart LR
 ├── docs/                  # docsify 项目文档
 ├── godot_pet/             # Godot 项目
 │   ├── assets/actions.json
+│   ├── assets/skins/       # 内置皮肤清单
 │   ├── scenes/Main.tscn
 │   └── scripts/           # 桌宠核心 GDScript
 ├── resource_hd/           # 运行时动作帧
@@ -101,6 +106,9 @@ CRAYON_PET_SAFE_WINDOW=1 scripts/run_godot_pet.sh
 
 ```bash
 python3 scripts/generate_godot_manifest.py
+python3 scripts/generate_godot_manifest.py --check
+python3 scripts/validate_resources.py
+python3 scripts/import_shimeji_skin.py /path/to/shimeji.zip
 scripts/run_godot_pet.sh
 python3 scripts/build_portable.py --target linux
 scripts/build_godot_linux.sh
@@ -118,7 +126,7 @@ scripts/install_desktop_entry.sh
 | 拖到屏幕边缘释放 | 进入贴边偷看 |
 | 双击 | 开始接球挑战 |
 | 滚轮 | 显示心情、饥饿、体力和亲密度 |
-| 右键 | 打开动作、模式、截图贴图设置和退出菜单 |
+| 右键 | 打开动作、皮肤、模式、截图贴图设置和退出菜单 |
 
 截图贴图默认快捷键：
 
@@ -139,6 +147,12 @@ python3 scripts/build_portable.py --target macos
 ```
 
 本地通常只构建当前系统对应的 target；三平台产物由 GitHub Actions 在对应 runner 上构建。
+
+本地私用皮肤可以显式打包，公开 CI/release 默认不会包含：
+
+```bash
+python3 scripts/build_portable.py --target linux --private-skins-dir private_skins
+```
 
 Linux runtime bundle：
 
@@ -173,14 +187,26 @@ scripts/install_desktop_entry.sh
 ~/.config/crayon-shinchan-desktop-pet/state.json
 ```
 
-截图贴图配置和历史保存在：
+显示大小、当前皮肤、重力开关、截图贴图配置和历史保存在：
 
 ```text
 ~/.config/crayon-shinchan-desktop-pet/config.json
 ~/.config/crayon-shinchan-desktop-pet/screenshots/
 ```
 
+用户导入皮肤保存在：
+
+```text
+~/.config/crayon-shinchan-desktop-pet/skins/
+```
+
 行为模式不写入状态文件，每次启动都会回到安静模式。
+
+自动行为权重保存在项目内：
+
+```text
+godot_pet/assets/behavior.json
+```
 
 ## 文档
 
@@ -223,6 +249,7 @@ CRAYON_PET_ENABLE_GLOBAL_HOTKEYS=0 scripts/run_godot_pet.sh
 
 ```bash
 python3 scripts/generate_godot_manifest.py
+python3 scripts/validate_resources.py
 ```
 
 ## 贡献

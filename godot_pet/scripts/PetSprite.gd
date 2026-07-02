@@ -3,6 +3,8 @@ extends Node2D
 signal action_finished(next_action)
 
 var repo_root := ""
+var frame_root := ""
+var skin := {}
 var actions := {}
 var display_scale := 1.0
 var current_action := "idle"
@@ -24,7 +26,15 @@ func _ready() -> void:
 
 func configure(root: String, manifest: Dictionary) -> void:
 	repo_root = root
+	frame_root = repo_root.path_join("resource_hd")
+	skin = {}
 	actions = manifest.get("actions", {})
+
+
+func configure_skin(skin_manifest: Dictionary, frame_root_path: String) -> void:
+	skin = skin_manifest.duplicate(true)
+	actions = skin.get("actions", {})
+	frame_root = frame_root_path
 
 
 func set_display_scale(value: float) -> void:
@@ -57,9 +67,8 @@ func play(action_id: String) -> bool:
 func update_animation(delta: float) -> void:
 	if textures.is_empty():
 		return
-	var fps = float(current_config.get("fps", 10.0))
 	elapsed += delta
-	if elapsed < 1.0 / max(1.0, fps):
+	if elapsed < _current_frame_duration():
 		return
 	elapsed = 0.0
 	if bool(current_config.get("loop", true)):
@@ -143,10 +152,13 @@ func _base_sprite_scale() -> Vector2:
 	var texture_size = sprite.texture.get_size()
 	if texture_size.x <= 0 or texture_size.y <= 0:
 		return Vector2.ONE
-	return Vector2(
+	var scale = Vector2(
 		(base_size.x * display_scale) / texture_size.x,
 		(base_size.y * display_scale) / texture_size.y
 	)
+	if bool(current_config.get("mirror_x", false)):
+		scale.x *= -1.0
+	return scale
 
 
 func _cache_current_used_rect() -> void:
@@ -188,9 +200,17 @@ func _rotated_rect(rect: Rect2, rotation: float) -> Rect2:
 
 
 func _load_texture(relative_path: String):
-	var path = repo_root.path_join("resource_hd").path_join(relative_path)
+	var path = frame_root.path_join(relative_path) if frame_root != "" else repo_root.path_join("resource_hd").path_join(relative_path)
 	if FileAccess.file_exists(path):
 		var image = Image.new()
 		if image.load(path) == OK:
 			return ImageTexture.create_from_image(image)
 	return null
+
+
+func _current_frame_duration() -> float:
+	var durations = current_config.get("durations_ms", [])
+	if typeof(durations) == TYPE_ARRAY and frame_index >= 0 and frame_index < durations.size():
+		return max(0.001, float(durations[frame_index]) / 1000.0)
+	var fps = float(current_config.get("fps", 10.0))
+	return 1.0 / max(1.0, fps)

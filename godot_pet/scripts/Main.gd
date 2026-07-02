@@ -7,31 +7,22 @@ const BehaviorBrainScript = preload("res://scripts/BehaviorBrain.gd")
 const MiniGamesScript = preload("res://scripts/MiniGames.gd")
 const StateStoreScript = preload("res://scripts/StateStore.gd")
 const ScreenshotPinsScript = preload("res://scripts/ScreenshotPins.gd")
-
-const MENU_WALK := 1
-const MENU_FEED := 2
-const MENU_SLEEP := 3
-const MENU_WAKE := 4
-const MENU_CATCH := 5
-const MENU_SCALE_100 := 10
-const MENU_SCALE_125 := 11
-const MENU_SCALE_150 := 12
-const MENU_QUIET := 20
-const MENU_ACTIVE := 21
-const MENU_MISCHIEF := 22
-const MENU_CLEAR := 30
-const MENU_TOGGLE_GRAVITY := 40
-const MENU_EXIT_PEEK := 41
-const MENU_SCREENSHOT_SETTINGS := 50
-const MENU_EXIT := 99
+const ConfigStoreScript = preload("res://scripts/ConfigStore.gd")
+const PetMenuControllerScript = preload("res://scripts/PetMenuController.gd")
+const PeekControllerScript = preload("res://scripts/PeekController.gd")
+const MischiefControllerScript = preload("res://scripts/MischiefController.gd")
+const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
+const SkinManagerScript = preload("res://scripts/SkinManager.gd")
+const AnimationResolverScript = preload("res://scripts/AnimationResolver.gd")
+const SkinManagerWindowScript = preload("res://scripts/SkinManagerWindow.gd")
 
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
-const MISCHIEF_GRAB_SECONDS := 4.0
-const MISCHIEF_STOP_SIZE := Vector2(44, 30)
 
 var repo_root := ""
 var manifest := {}
+var behavior_manifest := {}
+var config_store
 var pet_sprite
 var physics
 var interaction
@@ -39,16 +30,17 @@ var brain
 var mini_games
 var state_store
 var screenshot_pins
-var popup: PopupMenu
-var bubble: Label
-var bubble_timer: Timer
-var peek_sprite: Sprite2D
-var peek_textures := {}
+var menu_controller
+var peek_controller
+var mischief_controller
+var feedback
+var skin_manager
+var animation_resolver
+var skin_window
 var display_scale := 1.0
 var drag_offset := Vector2.ZERO
 var landing_squash := 0.0
 var rng := RandomNumberGenerator.new()
-var mischief_nodes := []
 var transparent_window := false
 var mouse_passthrough_enabled := false
 var gravity_enabled := true
@@ -56,33 +48,40 @@ var peek_mode := false
 var peek_edge := ""
 var behavior_mode := "安静"
 var mischief_grab_active := false
-var mischief_grab_timer: Timer
-var mischief_stop_button: Button
-var mischief_cursor_local := Vector2.ZERO
-var mischief_elapsed := 0.0
+var configured_skin_id := "classic_shinchan"
 
 
 func _ready() -> void:
 	rng.randomize()
 	repo_root = _resolve_repo_root()
 	manifest = _load_json("res://assets/actions.json")
+	behavior_manifest = _load_json("res://assets/behavior.json")
+
+	config_store = ConfigStoreScript.new()
+	add_child(config_store)
+	config_store.configure()
+	var app_config = config_store.app_config()
+	display_scale = clamp(float(app_config.get("display_scale", 1.0)), 1.0, 1.5)
+	gravity_enabled = bool(app_config.get("gravity_enabled", true))
+	configured_skin_id = str(app_config.get("skin_id", "classic_shinchan"))
+
 	_configure_window()
 	_create_nodes()
 	_sync_window_size(true)
 	physics.set_position_from_window(Vector2(get_window().position))
 	physics.set_gravity_enabled(gravity_enabled)
-	pet_sprite.play("idle")
+	_play_capability("resting")
 	if transparent_window:
-		show_bubble("透明桌宠模式启动。")
+		show_bubble("透明桌宠模式启动：%s。" % skin_manager.selected_skin_name())
 	else:
-		show_bubble("Godot 安全窗口模式启动。")
+		show_bubble("Godot 安全窗口模式启动：%s。" % skin_manager.selected_skin_name())
 
 
 func _input(event: InputEvent) -> void:
 	if screenshot_pins != null and screenshot_pins.handle_input(event):
 		return
 	if mischief_grab_active:
-		if event is InputEventMouseButton and event.pressed and _mischief_stop_rect().has_point(event.position):
+		if event is InputEventMouseButton and event.pressed and mischief_controller.stop_rect().has_point(event.position):
 			_stop_mischief_grab()
 		return
 	if mini_games != null and mini_games.handle_input(event):
@@ -94,9 +93,9 @@ func _input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	pet_sprite.update_animation(delta)
 	if mischief_grab_active:
-		_tick_mischief_grab(delta)
+		mischief_controller.tick(delta, get_window())
 		_update_pet_pose(delta)
-		queue_redraw()
+		_update_mouse_passthrough()
 		return
 	mini_games.tick(delta)
 	physics.tick(delta, _play_area(), Vector2(get_window().size), _movement_contact_rect())
@@ -108,23 +107,6 @@ func _process(delta: float) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		get_tree().quit()
-
-
-func _draw() -> void:
-	if not mischief_grab_active:
-		return
-	var t = mischief_elapsed
-	var hand_a = pet_sprite.position + Vector2(28, -8).rotated(pet_sprite.sprite.rotation)
-	var hand_b = pet_sprite.position + Vector2(46, 10).rotated(pet_sprite.sprite.rotation)
-	var pull = mischief_cursor_local
-	var wobble = Vector2(sin(t * 31.0) * 3.0, cos(t * 27.0) * 2.0)
-	draw_line(hand_a, pull + wobble, Color(0.98, 0.72, 0.18, 0.92), 3.0)
-	draw_line(hand_b, pull - wobble, Color(0.95, 0.42, 0.18, 0.8), 2.0)
-	draw_arc(pull, 13.0 + sin(t * 18.0) * 2.0, -0.8, 2.9, 18, Color(0.2, 0.22, 0.25, 0.65), 2.0)
-	for i in range(3):
-		var phase = t * 4.4 + float(i) * 1.7
-		var drop = pet_sprite.position + Vector2(-38 + i * 16, -62 - abs(sin(phase)) * 12)
-		draw_circle(drop, 3.5 + float(i) * 0.4, Color(0.35, 0.72, 1.0, 0.82))
 
 
 func _configure_window() -> void:
@@ -153,16 +135,24 @@ func _create_nodes() -> void:
 	physics.bounced.connect(_on_bounced)
 	physics.attached_to_wall.connect(_on_attached_to_wall)
 
+	skin_manager = SkinManagerScript.new()
+	add_child(skin_manager)
+	skin_manager.configure(repo_root, config_store.config_dir, manifest)
+	skin_manager.select_skin(configured_skin_id)
+
+	animation_resolver = AnimationResolverScript.new()
+	add_child(animation_resolver)
+	animation_resolver.configure(skin_manager.current_skin)
+
 	pet_sprite = PetSpriteScript.new()
 	add_child(pet_sprite)
-	pet_sprite.configure(repo_root, manifest)
+	pet_sprite.configure_skin(skin_manager.current_skin, skin_manager.current_frame_root)
+	pet_sprite.set_display_scale(display_scale)
 	pet_sprite.action_finished.connect(_on_action_finished)
 
-	peek_sprite = Sprite2D.new()
-	peek_sprite.centered = false
-	peek_sprite.visible = false
-	add_child(peek_sprite)
-	_load_peek_textures()
+	peek_controller = PeekControllerScript.new()
+	add_child(peek_controller)
+	peek_controller.configure(repo_root)
 
 	mini_games = MiniGamesScript.new()
 	add_child(mini_games)
@@ -183,6 +173,7 @@ func _create_nodes() -> void:
 
 	brain = BehaviorBrainScript.new()
 	add_child(brain)
+	brain.configure(behavior_manifest)
 	brain.action_requested.connect(_on_behavior_action)
 	brain.mischief_requested.connect(_on_mischief)
 	brain.set_mode(behavior_mode)
@@ -190,36 +181,26 @@ func _create_nodes() -> void:
 	screenshot_pins = ScreenshotPinsScript.new()
 	add_child(screenshot_pins)
 	screenshot_pins.notify.connect(_on_screenshot_pins_notify)
-	screenshot_pins.configure(repo_root)
+	screenshot_pins.configure(repo_root, config_store)
 
-	popup = PopupMenu.new()
-	add_child(popup)
-	popup.id_pressed.connect(_on_menu_id_pressed)
+	menu_controller = PetMenuControllerScript.new()
+	add_child(menu_controller)
+	menu_controller.command_requested.connect(_on_menu_command)
 
-	mischief_grab_timer = Timer.new()
-	mischief_grab_timer.one_shot = true
-	mischief_grab_timer.timeout.connect(_stop_mischief_grab)
-	add_child(mischief_grab_timer)
+	mischief_controller = MischiefControllerScript.new()
+	add_child(mischief_controller)
+	mischief_controller.configure(pet_sprite, physics, Callable(self, "_play_area"), animation_resolver)
+	mischief_controller.stop_requested.connect(_stop_mischief_grab)
 
-	mischief_stop_button = Button.new()
-	mischief_stop_button.text = "停"
-	mischief_stop_button.visible = false
-	mischief_stop_button.focus_mode = Control.FOCUS_NONE
-	mischief_stop_button.pressed.connect(_stop_mischief_grab)
-	add_child(mischief_stop_button)
+	feedback = FeedbackEffectsScript.new()
+	add_child(feedback)
+	feedback.configure(repo_root, pet_sprite)
 
-	bubble = Label.new()
-	bubble.visible = false
-	bubble.add_theme_font_size_override("font_size", 15)
-	bubble.add_theme_color_override("font_color", Color(0.12, 0.1, 0.08))
-	bubble.add_theme_color_override("font_shadow_color", Color(1, 1, 1, 0.8))
-	bubble.add_theme_constant_override("shadow_offset_x", 1)
-	bubble.add_theme_constant_override("shadow_offset_y", 1)
-	add_child(bubble)
-	bubble_timer = Timer.new()
-	bubble_timer.one_shot = true
-	bubble_timer.timeout.connect(func(): bubble.visible = false)
-	add_child(bubble_timer)
+	skin_window = SkinManagerWindowScript.new()
+	add_child(skin_window)
+	skin_window.configure(skin_manager, config_store, repo_root)
+	skin_window.skin_selected.connect(_set_skin)
+	skin_window.notify.connect(_on_skin_window_notify)
 
 
 func _sync_window_size(keep_position := false) -> void:
@@ -234,8 +215,8 @@ func _sync_window_size(keep_position := false) -> void:
 		window.position = Vector2i(old_center - Vector2(desired) * 0.5)
 	pet_sprite.position = Vector2(desired) * 0.5
 	mini_games.position = Vector2.ZERO
-	bubble.position = Vector2(20, 14)
-	_position_mischief_stop_button()
+	feedback.set_bubble_position(Vector2(20, 14))
+	mischief_controller.position_stop_button(window.size)
 	_update_mouse_passthrough()
 
 
@@ -244,7 +225,8 @@ func _update_pet_pose(delta: float) -> void:
 		_apply_peek_pose()
 		return
 	if mischief_grab_active:
-		_apply_mischief_grab_pose(delta)
+		mischief_controller.apply_pose(Vector2(get_window().size))
+		feedback.set_bubble_position(Vector2(16, 48))
 		return
 	if landing_squash > 0.0:
 		pet_sprite.position = Vector2(get_window().size) * 0.5
@@ -317,7 +299,7 @@ func _on_single_clicked(local_pos: Vector2) -> void:
 	if pet_local.y < pet_sprite.pet_rect().position.y + pet_sprite.pet_rect().size.y * 0.42:
 		var changes = state_store.pet()
 		show_bubble("摸摸头。" + _format_changes(changes))
-		_spawn_heart()
+		feedback.spawn_heart()
 	else:
 		var changes = state_store.poke()
 		show_bubble("戳到了。" + _format_changes(changes))
@@ -343,7 +325,7 @@ func _on_grab_started(global_pos: Vector2) -> void:
 	brain.set_paused(true)
 	drag_offset = get_viewport().get_mouse_position()
 	physics.begin_grab(global_pos - drag_offset)
-	pet_sprite.play("idle")
+	_play_capability("held")
 	show_bubble("抱起来啦。")
 
 
@@ -360,7 +342,7 @@ func _on_grab_released(velocity: Vector2, held: bool, global_pos: Vector2) -> vo
 		return
 	if speed > 420.0:
 		physics.release(velocity, true)
-		pet_sprite.play("fall")
+		_play_capability("falling")
 		show_bubble("飞出去啦！")
 	else:
 		physics.release(velocity, false)
@@ -373,7 +355,7 @@ func _on_landed() -> void:
 	show_bubble("落地。")
 	await get_tree().create_timer(0.45).timeout
 	physics.idle()
-	pet_sprite.play("idle")
+	_play_capability("resting")
 
 
 func _on_bounced() -> void:
@@ -381,14 +363,15 @@ func _on_bounced() -> void:
 	_sync_walk_animation_to_velocity()
 
 
-func _on_attached_to_wall(side: int) -> void:
+func _on_attached_to_wall(_side: int) -> void:
 	_play_wall_walk_action()
 	show_bubble("贴到边边了。")
 
 
 func _on_action_finished(next_action: String) -> void:
 	if next_action != "":
-		pet_sprite.play(next_action)
+		if not pet_sprite.play(next_action):
+			_play_capability("resting")
 		_sync_window_size(true)
 
 
@@ -402,7 +385,7 @@ func _on_behavior_action(action_name: String) -> void:
 			_sync_walk_animation_to_velocity(true)
 		"idle":
 			physics.idle()
-			pet_sprite.play("idle")
+			_play_capability("resting")
 		"edge":
 			var side = -1 if rng.randf() < 0.5 else 1
 			physics.attach_to_wall(side)
@@ -417,14 +400,14 @@ func _on_mischief(kind: String) -> void:
 		if not _start_mischief_grab():
 			brain.schedule_soon(2.0)
 	elif kind == "note":
-		_spawn_note()
+		feedback.spawn_note()
 	else:
-		_spawn_footprint()
+		feedback.spawn_footprint()
 
 
 func _on_feed_success() -> void:
 	var changes = state_store.feed()
-	pet_sprite.play("eat")
+	_play_capability("feeding")
 	_sync_window_size(true)
 	show_bubble("吃到啦。" + _format_changes(changes))
 
@@ -438,7 +421,7 @@ func _on_game_finished(name: String) -> void:
 	if name == "catch":
 		show_bubble("接球完成！")
 	call_deferred("_sync_window_size", true)
-	_spawn_heart()
+	feedback.spawn_heart()
 
 
 func _show_status() -> void:
@@ -451,73 +434,52 @@ func _on_screenshot_pins_notify(text: String) -> void:
 
 
 func _show_menu() -> void:
-	popup.clear()
-	popup.add_item("散步", MENU_WALK)
-	popup.add_item("饭团投喂", MENU_FEED)
-	popup.add_item("睡觉", MENU_SLEEP)
-	popup.add_item("唤醒", MENU_WAKE)
-	popup.add_item("接球挑战", MENU_CATCH)
-	popup.add_separator()
-	popup.add_item("显示大小 100%", MENU_SCALE_100)
-	popup.add_item("显示大小 125%", MENU_SCALE_125)
-	popup.add_item("显示大小 150%", MENU_SCALE_150)
-	popup.add_separator()
-	popup.add_item("关闭重力：悬浮" if gravity_enabled else "开启重力：落地", MENU_TOGGLE_GRAVITY)
-	if peek_mode:
-		popup.add_item("出来", MENU_EXIT_PEEK)
-	popup.add_item("截图贴图设置", MENU_SCREENSHOT_SETTINGS)
-	popup.add_separator()
-	popup.add_check_item("安静模式", MENU_QUIET)
-	popup.add_check_item("活泼模式", MENU_ACTIVE)
-	popup.add_check_item("捣乱模式", MENU_MISCHIEF)
-	_sync_behavior_menu_checks()
-	popup.add_item("清理捣乱物", MENU_CLEAR)
-	popup.add_separator()
-	popup.add_item("退出", MENU_EXIT)
-	popup.popup(Rect2i(DisplayServer.mouse_get_position(), Vector2i(1, 1)))
+	menu_controller.show_menu(gravity_enabled, peek_mode, behavior_mode)
 
 
-func _on_menu_id_pressed(id: int) -> void:
-	match id:
-		MENU_WALK:
+func _on_menu_command(command: String) -> void:
+	match command:
+		"walk":
 			_on_behavior_action("walk")
-		MENU_FEED:
+		"feed":
 			mini_games.start_feed()
 			_sync_window_size(true)
 			_update_mouse_passthrough()
-		MENU_SLEEP:
-			pet_sprite.play("sleep")
+		"sleep":
+			_play_capability("sleeping")
 			physics.idle()
 			state_store.sleep_tick()
 			_sync_window_size(true)
-		MENU_WAKE:
-			pet_sprite.play("wake")
+		"wake":
+			_play_capability("waking")
 			_sync_window_size(true)
-		MENU_CATCH:
+		"catch":
 			mini_games.start_catch()
 			_sync_window_size(true)
 			_update_mouse_passthrough()
-		MENU_SCALE_100:
+		"scale_100":
 			_set_display_scale(1.0)
-		MENU_SCALE_125:
+		"scale_125":
 			_set_display_scale(1.25)
-		MENU_SCALE_150:
+		"scale_150":
 			_set_display_scale(1.5)
-		MENU_TOGGLE_GRAVITY:
+		"toggle_gravity":
 			_set_gravity_enabled(not gravity_enabled)
-		MENU_EXIT_PEEK:
+		"exit_peek":
 			_exit_peek_mode(true)
-		MENU_SCREENSHOT_SETTINGS:
+		"skins":
+			_open_skin_manager()
+		"screenshot_settings":
 			screenshot_pins.open_settings()
-		MENU_QUIET:
+		"mode_quiet":
 			_set_behavior_mode("安静")
-		MENU_ACTIVE:
+		"mode_active":
 			_set_behavior_mode("活泼")
-		MENU_MISCHIEF:
+		"mode_mischief":
 			_set_behavior_mode("捣乱")
-		MENU_CLEAR:
-			_clear_mischief()
-		MENU_EXIT:
+		"clear_mischief":
+			feedback.clear_mischief()
+		"exit":
 			get_tree().quit()
 
 
@@ -526,38 +488,26 @@ func _set_behavior_mode(value: String, announce := true) -> void:
 	behavior_mode = next_mode
 	if brain != null:
 		brain.set_mode(next_mode)
-	_sync_behavior_menu_checks()
 	if next_mode != "捣乱":
 		_stop_mischief_grab(false)
 	if announce:
 		show_bubble("%s模式。" % next_mode)
 
 
-func _sync_behavior_menu_checks() -> void:
-	if popup == null:
-		return
-	var ids = [MENU_QUIET, MENU_ACTIVE, MENU_MISCHIEF]
-	var modes = {
-		MENU_QUIET: "安静",
-		MENU_ACTIVE: "活泼",
-		MENU_MISCHIEF: "捣乱",
-	}
-	for item_id in ids:
-		var index = popup.get_item_index(item_id)
-		if index >= 0:
-			popup.set_item_checked(index, modes[item_id] == behavior_mode)
-
-
 func _set_display_scale(scale: float) -> void:
-	display_scale = scale
-	pet_sprite.set_display_scale(scale)
+	display_scale = clamp(scale, 1.0, 1.5)
+	pet_sprite.set_display_scale(display_scale)
+	if config_store != null:
+		config_store.set_app_config({"display_scale": display_scale})
 	_sync_window_size(true)
 	_update_mouse_passthrough()
-	show_bubble("显示大小 %d%%" % int(scale * 100))
+	show_bubble("显示大小 %d%%" % int(display_scale * 100))
 
 
 func _set_gravity_enabled(value: bool) -> void:
 	gravity_enabled = value
+	if config_store != null:
+		config_store.set_app_config({"gravity_enabled": value})
 	physics.set_gravity_enabled(value)
 	if value:
 		if not peek_mode and physics.state != "Grabbed":
@@ -567,22 +517,45 @@ func _set_gravity_enabled(value: bool) -> void:
 		show_bubble("重力关闭，悬浮模式。")
 
 
+func _open_skin_manager() -> void:
+	if skin_window != null:
+		skin_window.open_window()
+
+
+func _set_skin(skin_id: String) -> void:
+	if skin_manager == null or pet_sprite == null:
+		return
+	if peek_mode:
+		_exit_peek_mode(false)
+	if mini_games != null:
+		mini_games.clear()
+	if not skin_manager.select_skin(skin_id):
+		show_bubble("皮肤不可用。")
+		return
+	animation_resolver.configure(skin_manager.current_skin)
+	pet_sprite.configure_skin(skin_manager.current_skin, skin_manager.current_frame_root)
+	pet_sprite.set_display_scale(display_scale)
+	_play_capability("resting")
+	if config_store != null:
+		config_store.set_app_config({"skin_id": skin_manager.selected_skin_id()})
+	_sync_window_size(true)
+	_update_mouse_passthrough()
+	show_bubble("已切换：%s。" % skin_manager.selected_skin_name())
+
+
+func _on_skin_window_notify(message: String) -> void:
+	show_bubble(message, 2.8)
+
+
 func _start_mischief_grab() -> bool:
 	if behavior_mode != "捣乱" or _busy():
 		return false
 	mischief_grab_active = true
-	mischief_elapsed = 0.0
-	mischief_cursor_local = get_viewport().get_mouse_position()
 	brain.set_paused(true)
-	physics.idle()
-	if not pet_sprite.play("mischief_grab"):
-		pet_sprite.play("idle")
+	mischief_controller.start()
 	_sync_window_size(true)
-	_position_mischief_stop_button()
-	mischief_stop_button.visible = true
-	mischief_grab_timer.start(MISCHIEF_GRAB_SECONDS)
+	mischief_controller.tick(0.0, get_window())
 	show_bubble("嘿嘿，鼠标借我一下。", 1.25)
-	_tick_mischief_grab(0.0)
 	_update_mouse_passthrough()
 	return true
 
@@ -591,69 +564,16 @@ func _stop_mischief_grab(announce := true) -> void:
 	if not mischief_grab_active:
 		return
 	mischief_grab_active = false
-	mischief_grab_timer.stop()
-	mischief_stop_button.visible = false
+	mischief_controller.stop()
 	brain.set_paused(false)
 	physics.set_position_from_window(Vector2(get_window().position))
 	physics.idle()
-	pet_sprite.play("idle")
+	_play_capability("resting")
 	pet_sprite.reset_transform()
 	_sync_window_size(true)
 	_update_mouse_passthrough()
-	queue_redraw()
 	if announce:
 		show_bubble("好吧，还给你。")
-
-
-func _tick_mischief_grab(delta: float) -> void:
-	mischief_elapsed += delta
-	var window = get_window()
-	var window_size = Vector2(window.size)
-	var mouse = Vector2(DisplayServer.mouse_get_position())
-	var offset = Vector2(-window_size.x * 0.28, window_size.y * 0.22)
-	var shake = Vector2(sin(mischief_elapsed * 34.0) * 4.0, cos(mischief_elapsed * 29.0) * 3.0)
-	physics.position = _clamp_window_position(mouse - window_size * 0.5 + offset + shake, window_size)
-	window.position = Vector2i(round(physics.position.x), round(physics.position.y))
-	mischief_cursor_local = mouse - physics.position
-	_position_mischief_stop_button()
-	_update_mouse_passthrough()
-
-
-func _apply_mischief_grab_pose(_delta: float) -> void:
-	var base = Vector2(get_window().size) * 0.5
-	var shake = Vector2(sin(mischief_elapsed * 42.0) * 4.5, cos(mischief_elapsed * 37.0) * 2.5)
-	pet_sprite.position = base + shake
-	pet_sprite.sprite.rotation = -0.08 + sin(mischief_elapsed * 24.0) * 0.075
-	pet_sprite.sprite.scale = pet_sprite._base_sprite_scale() * Vector2(1.04, 0.98)
-	bubble.position = Vector2(16, 48)
-
-
-func _clamp_window_position(pos: Vector2, window_size: Vector2) -> Vector2:
-	var area = _play_area()
-	var max_x = area.position.x + area.size.x - window_size.x
-	var max_y = area.position.y + area.size.y - window_size.y
-	if max_x < area.position.x:
-		max_x = area.position.x
-	if max_y < area.position.y:
-		max_y = area.position.y
-	return Vector2(
-		clamp(pos.x, area.position.x, max_x),
-		clamp(pos.y, area.position.y, max_y)
-	)
-
-
-func _position_mischief_stop_button() -> void:
-	if mischief_stop_button == null:
-		return
-	var size = Vector2(get_window().size)
-	mischief_stop_button.size = MISCHIEF_STOP_SIZE
-	mischief_stop_button.position = Vector2(size.x - MISCHIEF_STOP_SIZE.x - 12.0, 12.0)
-
-
-func _mischief_stop_rect() -> Rect2:
-	if mischief_stop_button == null:
-		return Rect2(Vector2.ZERO, MISCHIEF_STOP_SIZE)
-	return Rect2(mischief_stop_button.position, mischief_stop_button.size)
 
 
 func _sync_walk_animation_to_velocity(force := false) -> void:
@@ -664,14 +584,17 @@ func _sync_walk_animation_to_velocity(force := false) -> void:
 	if abs(physics.velocity.x) < 1.0:
 		return
 	var desired = "walk_right" if physics.velocity.x > 0.0 else "walk_left"
+	desired = animation_resolver.resolve("locomotion", {"direction": "right" if physics.velocity.x > 0.0 else "left"})
 	if force or pet_sprite.current_action != desired:
-		pet_sprite.play(desired)
+		if desired != "":
+			pet_sprite.play(desired)
 
 
 func _play_wall_walk_action() -> void:
 	var desired = _wall_walk_action()
 	if pet_sprite.current_action != desired:
-		pet_sprite.play(desired)
+		if desired != "":
+			pet_sprite.play(desired)
 
 
 func _apply_wall_walk_pose() -> void:
@@ -688,77 +611,30 @@ func _apply_wall_walk_pose() -> void:
 
 
 func _wall_walk_action() -> String:
+	var direction := "right"
 	if abs(physics.velocity.y) < 1.0:
-		return "walk_right" if physics.wall_side > 0 else "walk_left"
+		direction = "right" if physics.wall_side > 0 else "left"
+		return animation_resolver.resolve("edge", {"direction": direction})
 	if physics.wall_side > 0:
-		return "walk_right" if physics.velocity.y > 0.0 else "walk_left"
-	return "walk_left" if physics.velocity.y > 0.0 else "walk_right"
+		direction = "right" if physics.velocity.y > 0.0 else "left"
+	else:
+		direction = "left" if physics.velocity.y > 0.0 else "right"
+	return animation_resolver.resolve("edge", {"direction": direction})
+
+
+func _play_capability(capability: String, constraints: Dictionary = {}) -> bool:
+	if pet_sprite == null:
+		return false
+	if animation_resolver != null:
+		var action_id = animation_resolver.resolve(capability, constraints)
+		if action_id != "":
+			return pet_sprite.play(action_id)
+	return pet_sprite.play(capability)
 
 
 func show_bubble(text: String, seconds := 1.8) -> void:
-	bubble.text = text
-	bubble.visible = true
-	bubble_timer.start(seconds)
-
-
-func _spawn_heart() -> void:
-	var heart = _temporary_sprite("effects/heart.png", 38)
-	if heart != null:
-		heart.position = pet_sprite.position + Vector2(rng.randf_range(-35, 35), -76)
-
-
-func _spawn_note() -> void:
-	var label = Label.new()
-	label.text = "小新路过：嘿嘿。"
-	label.add_theme_font_size_override("font_size", 16)
-	label.add_theme_color_override("font_color", Color(0.18, 0.15, 0.08))
-	label.position = Vector2(rng.randi_range(18, 220), rng.randi_range(36, 170))
-	add_child(label)
-	mischief_nodes.append(label)
-	_auto_remove(label, 5.0)
-
-
-func _spawn_footprint() -> void:
-	var label = Label.new()
-	label.text = "・ ・ ・"
-	label.add_theme_font_size_override("font_size", 28)
-	label.add_theme_color_override("font_color", Color(0.12, 0.1, 0.08, 0.45))
-	label.position = Vector2(rng.randi_range(20, 330), rng.randi_range(160, 220))
-	add_child(label)
-	mischief_nodes.append(label)
-	_auto_remove(label, 3.6)
-
-
-func _temporary_sprite(relative_path: String, size: int):
-	var path = repo_root.path_join("assets").path_join(relative_path)
-	if not FileAccess.file_exists(path):
-		return null
-	var image = Image.new()
-	if image.load(path) != OK:
-		return null
-	var texture = ImageTexture.create_from_image(image)
-	var sprite = Sprite2D.new()
-	sprite.texture = texture
-	sprite.scale = Vector2(size / texture.get_size().x, size / texture.get_size().y)
-	add_child(sprite)
-	mischief_nodes.append(sprite)
-	_auto_remove(sprite, 1.2)
-	return sprite
-
-
-func _auto_remove(node: Node, seconds: float) -> void:
-	await get_tree().create_timer(seconds).timeout
-	if is_instance_valid(node):
-		mischief_nodes.erase(node)
-		node.queue_free()
-
-
-func _clear_mischief() -> void:
-	for node in mischief_nodes:
-		if is_instance_valid(node):
-			node.queue_free()
-	mischief_nodes.clear()
-	show_bubble("清理完成。")
+	if feedback != null:
+		feedback.show_bubble(text, seconds)
 
 
 func _update_mouse_passthrough() -> void:
@@ -767,7 +643,7 @@ func _update_mouse_passthrough() -> void:
 		window.mouse_passthrough_polygon = PackedVector2Array()
 		return
 	if mischief_grab_active:
-		var rect = _mischief_stop_rect().grow(4.0)
+		var rect = mischief_controller.stop_rect().grow(4.0)
 		window.mouse_passthrough_polygon = _rect_polygon(rect)
 		return
 	if mini_games != null and mini_games.active != "":
@@ -804,28 +680,7 @@ func _rect_polygon(rect: Rect2) -> PackedVector2Array:
 
 
 func _hide_edge_for_release(global_pos: Vector2) -> String:
-	var area = _play_area()
-	var left = global_pos.x <= area.position.x + HIDE_EDGE_THRESHOLD
-	var right = global_pos.x >= area.position.x + area.size.x - HIDE_EDGE_THRESHOLD
-	var top = global_pos.y <= area.position.y + HIDE_EDGE_THRESHOLD
-	var bottom = global_pos.y >= area.position.y + area.size.y - HIDE_EDGE_THRESHOLD
-	if top and left:
-		return "top_left"
-	if top and right:
-		return "top_right"
-	if bottom and left:
-		return "bottom_left"
-	if bottom and right:
-		return "bottom_right"
-	if left:
-		return "left"
-	if right:
-		return "right"
-	if top:
-		return "top"
-	if bottom:
-		return "bottom"
-	return ""
+	return peek_controller.edge_for_release(global_pos, _play_area(), HIDE_EDGE_THRESHOLD)
 
 
 func _enter_peek_mode(edge: String) -> void:
@@ -835,7 +690,7 @@ func _enter_peek_mode(edge: String) -> void:
 	peek_edge = edge
 	brain.set_paused(true)
 	physics.peek()
-	peek_sprite.visible = true
+	peek_controller.enter(edge)
 	pet_sprite.visible = false
 	_sync_window_size(false)
 	physics.position = _peek_window_position(edge, DisplayServer.mouse_get_position())
@@ -850,9 +705,9 @@ func _exit_peek_mode(show_message: bool) -> void:
 	peek_mode = false
 	peek_edge = ""
 	brain.set_paused(false)
-	peek_sprite.visible = false
+	peek_controller.exit()
 	pet_sprite.visible = true
-	pet_sprite.play("idle")
+	_play_capability("resting")
 	_sync_window_size(false)
 	var area = _play_area()
 	var size = Vector2(get_window().size)
@@ -872,66 +727,13 @@ func _exit_peek_mode(show_message: bool) -> void:
 
 
 func _peek_window_position(edge: String, global_pos: Vector2) -> Vector2:
-	var area = _play_area()
-	var size = Vector2(get_window().size)
-	var right = area.position.x + area.size.x
-	var bottom = area.position.y + area.size.y
-	var x = clamp(global_pos.x - size.x * 0.5, area.position.x, right - size.x)
-	var y = clamp(global_pos.y - size.y * 0.5, area.position.y, bottom - size.y)
-
-	if edge.contains("left"):
-		x = area.position.x
-	elif edge.contains("right"):
-		x = right - size.x
-	if edge.contains("top"):
-		y = area.position.y
-	elif edge.contains("bottom"):
-		y = bottom - size.y
-	return Vector2(x, y)
+	return peek_controller.window_position(edge, global_pos, _play_area(), Vector2(get_window().size))
 
 
 func _apply_peek_pose() -> void:
 	pet_sprite.visible = false
-	peek_sprite.visible = true
-	peek_sprite.texture = _peek_texture_for_edge(peek_edge)
-	peek_sprite.position = Vector2.ZERO
-	peek_sprite.scale = Vector2.ONE
-	bubble.position = Vector2(8, 8)
-
-
-func _load_peek_textures() -> void:
-	peek_textures = {
-		"left": _load_asset_texture("character/peek_left.png"),
-		"right": _load_asset_texture("character/peek_right.png"),
-		"top": _load_asset_texture("character/peek_top.png"),
-		"bottom": _load_asset_texture("character/peek_bottom.png"),
-	}
-
-
-func _peek_texture_for_edge(edge: String):
-	var key = "bottom"
-	if edge.contains("left"):
-		key = "left"
-	elif edge.contains("right"):
-		key = "right"
-	elif edge.contains("top"):
-		key = "top"
-	elif edge.contains("bottom"):
-		key = "bottom"
-	var texture = peek_textures.get(key, null)
-	if texture == null:
-		texture = peek_textures.get("right", null)
-	return texture
-
-
-func _load_asset_texture(relative_path: String):
-	var path = repo_root.path_join("assets").path_join(relative_path)
-	if not FileAccess.file_exists(path):
-		return null
-	var image = Image.new()
-	if image.load(path) != OK:
-		return null
-	return ImageTexture.create_from_image(image)
+	peek_controller.apply_pose()
+	feedback.set_bubble_position(Vector2(8, 8))
 
 
 func _jiggle() -> void:
