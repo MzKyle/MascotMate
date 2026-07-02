@@ -6,7 +6,7 @@ const PinImageWindowScript = preload("res://scripts/PinImageWindow.gd")
 const SettingsWindowScript = preload("res://scripts/ScreenshotSettingsWindow.gd")
 const SelectionWindowScript = preload("res://scripts/ScreenshotSelectionWindow.gd")
 
-const CONFIG_DIR_NAME := "crayon-shinchan-desktop-pet"
+const CONFIG_DIR_NAME := "mascotmate-desktop"
 const HOTKEY_PORT := 38291
 const MAX_HISTORY := 3
 const DEFAULT_CONFIG := {

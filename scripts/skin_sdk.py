@@ -76,7 +76,7 @@ def resolve_frame_root(skin: dict[str, Any], skin_path: Path, repo_root: Path) -
     if frame_root.startswith("$repo/"):
         return repo_root / frame_root.removeprefix("$repo/")
     if frame_root.startswith("$config/"):
-        return Path.home() / ".config" / "crayon-shinchan-desktop-pet" / frame_root.removeprefix("$config/")
+        return Path.home() / ".config" / "mascotmate-desktop" / frame_root.removeprefix("$config/")
     path = Path(frame_root)
     if path.is_absolute():
         return path

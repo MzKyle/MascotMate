@@ -3,13 +3,13 @@
 运行时数据写入用户配置目录：
 
 ```text
-~/.config/crayon-shinchan-desktop-pet/
+~/.config/mascotmate-desktop/
 ```
 
 ## 状态文件
 
 ```text
-~/.config/crayon-shinchan-desktop-pet/state.json
+~/.config/mascotmate-desktop/state.json
 ```
 
 示例：
@@ -43,7 +43,7 @@
 ## 应用与截图贴图配置
 
 ```text
-~/.config/crayon-shinchan-desktop-pet/config.json
+~/.config/mascotmate-desktop/config.json
 ```
 
 保存内容：
@@ -67,7 +67,7 @@
 ## 截图历史
 
 ```text
-~/.config/crayon-shinchan-desktop-pet/screenshots/
+~/.config/mascotmate-desktop/screenshots/
 ```
 
 截图文件命名格式：
@@ -82,7 +82,7 @@ clipboard_<timestamp>_<ticks>.png
 ## 用户皮肤
 
 ```text
-~/.config/crayon-shinchan-desktop-pet/skins/
+~/.config/mascotmate-desktop/skins/
 ```
 
 皮肤管理窗口和 `scripts/import_shimeji_skin.py` 会把 Shimeji-ee 导入结果写到这个目录。每个皮肤是一个独立目录，包含 `skin.json` 和 `frames/`。
@@ -92,23 +92,23 @@ clipboard_<timestamp>_<ticks>.png
 重置桌宠状态：
 
 ```bash
-rm -f ~/.config/crayon-shinchan-desktop-pet/state.json
+rm -f ~/.config/mascotmate-desktop/state.json
 ```
 
 重置截图贴图设置：
 
 ```bash
-rm -f ~/.config/crayon-shinchan-desktop-pet/config.json
+rm -f ~/.config/mascotmate-desktop/config.json
 ```
 
 清理截图历史：
 
 ```bash
-rm -rf ~/.config/crayon-shinchan-desktop-pet/screenshots
+rm -rf ~/.config/mascotmate-desktop/screenshots
 ```
 
 清理用户导入皮肤：
 
 ```bash
-rm -rf ~/.config/crayon-shinchan-desktop-pet/skins
+rm -rf ~/.config/mascotmate-desktop/skins
 ```

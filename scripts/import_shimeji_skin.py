@@ -29,7 +29,7 @@ from skin_sdk import (
 )
 
 
-CONFIG_DIR_NAME = "crayon-shinchan-desktop-pet"
+CONFIG_DIR_NAME = "mascotmate-desktop"
 SHIMEJI_DURATION_MS = 40
 SAFE_ID_RE = re.compile(r"[^a-z0-9_-]+")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

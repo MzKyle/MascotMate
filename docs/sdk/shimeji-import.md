@@ -10,7 +10,7 @@ python3 scripts/import_shimeji_skin.py /path/to/shimeji-folder --json-report
 默认输出到：
 
 ```text
-~/.config/crayon-shinchan-desktop-pet/skins/
+~/.config/mascotmate-desktop/skins/
 ```
 
 ## 支持范围

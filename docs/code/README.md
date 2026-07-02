@@ -41,7 +41,7 @@ CRAYON_PET_ROOT=<repo root>
 打包后的启动脚本会设置：
 
 ```bash
-CRAYON_PET_ROOT=<dist/GodotShinchanPet>
+CRAYON_PET_ROOT=<dist/MascotMateDesktop>
 ```
 
 因此资源加载代码要优先基于 `repo_root` 拼接路径，而不是假设当前工作目录。

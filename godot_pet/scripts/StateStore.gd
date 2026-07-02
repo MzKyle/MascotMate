@@ -1,7 +1,7 @@
 extends Node
 
 const STATE_VERSION := 2
-const CONFIG_DIR_NAME := "crayon-shinchan-desktop-pet"
+const CONFIG_DIR_NAME := "mascotmate-desktop"
 const SAVE_DEBOUNCE_SECONDS := 5.0
 const MIN_DECAY_SECONDS := 1800
 const MAX_OFFLINE_DECAY_SECONDS := 8 * 60 * 60

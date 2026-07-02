@@ -59,7 +59,7 @@ scripts/install_desktop_entry.sh
 运行验证：
 
 ```bash
-dist/GodotShinchanPet/CrayonShinchanGodotPet
+dist/MascotMateDesktop/MascotMateDesktop
 ```
 
 验收清单：

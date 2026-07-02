@@ -2,7 +2,7 @@ config_version=5
 
 [application]
 
-config/name="Crayon Shinchan Godot Pet"
+config/name="MascotMate Desktop"
 config/version="1.2"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.6")

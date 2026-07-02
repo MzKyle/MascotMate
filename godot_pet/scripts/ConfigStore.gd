@@ -2,7 +2,7 @@ extends Node
 
 signal config_changed(config)
 
-const CONFIG_DIR_NAME := "crayon-shinchan-desktop-pet"
+const CONFIG_DIR_NAME := "mascotmate-desktop"
 const DEFAULT_CONFIG := {
 	"version": 1,
 	"app": {

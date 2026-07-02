@@ -17,7 +17,7 @@
 配置保存在：
 
 ```text
-~/.config/crayon-shinchan-desktop-pet/config.json
+~/.config/mascotmate-desktop/config.json
 ```
 
 默认结构：

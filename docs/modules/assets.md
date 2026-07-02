@@ -6,7 +6,7 @@
 | --- | --- |
 | `resource_hd/` | 运行时动作帧 |
 | `godot_pet/assets/skins/` | 内置皮肤清单 |
-| `~/.config/crayon-shinchan-desktop-pet/skins/` | 用户导入皮肤 |
+| `~/.config/mascotmate-desktop/skins/` | 用户导入皮肤 |
 | `assets/effects/` | 爱心、闪光、波纹等互动特效 |
 | `assets/games/` | 饭团、球、靶心、奖杯等小游戏素材 |
 | `assets/character/` | 贴边偷看图和来源说明 |

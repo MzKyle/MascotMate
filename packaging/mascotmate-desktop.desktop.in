@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Crayon Shinchan Desktop Pet
-Name[zh_CN]=蜡笔小新桌宠
+Name=MascotMate Desktop
+Name[zh_CN]=桌宠伙伴
 Comment=Dynamic desktop pet powered by Godot
 Comment[zh_CN]=Godot 动态桌面宠物
 Exec=__EXEC__

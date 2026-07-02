@@ -64,4 +64,4 @@
 - 涉及窗口位置时，先确认使用的是全局屏幕坐标还是窗口局部坐标。
 - 涉及透明窗口时，同时检查鼠标穿透区域。
 - 涉及资源加载时，优先使用 `repo_root` 拼接外部资源路径。
-- 涉及状态持久化时，写入 `~/.config/crayon-shinchan-desktop-pet`。
+- 涉及状态持久化时，写入 `~/.config/mascotmate-desktop`。

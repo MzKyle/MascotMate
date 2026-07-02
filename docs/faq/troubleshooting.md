@@ -98,15 +98,15 @@ sudo apt-get install -y kde-spectacle imagemagick
 确认打包目录中存在：
 
 ```text
-dist/GodotShinchanPet/scripts/pet_helper.py
-dist/GodotShinchanPet/scripts/pet_helper
+dist/MascotMateDesktop/scripts/pet_helper.py
+dist/MascotMateDesktop/scripts/pet_helper
 ```
 
 并且可执行：
 
 ```bash
-chmod +x dist/GodotShinchanPet/scripts/pet_helper.py
-chmod +x dist/GodotShinchanPet/scripts/pet_helper
+chmod +x dist/MascotMateDesktop/scripts/pet_helper.py
+chmod +x dist/MascotMateDesktop/scripts/pet_helper
 ```
 
 当前构建脚本会自动复制并设置权限。

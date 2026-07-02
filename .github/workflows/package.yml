@@ -57,5 +57,5 @@ jobs:
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: crayon-shinchan-pet-${{ matrix.target }}
-          path: dist/CrayonShinchanPet-*.zip
+          name: mascotmate-desktop-${{ matrix.target }}
+          path: dist/MascotMateDesktop-*.zip

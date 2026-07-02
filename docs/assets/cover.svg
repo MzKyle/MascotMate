@@ -20,7 +20,7 @@
   <rect x="742" y="304" width="186" height="72" rx="22" fill="#DBEAFE" stroke="#111827" stroke-width="5"/>
   <path d="M780 340H890" stroke="#2563EB" stroke-width="10" stroke-linecap="round"/>
   <path d="M350 356C418 386 518 388 590 356" stroke="#F97316" stroke-width="10" stroke-linecap="round" stroke-dasharray="1 22"/>
-  <text x="974" y="190" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="56" font-weight="800">桌面小新</text>
+  <text x="974" y="190" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="56" font-weight="800">桌宠伙伴</text>
   <text x="974" y="254" fill="#374151" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="600">Godot 透明桌宠 / 物理互动</text>
   <text x="974" y="298" fill="#374151" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="600">截图贴图 / Linux 打包</text>
   <rect x="972" y="334" width="156" height="44" rx="22" fill="#EF4444"/>

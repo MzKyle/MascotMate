@@ -63,7 +63,7 @@ scripts/run_godot_pet.sh
 - `F3` 是否按最近历史轮换贴图
 - `F4` 是否关闭当前贴图
 - 设置窗口保存后全局快捷键是否重启
-- `~/.config/crayon-shinchan-desktop-pet/config.json` 是否正确写入
+- `~/.config/mascotmate-desktop/config.json` 是否正确写入
 
 ## 文档本地预览
 

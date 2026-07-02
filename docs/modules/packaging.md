@@ -43,12 +43,12 @@ python scripts/run_godot_smoke.py
 默认流程：
 
 1. 准备 Godot runtime
-2. 清理并创建 `dist/GodotShinchanPet/`
+2. 清理并创建 `dist/MascotMateDesktop/`
 3. 复制 Godot runtime 为 `GodotPetRuntime`
 4. 复制 `godot_pet/`
 5. 复制 `resource_hd/` 和 `assets/`
 6. 复制 `scripts/pet_helper.py`、`scripts/import_shimeji_skin.py`、`scripts/skin_sdk.py` 和可选的 `scripts/pet_helper`
-7. 写入启动脚本 `CrayonShinchanGodotPet`
+7. 写入启动脚本 `MascotMateDesktop`
 
 启动脚本会设置：
 
@@ -92,7 +92,7 @@ scripts/setup_godot_export_templates.sh
 3. 用 PyInstaller 构建 `pet_helper`
 4. 调用 Godot export preset 导出 Linux、Windows 或 macOS
 5. 复制 `resource_hd/`、`assets/`、helper、`import_shimeji_skin.py` 和 `skin_sdk.py`
-6. 输出 `dist/CrayonShinchanPet-<platform>.zip`
+6. 输出 `dist/MascotMateDesktop-<platform>.zip`
 
 本地私用皮肤只在显式传参时复制，不会进入公开 CI/release：
 
@@ -109,7 +109,7 @@ GitHub Actions 工作流 `.github/workflows/package.yml` 支持手动触发，�
 `scripts/install_desktop_entry.sh` 会把模板：
 
 ```text
-packaging/crayon-shinchan-desktop-pet.desktop.in
+packaging/mascotmate-desktop.desktop.in
 ```
 
 渲染为用户级 desktop entry。它不会写系统目录，不需要 root 权限。

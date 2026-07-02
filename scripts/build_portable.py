@@ -20,18 +20,18 @@ HELPER_NAME = "pet_helper.exe" if platform.system() == "Windows" else "pet_helpe
 TARGETS = {
     "linux": {
         "preset": "Linux",
-        "export": "CrayonShinchanGodotPet",
-        "artifact": "CrayonShinchanPet-linux-x86_64",
+        "export": "MascotMateDesktop",
+        "artifact": "MascotMateDesktop-linux-x86_64",
     },
     "windows": {
         "preset": "Windows Desktop",
-        "export": "CrayonShinchanGodotPet.exe",
-        "artifact": "CrayonShinchanPet-windows-x86_64",
+        "export": "MascotMateDesktop.exe",
+        "artifact": "MascotMateDesktop-windows-x86_64",
     },
     "macos": {
         "preset": "macOS",
-        "export": "CrayonShinchanGodotPet.zip",
-        "artifact": "CrayonShinchanPet-macos-universal",
+        "export": "MascotMateDesktop.zip",
+        "artifact": "MascotMateDesktop-macos-universal",
     },
 }
 
