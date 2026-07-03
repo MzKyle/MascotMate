@@ -7,6 +7,7 @@ const PetSpriteScript = preload("res://scripts/PetSprite.gd")
 const MainScript = preload("res://scripts/Main.gd")
 const SkinCatalogClientScript = preload("res://scripts/SkinCatalogClient.gd")
 const SkinManagerWindowScript = preload("res://scripts/SkinManagerWindow.gd")
+const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
 
 const FIXED_ENTERTAINMENT_TIME := 1761998400
 
@@ -94,6 +95,32 @@ func _run() -> void:
 	root_node.add_child(skin_window)
 	await process_frame
 	skin_window.configure(skin_manager, null, repo_root)
+
+	var skin_store_bridge = SkinStoreBridgeScript.new()
+	root_node.add_child(skin_store_bridge)
+	await process_frame
+	skin_store_bridge.configure(repo_root, config_dir)
+	var requested_skin := {"id": ""}
+	skin_store_bridge.skin_requested.connect(func(skin_id): requested_skin["id"] = skin_id)
+	DirAccess.make_dir_recursive_absolute(config_dir)
+	var command_file = FileAccess.open(config_dir.path_join("skin_store_command.json"), FileAccess.WRITE)
+	if command_file == null:
+		_fail("SkinStoreBridge command file could not be written.")
+		return
+	command_file.store_string(JSON.stringify({
+		"command": "select_skin",
+		"skin_id": "classic_shinchan",
+		"nonce": "runtime-smoke",
+	}))
+	command_file = null
+	skin_store_bridge._poll_command()
+	if str(requested_skin["id"]) != "classic_shinchan":
+		_fail("SkinStoreBridge did not emit the requested skin id.")
+		return
+	skin_manager.reload_skins()
+	if not skin_manager.select_skin(str(requested_skin["id"])):
+		_fail("SkinStoreBridge requested skin could not be selected.")
+		return
 
 	var pet_sprite = PetSpriteScript.new()
 	root_node.add_child(pet_sprite)

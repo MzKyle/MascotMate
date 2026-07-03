@@ -180,6 +180,36 @@ def fetch_cachomon_index(args: argparse.Namespace) -> int:
     return 0
 
 
+def load_skin_store_module():
+    script = Path(__file__).resolve().with_name("skin_store_server.py")
+    if not script.is_file() and getattr(sys, "frozen", False):
+        script = Path(sys.executable).resolve().with_name("skin_store_server.py")
+    if not script.is_file():
+        print("skin_store_server.py was not found.", file=sys.stderr)
+        return None
+    spec = importlib.util.spec_from_file_location("skin_store_server", script)
+    if spec == None or spec.loader == None:
+        print("Unable to load skin_store_server.py.", file=sys.stderr)
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def run_skin_store(args: argparse.Namespace) -> int:
+    module = load_skin_store_module()
+    if module is None:
+        return 2
+    return int(module.serve_skin_store(
+        args.repo_root,
+        args.config_dir,
+        open_browser=args.open_browser,
+        idle_timeout=args.idle_timeout,
+        port=args.port,
+    ))
+
+
 def copy_image_windows(path: Path) -> int:
     powershell = shutil.which("powershell.exe") or shutil.which("powershell")
     if not powershell:
@@ -490,6 +520,13 @@ def parse_args() -> argparse.Namespace:
     cachomon.add_argument("--cache-root", type=Path, default=Path.home() / ".config" / "mascotmate-desktop" / "catalog_cache" / "cachomon")
     cachomon.add_argument("--timeout", type=float, default=12.0)
     cachomon.add_argument("--html-fixture", type=Path)
+
+    skin_store = subparsers.add_parser("skin-store")
+    skin_store.add_argument("--repo-root", type=Path, required=True)
+    skin_store.add_argument("--config-dir", type=Path, required=True)
+    skin_store.add_argument("--open-browser", action="store_true")
+    skin_store.add_argument("--idle-timeout", type=float, default=900.0)
+    skin_store.add_argument("--port", type=int, default=0)
     return parser.parse_args()
 
 
@@ -506,6 +543,8 @@ def main() -> int:
             return install_skin(args)
         if args.command == "fetch-cachomon-index":
             return fetch_cachomon_index(args)
+        if args.command == "skin-store":
+            return run_skin_store(args)
     except Exception as exc:
         print(f"pet_helper.py: {exc}", file=sys.stderr)
         return 1

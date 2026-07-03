@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the curated skin catalog and bundled sample packages."""
+"""Validate the curated skin catalog and bundled featured packages."""
 
 from __future__ import annotations
 

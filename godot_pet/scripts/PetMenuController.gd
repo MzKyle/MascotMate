@@ -46,7 +46,7 @@ func show_menu(gravity_enabled: bool, peek_mode: bool, behavior_mode: String) ->
 	popup.add_item("关闭重力：悬浮" if gravity_enabled else "开启重力：落地", MENU_TOGGLE_GRAVITY)
 	if peek_mode:
 		popup.add_item("出来", MENU_EXIT_PEEK)
-	popup.add_item("皮肤管理", MENU_SKINS)
+	popup.add_item("皮肤商店", MENU_SKINS)
 	popup.add_item("截图贴图设置", MENU_SCREENSHOT_SETTINGS)
 	popup.add_separator()
 	popup.add_check_item("安静模式", MENU_QUIET)

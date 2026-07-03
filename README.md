@@ -5,8 +5,8 @@
 ![MascotMate Desktop](docs/assets/cover.png)
 
 A local Godot desktop pet with transparent-window animation, physics interaction,
-companion behavior, mini games, screenshots as sticky desktop pins, and a Shimeji-ee
-skin shop with assisted imports.
+companion behavior, mini games, screenshots as sticky desktop pins, and a browser-based
+Shimeji-ee skin shop with assisted imports.
 
 [Read the documentation](docs/README.md)
 
@@ -19,7 +19,8 @@ skin shop with assisted imports.
 - Feed it, play the catch mini game, or check its local state.
 - Capture a screen region with `F1`, paste recent captures as pinned windows with `F3`,
   and close the active pin with `F4`.
-- Browse the skin shop, open Shimeji source pages, and import downloaded ZIPs or folders.
+- Browse the browser skin shop, install bundled featured skins, open Shimeji source pages,
+  and import downloaded ZIPs or folders.
 
 ## Quick Start From Source
 
@@ -69,7 +70,7 @@ dist/MascotMateDesktop/MascotMateDesktop
 | Release near screen edge | Enter peek mode |
 | Double-click | Start catch mini game |
 | Mouse wheel | Show mood, hunger, energy, and affection |
-| Right-click | Open actions, skins, modes, screenshot settings, and exit menu |
+| Right-click | Open actions, skin shop, modes, screenshot settings, and exit menu |
 
 ## Useful Commands
 

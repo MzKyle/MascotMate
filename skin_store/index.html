@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MascotMate Skin Store</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>皮肤商店</h1>
+        <p id="summary">正在连接本地桌宠...</p>
+      </div>
+      <button id="refreshButton" class="secondary">刷新</button>
+    </header>
+
+    <section class="controls" aria-label="筛选">
+      <label class="search">
+        <span>搜索</span>
+        <input id="searchInput" type="search" placeholder="Eevee、Pikmin、cat、作者或特性">
+      </label>
+      <label>
+        <span>来源</span>
+        <select id="sourceFilter">
+          <option value="all">全部</option>
+          <option value="featured">本地直装精选</option>
+          <option value="external">Shimeji 浏览</option>
+        </select>
+      </label>
+      <label>
+        <span>状态</span>
+        <select id="statusFilter">
+          <option value="all">全部状态</option>
+          <option value="free">可下载</option>
+          <option value="beta">Beta</option>
+          <option value="patreon">Patreon</option>
+          <option value="unavailable">不可下载</option>
+        </select>
+      </label>
+    </section>
+
+    <section id="featuredSection" class="section">
+      <div class="section-title">
+        <h2>本地直装精选</h2>
+        <span>随包提供，可直接安装并启用</span>
+      </div>
+      <div id="featuredGrid" class="grid featured-grid"></div>
+    </section>
+
+    <section id="externalSection" class="section">
+      <div class="section-title">
+        <h2>Shimeji 浏览</h2>
+        <span>Cachomon 原站下载，应用只辅助导入</span>
+      </div>
+      <div id="externalGrid" class="grid"></div>
+      <p id="moreHint" class="hint"></p>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

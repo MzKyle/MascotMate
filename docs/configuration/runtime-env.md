@@ -56,7 +56,7 @@ CRAYON_PET_ENABLE_GLOBAL_HOTKEYS=0 scripts/run_godot_pet.sh
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `MASCOTMATE_SKIN_CATALOG_URL` | GitHub raw 精选源 | 覆盖皮肤管理窗口读取的在线 `catalog.json` |
+| `MASCOTMATE_SKIN_CATALOG_URL` | GitHub raw 精选源 | 覆盖皮肤商店读取的在线 `catalog.json` |
 | `CRAYON_PET_SKIN_CATALOG_URL` | 空 | 旧变量名兼容，优先级低于 `MASCOTMATE_SKIN_CATALOG_URL` |
 
 正式远端必须使用 HTTPS。开发调试时允许 `http://127.0.0.1` 或 `http://localhost`：

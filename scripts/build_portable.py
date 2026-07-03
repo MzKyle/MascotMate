@@ -74,6 +74,7 @@ def build_helper() -> Path:
         ROOT / "scripts" / "import_shimeji_skin.py",
         ROOT / "scripts" / "skin_sdk.py",
         ROOT / "scripts" / "cachomon_catalog.py",
+        ROOT / "scripts" / "skin_store_server.py",
     ]
     if helper_path.exists() and helper_path.stat().st_mtime >= max(path.stat().st_mtime for path in helper_sources if path.exists()):
         return helper_path
@@ -109,7 +110,7 @@ def build_helper() -> Path:
 
 
 def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir: Path | None = None) -> None:
-    for name in ("resource_hd", "assets", "skin_catalog"):
+    for name in ("resource_hd", "assets", "skin_catalog", "skin_store"):
         source = ROOT / name
         if source.exists():
             shutil.copytree(source, package_dir / name, dirs_exist_ok=True)
@@ -126,6 +127,12 @@ def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir
     cachomon_catalog = ROOT / "scripts" / "cachomon_catalog.py"
     if cachomon_catalog.exists():
         shutil.copy2(cachomon_catalog, scripts_dir / "cachomon_catalog.py")
+    skin_store_server = ROOT / "scripts" / "skin_store_server.py"
+    if skin_store_server.exists():
+        shutil.copy2(skin_store_server, scripts_dir / "skin_store_server.py")
+    featured_skins = ROOT / "scripts" / "fetch_featured_skins.py"
+    if featured_skins.exists():
+        shutil.copy2(featured_skins, scripts_dir / "fetch_featured_skins.py")
     if private_skins_dir is not None:
         if not private_skins_dir.is_dir():
             raise FileNotFoundError(private_skins_dir)

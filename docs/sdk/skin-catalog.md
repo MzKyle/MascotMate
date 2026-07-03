@@ -7,7 +7,23 @@
 | `external_browser` | 第三方 Shimeji 浏览条目，例如 Cachomon SFW 列表 | 只打开原站页面，用户下载后拖入或导入 ZIP |
 | `curated_package` | 项目维护、明确允许再分发的精选皮肤包 | 应用内下载、校验 SHA-256、安装并启用 |
 
-默认体验优先展示 `external_browser` 条目，让用户能看到真实 Shimeji 皮肤生态；项目内两个程序生成样例只作为“精选/开发示例”保留，不占主视觉。
+默认体验由浏览器版皮肤商店承载：顶部展示随包可直装精选皮肤，下面展示 `external_browser` 条目，让用户能看到真实 Shimeji 皮肤生态。
+
+## 浏览器商店服务
+
+右键“皮肤商店”会启动本地 helper：
+
+```bash
+python3 scripts/pet_helper.py skin-store --repo-root . --config-dir ~/.config/mascotmate-desktop --open-browser
+```
+
+服务只监听 `127.0.0.1`，启动时生成随机 token。浏览器页面通过本地 API 安装精选皮肤、启用已安装皮肤或打开第三方原站。安装或启用成功后，helper 会写入：
+
+```text
+~/.config/mascotmate-desktop/skin_store_command.json
+```
+
+Godot 运行时会轮询这个文件并立即切换皮肤。
 
 ## Cachomon 浏览索引
 
@@ -62,25 +78,25 @@ python3 scripts/pet_helper.py fetch-cachomon-index --safe --json
 https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_catalog/catalog.json
 ```
 
-网络不可用或远端格式错误时，运行时会回退到随包复制的本地 `skin_catalog/catalog.json`。精选源只收录明确允许再分发的皮肤。
+网络不可用或远端格式错误时，运行时会回退到随包复制的本地 `skin_catalog/catalog.json`。精选源只收录明确允许再分发的皮肤。当前随包精选包含两款由 DPets 的 `cat.png` 和 `sprite.png` 转换来的原生皮肤包，署名和许可文件位于 `skin_catalog/notices/dpets/`。
 
 `curated_package` 条目字段：
 
 ```json
 {
   "source_type": "curated_package",
-  "id": "mint_buddy",
-  "name": "Mint Buddy",
-  "description": "A calm mint desktop companion.",
-  "tags": ["sample", "fresh"],
+  "id": "dpets_cat",
+  "name": "DPets Cat",
+  "description": "A crisp pixel cat companion adapted from the DPets desktop pet sprites.",
+  "tags": ["featured", "pixel", "cat", "dpets"],
   "license": {
-    "type": "CC0-1.0",
-    "summary": "Original procedural sample skin.",
+    "type": "MIT + attribution",
+    "summary": "Adapted from DPets sprites by Gustavo dos Santos / Denellyne.",
     "redistributable": true
   },
   "format": "mascotmate_skin_zip",
-  "preview": "previews/mint_buddy.png",
-  "package": "packages/mint_buddy.zip",
+  "preview": "previews/dpets_cat.png",
+  "package": "packages/dpets_cat.zip",
   "sha256": "...",
   "size_bytes": 12345,
   "min_app_version": "1.2.0"
@@ -105,10 +121,10 @@ https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_c
 python3 scripts/validate_skin_catalog.py --check
 ```
 
-重新生成仓库内示例精选源：
+重新下载 DPets 素材并生成随包精选源：
 
 ```bash
-python3 scripts/generate_sample_skin_catalog.py
+python3 scripts/fetch_featured_skins.py
 ```
 
 ## 本地调试源

@@ -6,7 +6,8 @@
 | --- | --- |
 | `resource_hd/` | 运行时动作帧 |
 | `godot_pet/assets/skins/` | 内置皮肤清单 |
-| `skin_catalog/` | 皮肤商店本地 fallback、Cachomon 浏览索引、精选预览和示例 ZIP |
+| `skin_catalog/` | 皮肤商店本地 fallback、Cachomon 浏览索引、精选预览、精选 ZIP 和授权 notice |
+| `skin_store/` | 浏览器版皮肤商店静态 HTML/CSS/JS |
 | `~/.config/mascotmate-desktop/skins/` | 用户导入皮肤 |
 | `assets/effects/` | 爱心、闪光、波纹等互动特效 |
 | `assets/games/` | 饭团、球、靶心、奖杯等小游戏素材 |

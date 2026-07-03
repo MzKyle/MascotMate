@@ -15,6 +15,7 @@ const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
 const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const AnimationResolverScript = preload("res://scripts/AnimationResolver.gd")
 const SkinManagerWindowScript = preload("res://scripts/SkinManagerWindow.gd")
+const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
 
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
@@ -37,6 +38,7 @@ var feedback
 var skin_manager
 var animation_resolver
 var skin_window
+var skin_store_bridge
 var display_scale := 1.0
 var drag_offset := Vector2.ZERO
 var landing_squash := 0.0
@@ -108,6 +110,8 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if state_store != null and state_store.has_method("flush_save"):
 			state_store.flush_save()
+		if skin_store_bridge != null:
+			skin_store_bridge.stop()
 		get_tree().quit()
 
 
@@ -206,6 +210,12 @@ func _create_nodes() -> void:
 	skin_window.configure(skin_manager, config_store, repo_root)
 	skin_window.skin_selected.connect(_set_skin)
 	skin_window.notify.connect(_on_skin_window_notify)
+
+	skin_store_bridge = SkinStoreBridgeScript.new()
+	add_child(skin_store_bridge)
+	skin_store_bridge.configure(repo_root, config_store.config_dir)
+	skin_store_bridge.skin_requested.connect(_on_skin_store_skin_requested)
+	skin_store_bridge.notify.connect(_on_skin_store_notify)
 
 
 func _sync_window_size(keep_position := false) -> void:
@@ -551,6 +561,12 @@ func _set_gravity_enabled(value: bool) -> void:
 
 
 func _open_skin_manager() -> void:
+	if _env_flag("MASCOTMATE_NATIVE_SKIN_WINDOW", false):
+		if skin_window != null:
+			skin_window.open_window()
+		return
+	if skin_store_bridge != null and skin_store_bridge.open_store():
+		return
 	if skin_window != null:
 		skin_window.open_window()
 
@@ -579,6 +595,16 @@ func _set_skin(skin_id: String) -> void:
 
 
 func _on_skin_window_notify(message: String) -> void:
+	show_bubble(message, 2.8)
+
+
+func _on_skin_store_skin_requested(skin_id: String) -> void:
+	if skin_manager != null:
+		skin_manager.reload_skins()
+	_set_skin(skin_id)
+
+
+func _on_skin_store_notify(message: String) -> void:
 	show_bubble(message, 2.8)
 
 
