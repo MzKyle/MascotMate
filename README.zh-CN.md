@@ -15,7 +15,7 @@
 - 支持安静、活泼、捣乱三种行为模式；行为会参考时间段、饥饿、体力、心情、亲密度、最近互动和打扰冷却。
 - 可以投喂、玩接球小游戏、查看本地状态。
 - `F1` 区域截图，`F3` 把最近截图贴到桌面，`F4` 关闭当前贴图。
-- 可以导入 Shimeji-ee ZIP 或文件夹作为可切换皮肤。
+- 可以在皮肤管理里浏览在线精选并下载，也可以手动导入 Shimeji-ee ZIP 或文件夹。
 
 ## 从源码运行
 
@@ -71,6 +71,7 @@ dist/MascotMateDesktop/MascotMateDesktop
 ```bash
 python3 scripts/generate_godot_manifest.py --check
 python3 scripts/validate_resources.py
+python3 scripts/validate_skin_catalog.py --check
 python3 scripts/run_godot_smoke.py
 python3 -m unittest discover tests
 ```
@@ -83,6 +84,7 @@ python3 -m unittest discover tests
 - [行为系统](docs/modules/behavior.md)
 - [截图贴图](docs/modules/screenshot-pins.md)
 - [皮肤包规范](docs/sdk/skin-package-spec.md)
+- [在线精选皮肤源](docs/sdk/skin-catalog.md)
 - [Shimeji-ee 导入](docs/sdk/shimeji-import.md)
 - [故障排查](docs/faq/troubleshooting.md)
 

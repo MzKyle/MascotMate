@@ -69,7 +69,12 @@ def build_helper() -> Path:
     work_dir = ROOT / "build" / "pyinstaller"
     spec_dir = ROOT / "build" / "spec"
     helper_path = dist_dir / HELPER_NAME
-    if helper_path.exists():
+    helper_sources = [
+        ROOT / "scripts" / "pet_helper.py",
+        ROOT / "scripts" / "import_shimeji_skin.py",
+        ROOT / "scripts" / "skin_sdk.py",
+    ]
+    if helper_path.exists() and helper_path.stat().st_mtime >= max(path.stat().st_mtime for path in helper_sources if path.exists()):
         return helper_path
     pyinstaller = shutil.which("pyinstaller")
     if not pyinstaller:
@@ -103,7 +108,7 @@ def build_helper() -> Path:
 
 
 def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir: Path | None = None) -> None:
-    for name in ("resource_hd", "assets"):
+    for name in ("resource_hd", "assets", "skin_catalog"):
         source = ROOT / name
         if source.exists():
             shutil.copytree(source, package_dir / name, dirs_exist_ok=True)

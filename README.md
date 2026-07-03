@@ -19,7 +19,8 @@ imports.
 - Feed it, play the catch mini game, or check its local state.
 - Capture a screen region with `F1`, paste recent captures as pinned windows with `F3`,
   and close the active pin with `F4`.
-- Import Shimeji-ee ZIPs or folders as switchable skins.
+- Browse curated online skins, download them in the skin manager, or import
+  Shimeji-ee ZIPs and folders manually.
 
 ## Quick Start From Source
 
@@ -76,6 +77,7 @@ dist/MascotMateDesktop/MascotMateDesktop
 ```bash
 python3 scripts/generate_godot_manifest.py --check
 python3 scripts/validate_resources.py
+python3 scripts/validate_skin_catalog.py --check
 python3 scripts/run_godot_smoke.py
 python3 -m unittest discover tests
 ```
@@ -88,6 +90,7 @@ python3 -m unittest discover tests
 - [Behavior system](docs/modules/behavior.md)
 - [Screenshot pins](docs/modules/screenshot-pins.md)
 - [Skin package spec](docs/sdk/skin-package-spec.md)
+- [Curated skin catalog](docs/sdk/skin-catalog.md)
 - [Shimeji-ee import](docs/sdk/shimeji-import.md)
 - [Troubleshooting](docs/faq/troubleshooting.md)
 

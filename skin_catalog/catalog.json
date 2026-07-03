@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-07-03",
+  "skins": [
+    {
+      "id": "mint_buddy",
+      "name": "Mint Buddy",
+      "description": "A calm mint desktop companion with soft idle and walk frames.",
+      "tags": [
+        "sample",
+        "fresh",
+        "soft"
+      ],
+      "license": {
+        "type": "CC0-1.0",
+        "summary": "Original procedural sample skin generated for MascotMate Desktop.",
+        "redistributable": true
+      },
+      "format": "mascotmate_skin_zip",
+      "preview": "previews/mint_buddy.png",
+      "package": "packages/mint_buddy.zip",
+      "sha256": "ad0d9b2afcc792545d743b8be0456e12e56da8313ee00f5242c71b205ba681fc",
+      "size_bytes": 17378,
+      "min_app_version": "1.2.0"
+    },
+    {
+      "id": "sunny_pixel",
+      "name": "Sunny Pixel",
+      "description": "A bright pixel-style sample skin for testing online downloads.",
+      "tags": [
+        "sample",
+        "bright",
+        "pixel"
+      ],
+      "license": {
+        "type": "CC0-1.0",
+        "summary": "Original procedural sample skin generated for MascotMate Desktop.",
+        "redistributable": true
+      },
+      "format": "mascotmate_skin_zip",
+      "preview": "previews/sunny_pixel.png",
+      "package": "packages/sunny_pixel.zip",
+      "sha256": "33f34518e79718e91150d45578b646e4ba344e9618ea3b6ec041880f42f30dad",
+      "size_bytes": 17521,
+      "min_app_version": "1.2.0"
+    }
+  ]
+}

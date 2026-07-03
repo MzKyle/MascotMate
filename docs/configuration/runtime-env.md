@@ -51,3 +51,16 @@ CRAYON_PET_ENABLE_GLOBAL_HOTKEYS=0 scripts/run_godot_pet.sh
 ```
 
 这不会禁用应用内快捷键。窗口聚焦时，`F1`、`F3`、`F4` 仍可由 Godot 输入系统处理。
+
+## 在线精选皮肤
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `MASCOTMATE_SKIN_CATALOG_URL` | GitHub raw 精选源 | 覆盖皮肤管理窗口读取的在线 `catalog.json` |
+| `CRAYON_PET_SKIN_CATALOG_URL` | 空 | 旧变量名兼容，优先级低于 `MASCOTMATE_SKIN_CATALOG_URL` |
+
+正式远端必须使用 HTTPS。开发调试时允许 `http://127.0.0.1` 或 `http://localhost`：
+
+```bash
+MASCOTMATE_SKIN_CATALOG_URL=http://127.0.0.1:8000/catalog.json scripts/run_godot_pet.sh
+```

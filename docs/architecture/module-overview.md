@@ -12,7 +12,8 @@
 | `FeedbackEffects.gd` | 气泡和临时特效 | 提示文本、互动事件 | 气泡、爱心、脚印、临时文字 |
 | `SkinManager.gd` | 发现、选择和删除皮肤 | 内置皮肤、用户皮肤、配置目录 | 当前皮肤和帧根目录 |
 | `AnimationResolver.gd` | 将场景能力映射到皮肤动作 | `skin.json`、能力标签、方向约束 | 具体动作 ID |
-| `SkinManagerWindow.gd` | 皮肤管理 UI | 皮肤列表、Shimeji zip/目录 | 导入、启用、目录跳转 |
+| `SkinManagerWindow.gd` | 皮肤管理 UI | 已安装皮肤、精选源、Shimeji zip/目录 | 下载、导入、启用、目录跳转 |
+| `SkinCatalogClient.gd` | 在线精选皮肤源客户端 | `catalog.json`、预览图、皮肤 ZIP | catalog fallback、下载缓存、哈希校验 |
 | `PetSprite.gd` | 加载动作帧、播放动画、计算可见区域 | `skin.json`、帧根目录 | 当前帧、窗口建议尺寸、可见矩形 |
 | `PetPhysics.gd` | 物理状态机、速度、重力、碰撞、贴边 | 释放速度、播放区域、接触矩形 | 窗口坐标、物理状态、碰撞信号 |
 | `InteractionController.gd` | 点击、双击、滚轮、长按、拖拽和甩飞识别 | Godot 鼠标事件 | 交互信号 |
@@ -31,6 +32,7 @@
 | `scripts/run_godot_pet.sh` | 设置运行环境并启动 Godot 项目 |
 | `scripts/generate_godot_manifest.py` | 根据资源帧生成动作清单和默认皮肤 |
 | `scripts/import_shimeji_skin.py` | 把 Shimeji-ee zip/目录导入为皮肤包 |
+| `scripts/validate_skin_catalog.py` | 校验在线精选皮肤源和随包示例皮肤 |
 | `scripts/generate_hd_assets.py` | 生成高清资源副本 |
 | `scripts/generate_peek_assets.py` | 生成贴边偷看图 |
 | `scripts/generate_mischief_grab_assets.py` | 生成捣乱动作帧 |

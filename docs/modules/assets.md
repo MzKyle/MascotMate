@@ -6,6 +6,7 @@
 | --- | --- |
 | `resource_hd/` | 运行时动作帧 |
 | `godot_pet/assets/skins/` | 内置皮肤清单 |
+| `skin_catalog/` | 在线精选皮肤源的本地 fallback、预览和示例 ZIP |
 | `~/.config/mascotmate-desktop/skins/` | 用户导入皮肤 |
 | `assets/effects/` | 爱心、闪光、波纹等互动特效 |
 | `assets/games/` | 饭团、球、靶心、奖杯等小游戏素材 |
@@ -33,6 +34,7 @@ godot_pet/assets/skins/classic_shinchan/skin.json
 完整第三方皮肤接口见：
 
 - [皮肤包规范 v2](../sdk/skin-package-spec.md)
+- [在线精选皮肤源](../sdk/skin-catalog.md)
 - [Shimeji-ee 导入](../sdk/shimeji-import.md)
 
 每个动作包含：

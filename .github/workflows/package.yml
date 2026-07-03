@@ -39,6 +39,7 @@ jobs:
           python -m unittest discover tests
           python scripts/generate_godot_manifest.py --check
           python scripts/validate_resources.py
+          python scripts/validate_skin_catalog.py --check
 
       - name: Set up Godot
         id: godot

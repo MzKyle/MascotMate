@@ -91,20 +91,28 @@ def copy_image(path: Path) -> int:
     return 1
 
 
-def import_shimeji(args: argparse.Namespace) -> int:
+def load_importer_module():
     script = Path(__file__).resolve().with_name("import_shimeji_skin.py")
     if not script.is_file() and getattr(sys, "frozen", False):
         script = Path(sys.executable).resolve().with_name("import_shimeji_skin.py")
     if not script.is_file():
         print("import_shimeji_skin.py was not found.", file=sys.stderr)
-        return 2
+        return None
     spec = importlib.util.spec_from_file_location("import_shimeji_skin", script)
     if spec == None or spec.loader == None:
         print("Unable to load import_shimeji_skin.py.", file=sys.stderr)
-        return 2
+        return None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    return module
+
+
+def import_shimeji(args: argparse.Namespace) -> int:
+    module = load_importer_module()
+    if module is None:
+        return 2
+    script = Path(module.__file__).resolve()
     argv = [str(script), str(args.source), "--output-root", str(args.output_root)]
     if args.skin_id:
         argv += ["--id", args.skin_id]
@@ -118,6 +126,15 @@ def import_shimeji(args: argparse.Namespace) -> int:
         return int(module.main())
     finally:
         sys.argv = previous_argv
+
+
+def install_skin(args: argparse.Namespace) -> int:
+    module = load_importer_module()
+    if module is None:
+        return 2
+    imported = module.install_skin_source(args.source, args.output_root, args.skin_id, args.skin_name)
+    module.print_results(imported, args.json_report)
+    return 0
 
 
 def copy_image_windows(path: Path) -> int:
@@ -416,6 +433,13 @@ def parse_args() -> argparse.Namespace:
     import_skin.add_argument("--id", dest="skin_id")
     import_skin.add_argument("--name", dest="skin_name")
     import_skin.add_argument("--json-report", action="store_true")
+
+    install_skin_parser = subparsers.add_parser("install-skin")
+    install_skin_parser.add_argument("source", type=Path)
+    install_skin_parser.add_argument("--output-root", type=Path, required=True)
+    install_skin_parser.add_argument("--id", dest="skin_id")
+    install_skin_parser.add_argument("--name", dest="skin_name")
+    install_skin_parser.add_argument("--json-report", action="store_true")
     return parser.parse_args()
 
 
@@ -428,6 +452,8 @@ def main() -> int:
             return copy_image(args.path)
         if args.command == "import-shimeji":
             return import_shimeji(args)
+        if args.command == "install-skin":
+            return install_skin(args)
     except Exception as exc:
         print(f"pet_helper.py: {exc}", file=sys.stderr)
         return 1

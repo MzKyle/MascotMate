@@ -82,6 +82,38 @@ def extract_source(source: Path, temp_root: Path) -> Path:
     return target
 
 
+def find_native_skin_manifest(root: Path) -> Path | None:
+    direct = root / "skin.json"
+    if direct.is_file():
+        return direct
+    candidates = [
+        path
+        for path in root.rglob("skin.json")
+        if "__MACOSX" not in path.parts and not any(part.startswith(".") for part in path.relative_to(root).parts)
+    ]
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda path: (len(path.relative_to(root).parts), str(path)))[0]
+
+
+def safe_copytree(source: Path, dest: Path) -> None:
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    for path in sorted(source.rglob("*")):
+        rel = path.relative_to(source)
+        if "__MACOSX" in rel.parts:
+            continue
+        if path.is_symlink():
+            raise SystemExit(f"Skin package contains a symlink: {rel}")
+        target = dest / rel
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        elif path.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+
+
 def find_image_sets(root: Path) -> list[Path]:
     candidates: list[Path] = []
     img_dirs = [path for path in root.rglob("img") if path.is_dir()]
@@ -674,6 +706,106 @@ def build_skin(root: Path, image_set: Path, output_root: Path, forced_id: str | 
     return ImportResult(output_dir, report)
 
 
+def import_shimeji_root(
+    root: Path,
+    output_root: Path,
+    forced_id: str | None,
+    forced_name: str | None,
+) -> list[ImportResult]:
+    image_sets = find_image_sets(root)
+    if not image_sets:
+        raise SystemExit("No Shimeji image sets found.")
+    if len(image_sets) > 1 and (forced_id or forced_name):
+        raise SystemExit("--id and --name can only be used when importing one image set.")
+    output_root.mkdir(parents=True, exist_ok=True)
+    return [
+        build_skin(root, image_set, output_root, forced_id, forced_name)
+        for image_set in image_sets
+    ]
+
+
+def import_shimeji_source(
+    source: Path,
+    output_root: Path,
+    forced_id: str | None = None,
+    forced_name: str | None = None,
+) -> list[ImportResult]:
+    with tempfile.TemporaryDirectory(prefix="shimeji-import-") as temp_dir:
+        root = extract_source(source.resolve(), Path(temp_dir))
+        return import_shimeji_root(root, output_root, forced_id, forced_name)
+
+
+def install_native_skin_root(skin_root: Path, output_root: Path) -> ImportResult:
+    skin_path = skin_root / "skin.json"
+    if not skin_path.is_file():
+        raise SystemExit(f"Missing native skin manifest: {skin_path}")
+    try:
+        skin = json.loads(skin_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Invalid skin.json: {exc}") from exc
+    if not isinstance(skin, dict):
+        raise SystemExit("skin.json must contain an object.")
+    skin_id = str(skin.get("id", "")).strip()
+    if skin_id == "" or safe_id(skin_id) != skin_id:
+        raise SystemExit(f"Skin id must contain only lowercase letters, numbers, '-' or '_': {skin_id!r}")
+    validation = validate_skin_manifest(skin, skin_path, PROJECT_ROOT)
+    if validation["errors"]:
+        raise SystemExit("Invalid skin package: " + "; ".join(validation["errors"]))
+    skin = apply_quality_metadata(skin, validation)
+
+    output_root.mkdir(parents=True, exist_ok=True)
+    output_dir = output_root / skin_id
+    safe_copytree(skin_root, output_dir)
+    (output_dir / "skin.json").write_text(json.dumps(skin, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    report = {
+        "schema_version": SCHEMA_VERSION,
+        "skin_id": skin_id,
+        "skin_name": str(skin.get("name", skin_id)),
+        "source": skin.get("source", {"format": "mascotmate-skin"}),
+        "action_count": validation["action_count"],
+        "frame_count": validation["frame_count"],
+        "capability_coverage": validation["capability_coverage"],
+        "missing_capabilities": validation["missing_capabilities"],
+        "generated_mirrors": [],
+        "failed_frames": [],
+        "behavior_mapping": {},
+        "compatibility_score": validation["score"],
+        "compatibility_level": validation["level"],
+        "errors": validation["errors"],
+        "warnings": validation["warnings"],
+    }
+    (output_dir / "import_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return ImportResult(output_dir, report)
+
+
+def install_skin_source(
+    source: Path,
+    output_root: Path,
+    forced_id: str | None = None,
+    forced_name: str | None = None,
+) -> list[ImportResult]:
+    with tempfile.TemporaryDirectory(prefix="skin-install-") as temp_dir:
+        root = extract_source(source.resolve(), Path(temp_dir))
+        native_manifest = find_native_skin_manifest(root)
+        if native_manifest is not None:
+            if forced_id or forced_name:
+                raise SystemExit("--id and --name are only valid for Shimeji imports.")
+            return [install_native_skin_root(native_manifest.parent, output_root)]
+        return import_shimeji_root(root, output_root, forced_id, forced_name)
+
+
+def print_results(imported: list[ImportResult], json_report: bool) -> None:
+    if json_report:
+        print(json.dumps([
+            {"path": str(item.path), "report": item.report}
+            for item in imported
+        ], ensure_ascii=False, indent=2))
+    else:
+        for item in imported:
+            print(item.path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Shimeji-ee zip file or extracted folder.")
@@ -683,27 +815,8 @@ def main() -> int:
     parser.add_argument("--json-report", action="store_true", help="Print imported skin paths and reports as JSON.")
     args = parser.parse_args()
 
-    with tempfile.TemporaryDirectory(prefix="shimeji-import-") as temp_dir:
-        root = extract_source(args.source.resolve(), Path(temp_dir))
-        image_sets = find_image_sets(root)
-        if not image_sets:
-            raise SystemExit("No Shimeji image sets found.")
-        if len(image_sets) > 1 and (args.skin_id or args.skin_name):
-            raise SystemExit("--id and --name can only be used when importing one image set.")
-        args.output_root.mkdir(parents=True, exist_ok=True)
-        imported: list[ImportResult] = [
-            build_skin(root, image_set, args.output_root, args.skin_id, args.skin_name)
-            for image_set in image_sets
-        ]
-
-    if args.json_report:
-        print(json.dumps([
-            {"path": str(item.path), "report": item.report}
-            for item in imported
-        ], ensure_ascii=False, indent=2))
-    else:
-        for item in imported:
-            print(item.path)
+    imported = import_shimeji_source(args.source, args.output_root, args.skin_id, args.skin_name)
+    print_results(imported, args.json_report)
     return 0
 
 

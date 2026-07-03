@@ -5,6 +5,8 @@ const BehaviorBrainScript = preload("res://scripts/BehaviorBrain.gd")
 const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const PetSpriteScript = preload("res://scripts/PetSprite.gd")
 const MainScript = preload("res://scripts/Main.gd")
+const SkinCatalogClientScript = preload("res://scripts/SkinCatalogClient.gd")
+const SkinManagerWindowScript = preload("res://scripts/SkinManagerWindow.gd")
 
 const FIXED_ENTERTAINMENT_TIME := 1761998400
 
@@ -57,6 +59,26 @@ func _run() -> void:
 	if not skin_manager.select_skin("classic_shinchan"):
 		_fail("Default skin could not be selected.")
 		return
+
+	var catalog_client = SkinCatalogClientScript.new()
+	root_node.add_child(catalog_client)
+	catalog_client.configure(repo_root, config_dir)
+	var catalog_entries = catalog_client.load_fallback_catalog()
+	if catalog_entries.is_empty():
+		_fail("Skin catalog fallback did not load any entries.")
+		return
+	var download_result := {"path": "", "failure": ""}
+	catalog_client.skin_downloaded.connect(func(_skin_id, path): download_result["path"] = path)
+	catalog_client.skin_download_failed.connect(func(_skin_id, message): download_result["failure"] = message)
+	catalog_client.download_skin(catalog_entries[0])
+	if str(download_result["path"]) == "":
+		_fail("Skin catalog fallback download validation failed: %s" % str(download_result["failure"]))
+		return
+
+	var skin_window = SkinManagerWindowScript.new()
+	root_node.add_child(skin_window)
+	await process_frame
+	skin_window.configure(skin_manager, null, repo_root)
 
 	var pet_sprite = PetSpriteScript.new()
 	root_node.add_child(pet_sprite)

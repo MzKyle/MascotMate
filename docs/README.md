@@ -19,7 +19,7 @@
 - **小游戏** - 饭团投喂、接球挑战，并影响心情、饥饿、体力和亲密度
 - **截图贴图** - Windows、macOS、Linux 下支持 `F1` 区域截图、`F3` 轮换贴图、`F4` 关闭当前贴图
 - **素材管线** - 动作帧统一放在 `resource_hd/`，生成动作清单、默认皮肤和逐帧透明区域元数据
-- **皮肤 SDK** - v2 `skin.json`、Shimeji-ee 导入报告、兼容评分和外置语料测试
+- **皮肤 SDK** - v2 `skin.json`、在线精选源、Shimeji-ee 导入报告、兼容评分和外置语料测试
 - **Linux 打包** - 支持 portable Godot runtime bundle，也可安装 export templates 后走 Godot export
 
 ## 快速导航
@@ -32,6 +32,7 @@
 - [截图贴图](modules/screenshot-pins.md)
 - [素材与动作](modules/assets.md)
 - [皮肤包规范](sdk/skin-package-spec.md)
+- [在线精选皮肤源](sdk/skin-catalog.md)
 - [Shimeji-ee 导入](sdk/shimeji-import.md)
 - [故障排查 FAQ](faq/troubleshooting.md)
 
