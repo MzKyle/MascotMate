@@ -67,6 +67,27 @@ def output_root_default() -> Path:
     return Path.home() / ".config" / CONFIG_DIR_NAME / "skins"
 
 
+def safe_zip_member_path(name: str) -> Path | None:
+    normalized = name.replace("\\", "/").strip()
+    if normalized in ("", ".", "/"):
+        return None
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    if normalized in ("", "."):
+        return None
+    if normalized.startswith("/"):
+        raise SystemExit(f"Unsafe path in zip: {name}")
+    path = Path(normalized)
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or any(part == "" for part in path.parts)
+        or re.match(r"^[A-Za-z]:", normalized)
+    ):
+        raise SystemExit(f"Unsafe path in zip: {name}")
+    return path
+
+
 def extract_source(source: Path, temp_root: Path) -> Path:
     if source.is_dir():
         return source
@@ -75,10 +96,23 @@ def extract_source(source: Path, temp_root: Path) -> Path:
     target = temp_root / "source"
     with zipfile.ZipFile(source) as zf:
         for member in zf.infolist():
-            member_path = Path(member.filename)
-            if member_path.is_absolute() or ".." in member_path.parts:
-                raise SystemExit(f"Unsafe path in zip: {member.filename}")
-        zf.extractall(target)
+            member_path = safe_zip_member_path(member.filename)
+            if member_path is None:
+                continue
+            destination = (target / member_path).resolve()
+            try:
+                destination.relative_to(target.resolve())
+            except ValueError as exc:
+                raise SystemExit(f"Unsafe path in zip: {member.filename}") from exc
+            mode = member.external_attr >> 16
+            if mode and (mode & 0o170000) == 0o120000:
+                raise SystemExit(f"Unsafe symlink in zip: {member.filename}")
+            if member.is_dir():
+                destination.mkdir(parents=True, exist_ok=True)
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(member) as source_file, destination.open("wb") as dest_file:
+                shutil.copyfileobj(source_file, dest_file)
     return target
 
 

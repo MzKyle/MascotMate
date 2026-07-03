@@ -27,6 +27,7 @@ from import_shimeji_skin import install_skin_source
 
 CONFIG_DIR_NAME = "mascotmate-desktop"
 MAX_IMPORT_BYTES = 100 * 1024 * 1024
+INSTALLABLE_SOURCE_TYPES = {"curated_package", "local_package"}
 
 
 def default_config_dir() -> Path:
@@ -129,7 +130,7 @@ class SkinStoreApp:
             if not isinstance(entry, dict):
                 continue
             item = dict(entry)
-            if str(item.get("source_type", "curated_package")) == "curated_package":
+            if str(item.get("source_type", "curated_package")) in INSTALLABLE_SOURCE_TYPES:
                 preview = str(item.get("preview", ""))
                 if is_safe_relative_ref(preview):
                     item["preview_url"] = self._asset_url(f"skin_catalog/{preview}", token)
@@ -165,7 +166,7 @@ class SkinStoreApp:
         entry = self._curated_entry(skin_id)
         if not entry:
             raise ValueError("皮肤不存在或不是可安装精选皮肤。")
-        if str(entry.get("source_type", "curated_package")) != "curated_package":
+        if str(entry.get("source_type", "curated_package")) not in INSTALLABLE_SOURCE_TYPES:
             raise ValueError("第三方浏览条目不能由应用内安装。")
         package_ref = str(entry.get("package", ""))
         if not is_safe_relative_ref(package_ref):

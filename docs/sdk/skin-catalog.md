@@ -1,11 +1,12 @@
 # 皮肤商店 catalog
 
-皮肤商店有两类数据源：
+皮肤商店有三类数据源：
 
 | `source_type` | 用途 | 下载方式 |
 | --- | --- | --- |
 | `external_browser` | 第三方 Shimeji 浏览条目，例如 Cachomon SFW 列表 | 只打开原站页面，用户下载后拖入或导入 ZIP |
 | `curated_package` | 项目维护、明确允许再分发的精选皮肤包 | 应用内下载、校验 SHA-256、安装并启用 |
+| `local_package` | 本地用户提供、随本机包复制的精选皮肤包 | 应用内安装、校验 SHA-256、安装并启用 |
 
 默认体验由浏览器版皮肤商店承载：顶部展示本地 ZIP 导入、本地已安装皮肤和随包可直装精选皮肤，下面展示 `external_browser` 条目，让用户能看到真实 Shimeji 皮肤生态。
 
@@ -78,25 +79,25 @@ python3 scripts/pet_helper.py fetch-cachomon-index --safe --json
 https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_catalog/catalog.json
 ```
 
-网络不可用或远端格式错误时，运行时会回退到随包复制的本地 `skin_catalog/catalog.json`。精选源只收录明确允许再分发的皮肤。当前随包精选包含两款由 Kenney Animal Pack 的 CC0 PNG 转换来的原生皮肤包，许可说明位于 `skin_catalog/notices/kenney_animal_pack/`。
+网络不可用或远端格式错误时，运行时会回退到随包复制的本地 `skin_catalog/catalog.json`。远端 `curated_package` 只收录明确允许再分发的皮肤；本机验收包可以使用 `local_package` 放入用户本地提供的 ZIP 转换结果。当前本地直装精选包含 `Omen` 和 `Xenom`，由 `resource/Omen the Growlithe Shimeji [SFW].zip` 转换生成，说明文件位于 `skin_catalog/notices/omen_xenom/`。
 
-`curated_package` 条目字段：
+`local_package` 条目字段：
 
 ```json
 {
-  "source_type": "curated_package",
-  "id": "kenney_panda",
-  "name": "Kenney Panda",
-  "description": "A clean high-resolution panda companion adapted from Kenney's CC0 Animal Pack.",
-  "tags": ["featured", "animal", "panda", "kenney", "cc0"],
+  "source_type": "local_package",
+  "id": "omen",
+  "name": "Omen",
+  "description": "A locally bundled Growlithe Shimeji converted into a MascotMate skin.",
+  "tags": ["featured", "local", "shimeji", "growlithe", "omen"],
   "license": {
-    "type": "Creative Commons CC0",
-    "summary": "Adapted from Kenney Animal Pack. Attribution is appreciated but not required.",
-    "redistributable": true
+    "type": "user-provided",
+    "summary": "Local user-provided Shimeji package.",
+    "redistributable": false
   },
   "format": "mascotmate_skin_zip",
-  "preview": "previews/kenney_panda.png",
-  "package": "packages/kenney_panda.zip",
+  "preview": "previews/omen.png",
+  "package": "packages/omen.zip",
   "sha256": "...",
   "size_bytes": 12345,
   "min_app_version": "1.2.0"
@@ -107,13 +108,13 @@ https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_c
 
 ## 安装与校验
 
-精选源下载的 ZIP 必须满足：
+精选源下载或本地直装的 ZIP 必须满足：
 
 - 皮肤包小于 100MB。
 - `sha256` 与实际文件一致。
 - ZIP 内不能包含绝对路径、`..` 路径或符号链接。
 - 原生皮肤包必须包含 `skin.json`；Shimeji-ee ZIP 会通过导入器转换。
-- `license.redistributable` 必须为 `true`。
+- `curated_package` 的 `license.redistributable` 必须为 `true`；`local_package` 仅用于本机包，不声明再分发授权。
 
 校验精选源：
 
@@ -121,7 +122,7 @@ https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_c
 python3 scripts/validate_skin_catalog.py --check
 ```
 
-重新下载 Kenney Animal Pack 素材并生成随包精选源：
+从本地 Omen/Xenom ZIP 重新生成随包本地精选源：
 
 ```bash
 python3 scripts/fetch_featured_skins.py

@@ -161,6 +161,24 @@ class ImportShimejiSkinTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.importer.extract_source(archive, self.root / "extract")
 
+    def test_extract_zip_ignores_root_directory_placeholder(self) -> None:
+        archive = self.root / "root-placeholder.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("/", b"")
+            zf.writestr("img/Buddy/shime1.png", b"png")
+
+        extracted = self.importer.extract_source(archive, self.root / "extract")
+
+        self.assertTrue((extracted / "img" / "Buddy" / "shime1.png").is_file())
+
+    def test_rejects_zip_absolute_member(self) -> None:
+        archive = self.root / "absolute.zip"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("/tmp/bad.png", b"bad")
+
+        with self.assertRaises(SystemExit):
+            self.importer.extract_source(archive, self.root / "extract")
+
 
 if __name__ == "__main__":
     unittest.main()

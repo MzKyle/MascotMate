@@ -68,24 +68,24 @@ func _run() -> void:
 		_fail("Skin catalog fallback did not load any entries.")
 		return
 	var external_seen := false
-	var curated_entry := {}
+	var installable_entry := {}
 	for entry in catalog_entries:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
 		if str(entry.get("source_type", "")) == "external_browser":
 			external_seen = true
-		if str(entry.get("source_type", "")) == "curated_package" and curated_entry.is_empty():
-			curated_entry = entry
+		if str(entry.get("source_type", "")) in ["curated_package", "local_package"] and installable_entry.is_empty():
+			installable_entry = entry
 	if not external_seen:
 		_fail("Skin catalog fallback did not include external Shimeji entries.")
 		return
-	if curated_entry.is_empty():
-		_fail("Skin catalog fallback did not include curated installable entries.")
+	if installable_entry.is_empty():
+		_fail("Skin catalog fallback did not include installable entries.")
 		return
 	var download_result := {"path": "", "failure": ""}
 	catalog_client.skin_downloaded.connect(func(_skin_id, path): download_result["path"] = path)
 	catalog_client.skin_download_failed.connect(func(_skin_id, message): download_result["failure"] = message)
-	catalog_client.download_skin(curated_entry)
+	catalog_client.download_skin(installable_entry)
 	if str(download_result["path"]) == "":
 		_fail("Skin catalog fallback download validation failed: %s" % str(download_result["failure"]))
 		return

@@ -3,51 +3,51 @@
   "updated_at": "2026-07-03",
   "skins": [
     {
-      "id": "kenney_panda",
-      "source_type": "curated_package",
-      "name": "Kenney Panda",
-      "description": "A clean high-resolution panda companion adapted from Kenney's CC0 Animal Pack.",
+      "id": "omen",
+      "source_type": "local_package",
+      "name": "Omen",
+      "description": "A locally bundled Growlithe Shimeji converted into a MascotMate skin.",
       "tags": [
         "featured",
-        "animal",
-        "panda",
-        "kenney",
-        "cc0"
+        "local",
+        "shimeji",
+        "growlithe",
+        "omen"
       ],
       "license": {
-        "type": "Creative Commons CC0",
-        "summary": "Adapted from Kenney Animal Pack. Attribution is appreciated but not required.",
-        "redistributable": true
+        "type": "user-provided",
+        "summary": "Local user-provided Shimeji package. MascotMate does not assert redistribution rights.",
+        "redistributable": false
       },
       "format": "mascotmate_skin_zip",
-      "preview": "previews/kenney_panda.png",
-      "package": "packages/kenney_panda.zip",
-      "sha256": "cc2d7913fe3b9303e5e2c9090c77a210f7b3c9f8df6293eccc3e6606314b60d4",
-      "size_bytes": 366593,
+      "preview": "previews/omen.png",
+      "package": "packages/omen.zip",
+      "sha256": "56bc9d5ebf9c43bb46034dd69e6c886d5cce2139bf3b7a1055d595b3d945f29b",
+      "size_bytes": 8011979,
       "min_app_version": "1.2.0"
     },
     {
-      "id": "kenney_rabbit",
-      "source_type": "curated_package",
-      "name": "Kenney Rabbit",
-      "description": "A bright high-resolution rabbit companion adapted from Kenney's CC0 Animal Pack.",
+      "id": "xenom",
+      "source_type": "local_package",
+      "name": "Xenom",
+      "description": "A locally bundled Growlithe Shimeji variant converted into a MascotMate skin.",
       "tags": [
         "featured",
-        "animal",
-        "rabbit",
-        "kenney",
-        "cc0"
+        "local",
+        "shimeji",
+        "growlithe",
+        "xenom"
       ],
       "license": {
-        "type": "Creative Commons CC0",
-        "summary": "Adapted from Kenney Animal Pack. Attribution is appreciated but not required.",
-        "redistributable": true
+        "type": "user-provided",
+        "summary": "Local user-provided Shimeji package. MascotMate does not assert redistribution rights.",
+        "redistributable": false
       },
       "format": "mascotmate_skin_zip",
-      "preview": "previews/kenney_rabbit.png",
-      "package": "packages/kenney_rabbit.zip",
-      "sha256": "b37b8cc29850d570f3e0bf7186480b9cbc33ca7cbfe67f2a32319db452c9dd3a",
-      "size_bytes": 370497,
+      "preview": "previews/xenom.png",
+      "package": "packages/xenom.zip",
+      "sha256": "4b938f05eee49835c409bd38e11b86c48d67806a6b1f33ce4c0c749e38324405",
+      "size_bytes": 8793492,
       "min_app_version": "1.2.0"
     }
   ]

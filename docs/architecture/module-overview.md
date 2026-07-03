@@ -34,7 +34,7 @@
 | `scripts/import_shimeji_skin.py` | 把 Shimeji-ee zip/目录导入为皮肤包 |
 | `scripts/cachomon_catalog.py` | 抓取并解析 Cachomon SFW 列表元数据，不下载第三方 ZIP |
 | `scripts/skin_store_server.py` | 提供只监听 `127.0.0.1` 的浏览器皮肤商店 API |
-| `scripts/fetch_featured_skins.py` | 下载 Kenney Animal Pack CC0 资源并生成随包精选皮肤包 |
+| `scripts/fetch_featured_skins.py` | 从本地 Omen/Xenom Shimeji ZIP 生成随包本地精选皮肤包 |
 | `scripts/validate_skin_catalog.py` | 校验精选皮肤源和随包精选皮肤 |
 | `scripts/generate_hd_assets.py` | 生成高清资源副本 |
 | `scripts/generate_peek_assets.py` | 生成贴边偷看图 |

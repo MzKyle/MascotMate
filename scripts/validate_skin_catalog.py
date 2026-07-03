@@ -24,7 +24,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CATALOG = ROOT / "skin_catalog" / "catalog.json"
 MAX_PACKAGE_BYTES = 100 * 1024 * 1024
 ALLOWED_FORMATS = {"mascotmate_skin_zip", "shimeji_zip", "shimeji-ee"}
-ALLOWED_SOURCE_TYPES = {"curated_package", "external_browser"}
+INSTALLABLE_SOURCE_TYPES = {"curated_package", "local_package"}
+ALLOWED_SOURCE_TYPES = INSTALLABLE_SOURCE_TYPES | {"external_browser"}
 
 
 def sha256(path: Path) -> str:
@@ -83,7 +84,7 @@ def validate_catalog(data: dict[str, Any], catalog_dir: Path, *, check_files: bo
             if source_type not in ALLOWED_SOURCE_TYPES:
                 errors.append(f"{skin_id}.source_type is unsupported: {source_type!r}")
             required_fields = ["name", "description", "format", "min_app_version"]
-            if source_type == "curated_package":
+            if source_type in INSTALLABLE_SOURCE_TYPES:
                 required_fields.extend(["preview", "package", "sha256"])
             else:
                 required_fields.extend(["source_url", "preview_url"])
@@ -101,9 +102,9 @@ def validate_catalog(data: dict[str, Any], catalog_dir: Path, *, check_files: bo
                     errors.append(f"{skin_id}.license.redistributable must be true.")
             preview_ref = str(entry.get("preview", ""))
             package_ref = str(entry.get("package", ""))
-            if source_type == "curated_package" and not is_safe_relative_ref(preview_ref):
+            if source_type in INSTALLABLE_SOURCE_TYPES and not is_safe_relative_ref(preview_ref):
                 errors.append(f"{skin_id}.preview must be a safe relative path.")
-            if source_type == "curated_package" and not is_safe_relative_ref(package_ref):
+            if source_type in INSTALLABLE_SOURCE_TYPES and not is_safe_relative_ref(package_ref):
                 errors.append(f"{skin_id}.package must be a safe relative path.")
             if not check_files:
                 continue
