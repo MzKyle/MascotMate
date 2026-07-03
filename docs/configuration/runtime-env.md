@@ -52,7 +52,7 @@ CRAYON_PET_ENABLE_GLOBAL_HOTKEYS=0 scripts/run_godot_pet.sh
 
 这不会禁用应用内快捷键。窗口聚焦时，`F1`、`F3`、`F4` 仍可由 Godot 输入系统处理。
 
-## 在线精选皮肤
+## 皮肤商店精选源
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -64,3 +64,5 @@ CRAYON_PET_ENABLE_GLOBAL_HOTKEYS=0 scripts/run_godot_pet.sh
 ```bash
 MASCOTMATE_SKIN_CATALOG_URL=http://127.0.0.1:8000/catalog.json scripts/run_godot_pet.sh
 ```
+
+这个变量只影响可应用内下载的精选源。Cachomon/Shimeji 浏览索引由 helper 写入 `~/.config/mascotmate-desktop/catalog_cache/cachomon/index.json`，应用只打开原站页面，不代下载第三方 ZIP。

@@ -4,6 +4,7 @@
   "skins": [
     {
       "id": "mint_buddy",
+      "source_type": "curated_package",
       "name": "Mint Buddy",
       "description": "A calm mint desktop companion with soft idle and walk frames.",
       "tags": [
@@ -25,6 +26,7 @@
     },
     {
       "id": "sunny_pixel",
+      "source_type": "curated_package",
       "name": "Sunny Pixel",
       "description": "A bright pixel-style sample skin for testing online downloads.",
       "tags": [

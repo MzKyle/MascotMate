@@ -5,8 +5,8 @@
 ![MascotMate Desktop](docs/assets/cover.png)
 
 A local Godot desktop pet with transparent-window animation, physics interaction,
-companion behavior, mini games, screenshots as sticky desktop pins, and Shimeji-ee skin
-imports.
+companion behavior, mini games, screenshots as sticky desktop pins, and a Shimeji-ee
+skin shop with assisted imports.
 
 [Read the documentation](docs/README.md)
 
@@ -19,8 +19,7 @@ imports.
 - Feed it, play the catch mini game, or check its local state.
 - Capture a screen region with `F1`, paste recent captures as pinned windows with `F3`,
   and close the active pin with `F4`.
-- Browse curated online skins, download them in the skin manager, or import
-  Shimeji-ee ZIPs and folders manually.
+- Browse the skin shop, open Shimeji source pages, and import downloaded ZIPs or folders.
 
 ## Quick Start From Source
 
@@ -90,7 +89,7 @@ python3 -m unittest discover tests
 - [Behavior system](docs/modules/behavior.md)
 - [Screenshot pins](docs/modules/screenshot-pins.md)
 - [Skin package spec](docs/sdk/skin-package-spec.md)
-- [Curated skin catalog](docs/sdk/skin-catalog.md)
+- [Skin shop catalog](docs/sdk/skin-catalog.md)
 - [Shimeji-ee import](docs/sdk/shimeji-import.md)
 - [Troubleshooting](docs/faq/troubleshooting.md)
 

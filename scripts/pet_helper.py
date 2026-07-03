@@ -137,6 +137,49 @@ def install_skin(args: argparse.Namespace) -> int:
     return 0
 
 
+def load_cachomon_module():
+    script = Path(__file__).resolve().with_name("cachomon_catalog.py")
+    if not script.is_file() and getattr(sys, "frozen", False):
+        script = Path(sys.executable).resolve().with_name("cachomon_catalog.py")
+    if not script.is_file():
+        print("cachomon_catalog.py was not found.", file=sys.stderr)
+        return None
+    spec = importlib.util.spec_from_file_location("cachomon_catalog", script)
+    if spec == None or spec.loader == None:
+        print("Unable to load cachomon_catalog.py.", file=sys.stderr)
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def fetch_cachomon_index(args: argparse.Namespace) -> int:
+    module = load_cachomon_module()
+    if module is None:
+        return 2
+    if args.html_fixture:
+        html = args.html_fixture.read_text(encoding="utf-8")
+        entries = module.parse_grid_html(html, module.CACHOMON_SAFE_GRID_URL)
+        index = {
+            "schema_version": 1,
+            "source": "cachomon",
+            "source_url": module.CACHOMON_SAFE_GRID_URL,
+            "safe": True,
+            "fetched_at": module.datetime.now(module.timezone.utc).isoformat(timespec="seconds"),
+            "count": len(entries),
+            "entries": entries,
+        }
+    else:
+        index = module.fetch_index(safe=args.safe, timeout=args.timeout)
+    module.cache_index(index, args.cache_root)
+    if args.json_report:
+        print(module.json.dumps(index, ensure_ascii=False, indent=2))
+    else:
+        print(args.cache_root / "index.json")
+    return 0
+
+
 def copy_image_windows(path: Path) -> int:
     powershell = shutil.which("powershell.exe") or shutil.which("powershell")
     if not powershell:
@@ -440,6 +483,13 @@ def parse_args() -> argparse.Namespace:
     install_skin_parser.add_argument("--id", dest="skin_id")
     install_skin_parser.add_argument("--name", dest="skin_name")
     install_skin_parser.add_argument("--json-report", action="store_true")
+
+    cachomon = subparsers.add_parser("fetch-cachomon-index")
+    cachomon.add_argument("--safe", action="store_true", default=True)
+    cachomon.add_argument("--json", dest="json_report", action="store_true")
+    cachomon.add_argument("--cache-root", type=Path, default=Path.home() / ".config" / "mascotmate-desktop" / "catalog_cache" / "cachomon")
+    cachomon.add_argument("--timeout", type=float, default=12.0)
+    cachomon.add_argument("--html-fixture", type=Path)
     return parser.parse_args()
 
 
@@ -454,6 +504,8 @@ def main() -> int:
             return import_shimeji(args)
         if args.command == "install-skin":
             return install_skin(args)
+        if args.command == "fetch-cachomon-index":
+            return fetch_cachomon_index(args)
     except Exception as exc:
         print(f"pet_helper.py: {exc}", file=sys.stderr)
         return 1

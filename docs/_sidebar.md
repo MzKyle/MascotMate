@@ -23,7 +23,7 @@
 
 - **皮肤 SDK**
   - [皮肤包规范](sdk/skin-package-spec.md)
-  - [在线精选皮肤源](sdk/skin-catalog.md)
+  - [皮肤商店 catalog](sdk/skin-catalog.md)
   - [Shimeji-ee 导入](sdk/shimeji-import.md)
 
 - **代码导读**

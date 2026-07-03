@@ -73,6 +73,7 @@ def build_helper() -> Path:
         ROOT / "scripts" / "pet_helper.py",
         ROOT / "scripts" / "import_shimeji_skin.py",
         ROOT / "scripts" / "skin_sdk.py",
+        ROOT / "scripts" / "cachomon_catalog.py",
     ]
     if helper_path.exists() and helper_path.stat().st_mtime >= max(path.stat().st_mtime for path in helper_sources if path.exists()):
         return helper_path
@@ -122,6 +123,9 @@ def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir
     skin_sdk = ROOT / "scripts" / "skin_sdk.py"
     if skin_sdk.exists():
         shutil.copy2(skin_sdk, scripts_dir / "skin_sdk.py")
+    cachomon_catalog = ROOT / "scripts" / "cachomon_catalog.py"
+    if cachomon_catalog.exists():
+        shutil.copy2(cachomon_catalog, scripts_dir / "cachomon_catalog.py")
     if private_skins_dir is not None:
         if not private_skins_dir.is_dir():
             raise FileNotFoundError(private_skins_dir)

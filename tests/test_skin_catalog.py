@@ -15,6 +15,8 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 IMPORTER_PATH = ROOT / "scripts" / "import_shimeji_skin.py"
 CATALOG_VALIDATOR_PATH = ROOT / "scripts" / "validate_skin_catalog.py"
+CACHOMON_PATH = ROOT / "scripts" / "cachomon_catalog.py"
+FIXTURE_PATH = ROOT / "tests" / "fixtures" / "cachomon_grid_sample.html"
 
 
 def load_module(name: str, path: Path):
@@ -87,6 +89,7 @@ class SkinCatalogTests(unittest.TestCase):
     def setUp(self) -> None:
         self.importer = load_module("import_shimeji_skin_test", IMPORTER_PATH)
         self.validator = load_module("validate_skin_catalog_test", CATALOG_VALIDATOR_PATH)
+        self.cachomon = load_module("cachomon_catalog_test", CACHOMON_PATH)
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
 
@@ -166,6 +169,48 @@ class SkinCatalogTests(unittest.TestCase):
         errors = self.validator.validate_catalog(data, catalog_dir)
 
         self.assertTrue(any("sha256 mismatch" in item for item in errors))
+
+    def test_cachomon_parser_extracts_external_browser_entries(self) -> None:
+        html = FIXTURE_PATH.read_text(encoding="utf-8")
+
+        entries = self.cachomon.parse_grid_html(html)
+        by_name = {entry["name"]: entry for entry in entries}
+
+        self.assertEqual(len(entries), 4)
+        self.assertEqual(by_name["Rock Pikmin"]["id"], "cachomon-419")
+        self.assertEqual(by_name["Rock Pikmin"]["status"], "free")
+        self.assertEqual(by_name["Rock Pikmin"]["downloads"], 33)
+        self.assertEqual(by_name["Rock Pikmin"]["complexity"], "Regular")
+        self.assertEqual(by_name["Rock Pikmin"]["artist"], "FluffyFoxOfFate")
+        self.assertIn("Hotspots", by_name["Rock Pikmin"]["features"])
+        self.assertEqual(by_name["Perry a Platypus"]["status"], "patreon")
+        self.assertEqual(by_name["Zephyr the Vampire Glaceon"]["status"], "beta")
+        self.assertEqual(by_name["Eevee"]["status"], "unavailable")
+        self.assertTrue(by_name["Eevee"]["preview_url"].startswith("https://cachomon.com/"))
+        self.assertEqual(by_name["Eevee"]["source_type"], "external_browser")
+
+    def test_external_browser_catalog_skips_package_validation(self) -> None:
+        data = {
+            "schema_version": 1,
+            "updated_at": "2026-07-03",
+            "skins": [{
+                "id": "cachomon-419",
+                "source_type": "external_browser",
+                "name": "Rock Pikmin",
+                "description": "Open the original page.",
+                "tags": ["shimeji", "cachomon", "free"],
+                "license": {"type": "external", "summary": "Original site", "redistributable": False},
+                "format": "shimeji-ee",
+                "preview": "",
+                "preview_url": "https://cachomon.com/thumbnails/rockPikmin.png",
+                "source_url": "https://cachomon.com/shimeji.php?id=419",
+                "min_app_version": "1.2.0",
+            }],
+        }
+
+        errors = self.validator.validate_catalog(data, self.root / "catalog")
+
+        self.assertEqual(errors, [])
 
 
 if __name__ == "__main__":

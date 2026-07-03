@@ -23,7 +23,8 @@ from import_shimeji_skin import install_skin_source
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CATALOG = ROOT / "skin_catalog" / "catalog.json"
 MAX_PACKAGE_BYTES = 100 * 1024 * 1024
-ALLOWED_FORMATS = {"mascotmate_skin_zip", "shimeji_zip"}
+ALLOWED_FORMATS = {"mascotmate_skin_zip", "shimeji_zip", "shimeji-ee"}
+ALLOWED_SOURCE_TYPES = {"curated_package", "external_browser"}
 
 
 def sha256(path: Path) -> str:
@@ -78,7 +79,15 @@ def validate_catalog(data: dict[str, Any], catalog_dir: Path, *, check_files: bo
             if skin_id in seen_ids:
                 errors.append(f"Duplicate skin id: {skin_id}")
             seen_ids.add(skin_id)
-            for field in ["name", "description", "format", "preview", "package", "sha256", "min_app_version"]:
+            source_type = str(entry.get("source_type", "curated_package"))
+            if source_type not in ALLOWED_SOURCE_TYPES:
+                errors.append(f"{skin_id}.source_type is unsupported: {source_type!r}")
+            required_fields = ["name", "description", "format", "min_app_version"]
+            if source_type == "curated_package":
+                required_fields.extend(["preview", "package", "sha256"])
+            else:
+                required_fields.extend(["source_url", "preview_url"])
+            for field in required_fields:
                 if str(entry.get(field, "")).strip() == "":
                     errors.append(f"{skin_id}.{field} is required.")
             if str(entry.get("format", "")) not in ALLOWED_FORMATS:
@@ -88,14 +97,17 @@ def validate_catalog(data: dict[str, Any], catalog_dir: Path, *, check_files: bo
                 errors.append(f"{skin_id}.tags must be a list.")
             license_info = entry.get("license", {})
             if not isinstance(license_info, dict) or not bool(license_info.get("redistributable", False)):
-                errors.append(f"{skin_id}.license.redistributable must be true.")
+                if source_type == "curated_package":
+                    errors.append(f"{skin_id}.license.redistributable must be true.")
             preview_ref = str(entry.get("preview", ""))
             package_ref = str(entry.get("package", ""))
-            if not is_safe_relative_ref(preview_ref):
+            if source_type == "curated_package" and not is_safe_relative_ref(preview_ref):
                 errors.append(f"{skin_id}.preview must be a safe relative path.")
-            if not is_safe_relative_ref(package_ref):
+            if source_type == "curated_package" and not is_safe_relative_ref(package_ref):
                 errors.append(f"{skin_id}.package must be a safe relative path.")
             if not check_files:
+                continue
+            if source_type == "external_browser":
                 continue
 
             preview_path = catalog_dir / preview_ref

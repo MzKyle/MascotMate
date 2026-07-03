@@ -9,16 +9,19 @@ const CACHOMON_PUBLIC_URL := "https://cachomon.com/list.php?a=0&g=1&m=0&t=1"
 const TAB_INSTALLED := "installed"
 const TAB_ONLINE := "online"
 const TAB_IMPORT := "import"
-const BG := Color("#f4faf7")
+const BG := Color("#f6f7fb")
 const SURFACE := Color("#ffffff")
-const SURFACE_ALT := Color("#eef7f2")
-const TEXT := Color("#20312b")
-const MUTED := Color("#66756f")
-const PRIMARY := Color("#2fb67c")
-const PRIMARY_DARK := Color("#1d8f63")
-const SECONDARY := Color("#3f8fd8")
-const BORDER := Color("#d8e6df")
-const WARNING := Color("#d9893f")
+const SURFACE_ALT := Color("#eef4ff")
+const TEXT := Color("#202633")
+const MUTED := Color("#687184")
+const PRIMARY := Color("#2f80ed")
+const PRIMARY_DARK := Color("#1d5fb7")
+const SECONDARY := Color("#26a978")
+const BORDER := Color("#dde3ee")
+const WARNING := Color("#e47b4d")
+const AMBER := Color("#d99a20")
+const ROSE := Color("#d95f7a")
+const MAX_ONLINE_CARDS := 120
 
 var skin_manager
 var config_store
@@ -30,6 +33,9 @@ var tab_button_group: ButtonGroup
 var content_panels := {}
 var installed_list: ItemList
 var online_search: LineEdit
+var source_filter: OptionButton
+var status_filter: OptionButton
+var complexity_filter: OptionButton
 var online_status_label: Label
 var online_grid: GridContainer
 var import_report_text: TextEdit
@@ -58,10 +64,11 @@ var detail_mode := ""
 
 
 func _ready() -> void:
-	title = "皮肤管理"
-	size = Vector2i(1040, 660)
-	min_size = Vector2i(900, 560)
+	title = "皮肤商店"
+	size = Vector2i(1220, 720)
+	min_size = Vector2i(1020, 620)
 	close_requested.connect(hide)
+	files_dropped.connect(_on_files_dropped)
 	_build_ui()
 
 
@@ -85,11 +92,16 @@ func configure(manager, store, root: String) -> void:
 
 func open_window() -> void:
 	_refresh()
+	_switch_tab(TAB_ONLINE)
+	popup_centered()
+	call_deferred("_load_catalog")
+
+
+func _load_catalog() -> void:
+	if online_status_label != null:
+		online_status_label.text = "正在加载 Shimeji 皮肤商店..."
 	if catalog_client != null:
 		catalog_client.load_catalog()
-	var skin_count = skin_manager.list_skins().size() if skin_manager != null else 0
-	_switch_tab(TAB_ONLINE if skin_count <= 1 else TAB_INSTALLED)
-	popup_centered()
 
 
 func _build_ui() -> void:
@@ -117,7 +129,7 @@ func _build_ui() -> void:
 	root.add_child(main)
 
 	var content_stack = Control.new()
-	content_stack.custom_minimum_size = Vector2(520, 0)
+	content_stack.custom_minimum_size = Vector2(650, 0)
 	content_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content_stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	main.add_child(content_stack)
@@ -152,12 +164,12 @@ func _build_sidebar() -> Control:
 	margin.add_child(box)
 
 	var title_label = _make_label(20, TEXT)
-	title_label.text = "皮肤管理"
+	title_label.text = "皮肤商店"
 	box.add_child(title_label)
 
 	tab_button_group = ButtonGroup.new()
+	_add_tab_button(box, TAB_ONLINE, "发现")
 	_add_tab_button(box, TAB_INSTALLED, "已安装")
-	_add_tab_button(box, TAB_ONLINE, "在线精选")
 	_add_tab_button(box, TAB_IMPORT, "导入")
 
 	var spacer = Control.new()
@@ -221,28 +233,55 @@ func _build_online_panel() -> Control:
 	var toolbar = HBoxContainer.new()
 	toolbar.add_theme_constant_override("separation", 8)
 	box.add_child(toolbar)
+
+	source_filter = OptionButton.new()
+	source_filter.custom_minimum_size = Vector2(112, 34)
+	_add_filter_item(source_filter, "Shimeji", "shimeji")
+	_add_filter_item(source_filter, "全部", "all")
+	_add_filter_item(source_filter, "精选", "curated")
+	source_filter.item_selected.connect(func(_index): _fill_online_grid())
+	toolbar.add_child(source_filter)
+
+	status_filter = OptionButton.new()
+	status_filter.custom_minimum_size = Vector2(104, 34)
+	_add_filter_item(status_filter, "全部状态", "all")
+	_add_filter_item(status_filter, "可下载", "free")
+	_add_filter_item(status_filter, "Beta", "beta")
+	_add_filter_item(status_filter, "Patreon", "patreon")
+	_add_filter_item(status_filter, "不可下载", "unavailable")
+	status_filter.item_selected.connect(func(_index): _fill_online_grid())
+	toolbar.add_child(status_filter)
+
+	complexity_filter = OptionButton.new()
+	complexity_filter.custom_minimum_size = Vector2(116, 34)
+	_add_filter_item(complexity_filter, "全部难度", "all")
+	for level in ["Super Easy", "Easy", "Regular", "Difficult", "Extreme", "Madness"]:
+		_add_filter_item(complexity_filter, level, level.to_lower())
+	complexity_filter.item_selected.connect(func(_index): _fill_online_grid())
+	toolbar.add_child(complexity_filter)
+
 	online_search = LineEdit.new()
-	online_search.placeholder_text = "搜索皮肤"
+	online_search.placeholder_text = "搜索 Eevee、Pikmin、作者或特性"
 	online_search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	online_search.text_changed.connect(func(_text): _fill_online_grid())
 	toolbar.add_child(online_search)
-	var reload_button = _make_button("刷新精选", SECONDARY)
+	var reload_button = _make_button("刷新商店", SECONDARY)
 	reload_button.pressed.connect(func():
-		online_status_label.text = "正在加载在线精选..."
+		online_status_label.text = "正在刷新皮肤商店..."
 		if catalog_client != null:
 			catalog_client.load_catalog()
 	)
 	toolbar.add_child(reload_button)
 
 	online_status_label = _make_label(13, MUTED)
-	online_status_label.text = "正在加载在线精选..."
+	online_status_label.text = "正在加载 Shimeji 皮肤商店..."
 	box.add_child(online_status_label)
 
 	var scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(scroll)
 	online_grid = GridContainer.new()
-	online_grid.columns = 2
+	online_grid.columns = 3
 	online_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	online_grid.add_theme_constant_override("h_separation", 10)
 	online_grid.add_theme_constant_override("v_separation", 10)
@@ -287,7 +326,7 @@ func _build_import_panel() -> Control:
 
 func _build_detail_panel() -> Control:
 	var panel = PanelContainer.new()
-	panel.custom_minimum_size = Vector2(348, 0)
+	panel.custom_minimum_size = Vector2(360, 0)
 	panel.add_theme_stylebox_override("panel", _style(SURFACE, BORDER, 1, 8))
 	var margin = _content_margin()
 	panel.add_child(margin)
@@ -296,7 +335,7 @@ func _build_detail_panel() -> Control:
 	margin.add_child(box)
 
 	detail_preview = TextureRect.new()
-	detail_preview.custom_minimum_size = Vector2(148, 148)
+	detail_preview.custom_minimum_size = Vector2(190, 190)
 	detail_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	detail_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	box.add_child(detail_preview)
@@ -349,11 +388,13 @@ func _build_dialogs() -> void:
 	import_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	import_file_dialog.filters = PackedStringArray(["*.zip ; MascotMate or Shimeji ZIP"])
 	import_file_dialog.file_selected.connect(_on_import_source_selected)
+	import_file_dialog.current_dir = _downloads_dir()
 	add_child(import_file_dialog)
 
 	import_folder_dialog = FileDialog.new()
 	import_folder_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	import_folder_dialog.file_mode = FileDialog.FILE_MODE_OPEN_DIR
+	import_folder_dialog.current_dir = _downloads_dir()
 	import_folder_dialog.dir_selected.connect(_on_import_source_selected)
 	add_child(import_folder_dialog)
 
@@ -397,6 +438,21 @@ func _make_label(font_size: int, color: Color) -> Label:
 	return label
 
 
+func _make_badge(text: String, color: Color) -> Label:
+	var label = _make_label(12, Color.WHITE)
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.custom_minimum_size = Vector2(0, 24)
+	var style = _style(color, color, 0, 8)
+	style.set_content_margin(SIDE_LEFT, 8)
+	style.set_content_margin(SIDE_RIGHT, 8)
+	style.set_content_margin(SIDE_TOP, 3)
+	style.set_content_margin(SIDE_BOTTOM, 3)
+	label.add_theme_stylebox_override("normal", style)
+	return label
+
+
 func _make_button(text: String, color: Color) -> Button:
 	var button = Button.new()
 	button.text = text
@@ -408,6 +464,18 @@ func _make_button(text: String, color: Color) -> Button:
 	button.add_theme_stylebox_override("pressed", _style(color.darkened(0.08), color.darkened(0.08), 0, 8))
 	button.add_theme_stylebox_override("disabled", _style(Color("#cbd5cf"), Color("#cbd5cf"), 0, 8))
 	return button
+
+
+func _add_filter_item(button: OptionButton, label: String, value: String) -> void:
+	button.add_item(label)
+	button.set_item_metadata(button.item_count - 1, value)
+
+
+func _selected_filter_value(button: OptionButton, fallback: String) -> String:
+	if button == null or button.item_count == 0:
+		return fallback
+	var metadata = button.get_item_metadata(button.selected)
+	return str(metadata) if metadata != null else fallback
 
 
 func _switch_tab(tab: String) -> void:
@@ -424,7 +492,7 @@ func _switch_tab(tab: String) -> void:
 		elif selected_online_id != "":
 			_select_online(selected_online_id)
 		else:
-			_clear_detail("在线精选")
+			_clear_detail("皮肤商店")
 	elif tab == TAB_IMPORT:
 		_show_import_detail()
 
@@ -508,6 +576,8 @@ func _show_installed_detail(skin_id: String) -> void:
 	]
 	_load_installed_preview(skin)
 	_fill_action_list(skin)
+	detail_actions.visible = true
+	detail_report.visible = true
 	detail_report.text = _format_report(skin)
 	enable_button.visible = true
 	enable_button.disabled = skin_id == skin_manager.selected_skin_id()
@@ -524,6 +594,8 @@ func _show_import_detail() -> void:
 	detail_meta.text = "支持 MascotMate 原生皮肤包和 Shimeji-ee ZIP/文件夹。"
 	detail_body.text = "用户提供素材的授权由用户自行确认。"
 	detail_actions.clear()
+	detail_actions.visible = false
+	detail_report.visible = true
 	detail_report.text = import_report_text.text if import_report_text != null else ""
 	enable_button.visible = false
 	install_button.visible = false
@@ -539,6 +611,8 @@ func _clear_detail(message: String) -> void:
 	detail_meta.text = ""
 	detail_body.text = ""
 	detail_actions.clear()
+	detail_actions.visible = true
+	detail_report.visible = true
 	detail_report.text = ""
 	enable_button.visible = false
 	install_button.visible = false
@@ -549,13 +623,17 @@ func _clear_detail(message: String) -> void:
 func _on_catalog_loaded(loaded_entries: Array, source_label: String, offline: bool) -> void:
 	online_entries = loaded_entries
 	online_by_id = {}
+	var external_count := 0
+	var curated_count := 0
 	for entry in online_entries:
 		if typeof(entry) == TYPE_DICTIONARY:
 			online_by_id[str(entry.get("id", ""))] = entry
-	online_status_label.text = "%s：%d 个皮肤%s" % [source_label, online_entries.size(), "（离线 fallback）" if offline else ""]
+			if str(entry.get("source_type", "")) == "external_browser":
+				external_count += 1
+			else:
+				curated_count += 1
+	online_status_label.text = "%s：%d 个 Shimeji，%d 个精选%s" % [source_label, external_count, curated_count, "（本地缓存）" if offline else ""]
 	_fill_online_grid()
-	for entry in online_entries:
-		catalog_client.request_preview(entry)
 	if active_tab == TAB_ONLINE:
 		if selected_online_id == "" and not online_entries.is_empty():
 			_select_online(str(online_entries[0].get("id", "")))
@@ -567,7 +645,7 @@ func _on_catalog_failed(message: String) -> void:
 	online_status_label.text = message
 	_fill_online_grid()
 	if active_tab == TAB_ONLINE:
-		_clear_detail("在线精选暂不可用")
+		_clear_detail("皮肤商店暂不可用")
 
 
 func _fill_online_grid() -> void:
@@ -577,19 +655,46 @@ func _fill_online_grid() -> void:
 		child.queue_free()
 	card_preview_rects = {}
 	var query = online_search.text.strip_edges().to_lower() if online_search != null else ""
+	var visible_count := 0
 	for entry in online_entries:
-		if typeof(entry) != TYPE_DICTIONARY or not _entry_matches_query(entry, query):
+		if typeof(entry) != TYPE_DICTIONARY or not _entry_matches_filters(entry, query):
 			continue
+		if visible_count >= MAX_ONLINE_CARDS:
+			break
 		online_grid.add_child(_make_online_card(entry))
+		if catalog_client != null:
+			catalog_client.request_preview(entry)
+		visible_count += 1
+	if visible_count == 0:
+		var empty = _make_label(14, MUTED)
+		empty.text = "没有匹配的皮肤。"
+		online_grid.add_child(empty)
+	elif visible_count >= MAX_ONLINE_CARDS:
+		var more = _make_label(13, MUTED)
+		more.text = "已显示前 %d 个结果，继续搜索可缩小范围。" % MAX_ONLINE_CARDS
+		online_grid.add_child(more)
 
 
-func _entry_matches_query(entry: Dictionary, query: String) -> bool:
+func _entry_matches_filters(entry: Dictionary, query: String) -> bool:
+	var source_value = _selected_filter_value(source_filter, "shimeji")
+	var source_type = str(entry.get("source_type", "curated_package"))
+	if source_value == "shimeji" and source_type != "external_browser":
+		return false
+	if source_value == "curated" and source_type != "curated_package":
+		return false
+	var status_value = _selected_filter_value(status_filter, "all")
+	if status_value != "all" and str(entry.get("status", "")) != status_value:
+		return false
+	var complexity_value = _selected_filter_value(complexity_filter, "all")
+	if complexity_value != "all" and str(entry.get("complexity", "")).to_lower() != complexity_value:
+		return false
 	if query == "":
 		return true
 	var haystack = "%s %s %s %s" % [
 		str(entry.get("id", "")),
 		str(entry.get("name", "")),
 		str(entry.get("description", "")),
+		str(entry.get("artist", "")),
 		" ".join(entry.get("tags", [])) if typeof(entry.get("tags", [])) == TYPE_ARRAY else "",
 	]
 	return haystack.to_lower().find(query) >= 0
@@ -598,8 +703,9 @@ func _entry_matches_query(entry: Dictionary, query: String) -> bool:
 func _make_online_card(entry: Dictionary) -> Control:
 	var skin_id = str(entry.get("id", ""))
 	var installed = skin_manager != null and skin_manager.has_skin(skin_id)
+	var source_type = str(entry.get("source_type", "curated_package"))
 	var card = PanelContainer.new()
-	card.custom_minimum_size = Vector2(250, 190)
+	card.custom_minimum_size = Vector2(206, 284)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.add_theme_stylebox_override("panel", _style(SURFACE_ALT if skin_id == selected_online_id else SURFACE, BORDER, 1, 8))
@@ -619,35 +725,78 @@ func _make_online_card(entry: Dictionary) -> Control:
 	box.add_theme_constant_override("separation", 8)
 	margin.add_child(box)
 
+	var preview_shell = PanelContainer.new()
+	preview_shell.custom_minimum_size = Vector2(0, 132)
+	preview_shell.add_theme_stylebox_override("panel", _style(Color("#f8fbff"), BORDER, 1, 8))
+	box.add_child(preview_shell)
+
 	var preview = TextureRect.new()
-	preview.custom_minimum_size = Vector2(0, 86)
+	preview.custom_minimum_size = Vector2(0, 132)
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	if online_preview_paths.has(skin_id):
 		preview.texture = _texture_from_file(str(online_preview_paths[skin_id]))
-	box.add_child(preview)
+	preview_shell.add_child(preview)
 	card_preview_rects[skin_id] = preview
+
+	var badges = HFlowContainer.new()
+	badges.add_theme_constant_override("h_separation", 6)
+	badges.add_theme_constant_override("v_separation", 4)
+	if source_type == "external_browser":
+		badges.add_child(_make_badge(_status_text(str(entry.get("status", ""))), _status_color(str(entry.get("status", "")))))
+		var complexity = str(entry.get("complexity", ""))
+		if complexity != "":
+			badges.add_child(_make_badge(complexity, SECONDARY))
+	else:
+		badges.add_child(_make_badge("精选", SECONDARY))
+	if installed:
+		badges.add_child(_make_badge("已安装", PRIMARY_DARK))
+	box.add_child(badges)
 
 	var name_label = _make_label(16, TEXT)
 	name_label.text = str(entry.get("name", skin_id))
+	name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	name_label.clip_text = true
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	box.add_child(name_label)
+	var byline = _make_label(12, MUTED)
+	byline.text = _card_byline(entry)
+	byline.autowrap_mode = TextServer.AUTOWRAP_OFF
+	byline.clip_text = true
+	byline.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	box.add_child(byline)
 	var meta = _make_label(12, MUTED)
-	meta.text = "%s  %s" % [
-		str(entry.get("format", "")),
-		"已安装" if installed else _format_size(int(entry.get("size_bytes", 0))),
-	]
+	meta.text = _card_meta(entry, installed)
 	box.add_child(meta)
 
-	var button = _make_button("启用" if installed else "安装", PRIMARY if not installed else SECONDARY)
+	var button_text = "启用" if installed else ("打开原站" if source_type == "external_browser" else "安装")
+	var button_color = SECONDARY if installed else (PRIMARY if source_type == "external_browser" else SECONDARY)
+	var button = _make_button(button_text, button_color)
 	button.pressed.connect(func(): _on_online_install_pressed(skin_id))
 	box.add_child(button)
 	return card
 
 
+func _card_meta(entry: Dictionary, installed: bool) -> String:
+	if installed:
+		return "已安装"
+	if str(entry.get("source_type", "")) == "external_browser":
+		return "%s 次下载" % _format_count(int(entry.get("downloads", 0)))
+	return "精选  %s" % _format_size(int(entry.get("size_bytes", 0)))
+
+
+func _card_byline(entry: Dictionary) -> String:
+	if str(entry.get("source_type", "")) == "external_browser":
+		var artist = str(entry.get("artist", ""))
+		return "by %s" % artist if artist != "" else "Cachomon"
+	var tags = entry.get("tags", [])
+	return ", ".join(tags).left(64) if typeof(tags) == TYPE_ARRAY else "MascotMate"
+
+
 func _select_online(skin_id: String) -> void:
 	if not online_by_id.has(skin_id):
 		if online_entries.is_empty():
-			_clear_detail("在线精选")
+			_clear_detail("皮肤商店")
 		return
 	selected_online_id = skin_id
 	_show_online_detail(online_by_id[skin_id])
@@ -658,34 +807,48 @@ func _show_online_detail(entry: Dictionary) -> void:
 	detail_mode = TAB_ONLINE
 	var skin_id = str(entry.get("id", ""))
 	var installed = skin_manager != null and skin_manager.has_skin(skin_id)
+	var source_type = str(entry.get("source_type", "curated_package"))
 	detail_title.text = str(entry.get("name", skin_id))
-	detail_status.text = "已安装" if installed else "可下载"
-	detail_meta.text = "ID: %s\n格式: %s  版本要求: %s\n标签: %s\n大小: %s" % [
-		skin_id,
-		str(entry.get("format", "")),
-		str(entry.get("min_app_version", "")),
-		", ".join(entry.get("tags", [])) if typeof(entry.get("tags", [])) == TYPE_ARRAY else "",
-		_format_size(int(entry.get("size_bytes", 0))),
-	]
-	var license = entry.get("license", {})
-	detail_body.text = "%s\n\n授权：%s；可再分发：%s\n%s" % [
-		str(entry.get("description", "")),
-		str(license.get("type", "unknown")) if typeof(license) == TYPE_DICTIONARY else "unknown",
-		"是" if typeof(license) == TYPE_DICTIONARY and bool(license.get("redistributable", false)) else "否",
-		str(license.get("summary", "")) if typeof(license) == TYPE_DICTIONARY else "",
-	]
 	detail_actions.clear()
-	detail_actions.add_item("SHA-256: %s" % str(entry.get("sha256", "")).left(24))
-	detail_actions.add_item("来源: curated catalog")
-	detail_report.text = "下载安装到用户皮肤目录后会自动刷新并启用。"
+	if source_type == "external_browser":
+		detail_status.text = _status_text(str(entry.get("status", "")))
+		detail_meta.text = "作者: %s\n难度: %s  下载量: %s\n安全级别: %s\n特性: %s" % [
+			str(entry.get("artist", "未知")),
+			str(entry.get("complexity", "")),
+			_format_count(int(entry.get("downloads", 0))),
+			str(entry.get("safe_level", "sfw")).to_upper(),
+			", ".join(entry.get("features", [])) if typeof(entry.get("features", [])) == TYPE_ARRAY else "",
+		]
+		detail_body.text = "打开原站页面下载 ZIP；下载完成后，把 ZIP 拖进这个窗口或使用“导入 ZIP”安装。应用不会镜像或代下载第三方皮肤包。"
+		detail_report.visible = false
+		detail_actions.visible = false
+	else:
+		detail_status.text = "已安装" if installed else "精选可安装"
+		detail_meta.text = "格式: %s  版本要求: %s\n标签: %s\n大小: %s" % [
+			str(entry.get("format", "")),
+			str(entry.get("min_app_version", "")),
+			", ".join(entry.get("tags", [])) if typeof(entry.get("tags", [])) == TYPE_ARRAY else "",
+			_format_size(int(entry.get("size_bytes", 0))),
+		]
+		var license = entry.get("license", {})
+		detail_body.text = "%s\n\n授权：%s；可再分发：%s" % [
+			str(entry.get("description", "")),
+			str(license.get("type", "unknown")) if typeof(license) == TYPE_DICTIONARY else "unknown",
+			"是" if typeof(license) == TYPE_DICTIONARY and bool(license.get("redistributable", false)) else "否",
+		]
+		detail_actions.visible = true
+		detail_report.visible = true
+		detail_actions.add_item("SHA-256: %s" % str(entry.get("sha256", "")).left(24))
+		detail_actions.add_item("来源: curated catalog")
+		detail_report.text = "下载安装到用户皮肤目录后会自动刷新并启用。"
 	detail_preview.texture = null
 	if online_preview_paths.has(skin_id):
 		detail_preview.texture = _texture_from_file(str(online_preview_paths[skin_id]))
-	enable_button.visible = installed
+	enable_button.visible = installed and source_type != "external_browser"
 	enable_button.disabled = false
 	install_button.visible = true
-	install_button.disabled = installed
-	install_button.text = "已安装" if installed else "下载并安装"
+	install_button.disabled = installed and source_type != "external_browser"
+	install_button.text = "打开原站" if source_type == "external_browser" else ("已安装" if installed else "下载并安装")
 	delete_button.visible = false
 	progress_bar.visible = false
 
@@ -702,6 +865,13 @@ func _on_online_install_pressed(skin_id: String) -> void:
 	var target_id = skin_id if skin_id != "" else selected_online_id
 	if target_id == "" or not online_by_id.has(target_id):
 		return
+	var entry: Dictionary = online_by_id[target_id]
+	if str(entry.get("source_type", "curated_package")) == "external_browser":
+		var source_url = str(entry.get("source_url", ""))
+		if source_url != "":
+			OS.shell_open(source_url)
+			emit_signal("notify", "已打开原站页面。下载 ZIP 后可拖入或导入。")
+		return
 	if skin_manager != null and skin_manager.has_skin(target_id):
 		emit_signal("skin_selected", target_id)
 		return
@@ -710,7 +880,7 @@ func _on_online_install_pressed(skin_id: String) -> void:
 	install_button.disabled = true
 	install_button.text = "下载中..."
 	detail_report.text = "正在下载皮肤包。"
-	catalog_client.download_skin(online_by_id[target_id])
+	catalog_client.download_skin(entry)
 
 
 func _on_download_progress(skin_id: String, downloaded_bytes: int, total_bytes: int) -> void:
@@ -742,10 +912,10 @@ func _on_skin_downloaded(skin_id: String, path: String) -> void:
 		emit_signal("notify", message)
 	else:
 		var text = "\n".join(output)
-		detail_report.text = text
+		detail_report.text = _clean_error_text(text)
 		install_button.disabled = false
 		install_button.text = "重试安装"
-		emit_signal("notify", "安装失败：%s" % text.left(180))
+		emit_signal("notify", "安装失败：%s" % _clean_error_text(text).left(180))
 
 
 func _on_skin_download_failed(skin_id: String, message: String) -> void:
@@ -768,10 +938,12 @@ func _on_enable_pressed() -> void:
 
 
 func _on_import_zip_pressed() -> void:
+	import_file_dialog.current_dir = _downloads_dir()
 	import_file_dialog.popup_centered(Vector2i(720, 460))
 
 
 func _on_import_folder_pressed() -> void:
+	import_folder_dialog.current_dir = _downloads_dir()
 	import_folder_dialog.popup_centered(Vector2i(720, 460))
 
 
@@ -794,9 +966,10 @@ func _on_import_source_selected(path: String) -> void:
 		emit_signal("notify", message)
 	else:
 		var text = "\n".join(output)
-		import_report_text.text = text
-		detail_report.text = text
-		emit_signal("notify", "导入失败：%s" % text.left(180))
+		var clean = _clean_error_text(text)
+		import_report_text.text = clean
+		detail_report.text = clean
+		emit_signal("notify", "导入失败：%s" % clean.left(180))
 
 
 func _on_delete_pressed() -> void:
@@ -961,6 +1134,71 @@ func _format_size(bytes: int) -> String:
 	if bytes >= 1024:
 		return "%.1f KB" % (float(bytes) / 1024.0)
 	return "%d B" % bytes
+
+
+func _format_count(value: int) -> String:
+	if value >= 10000:
+		return "%.1f万" % (float(value) / 10000.0)
+	return "%d" % value
+
+
+func _status_text(status: String) -> String:
+	match status:
+		"free":
+			return "可下载"
+		"beta":
+			return "Beta"
+		"patreon":
+			return "Patreon"
+		"unavailable":
+			return "不可下载"
+		_:
+			return "外部页面"
+
+
+func _status_color(status: String) -> Color:
+	match status:
+		"free":
+			return SECONDARY
+		"beta":
+			return PRIMARY
+		"patreon":
+			return AMBER
+		"unavailable":
+			return MUTED
+		_:
+			return PRIMARY_DARK
+
+
+func _downloads_dir() -> String:
+	var home = OS.get_environment("HOME")
+	if home != "":
+		var downloads = home.path_join("Downloads")
+		if DirAccess.dir_exists_absolute(downloads):
+			return downloads
+	return OS.get_system_dir(OS.SYSTEM_DIR_DOWNLOADS)
+
+
+func _on_files_dropped(files: PackedStringArray) -> void:
+	for path in files:
+		if str(path).get_extension().to_lower() == "zip" or DirAccess.dir_exists_absolute(str(path)):
+			_switch_tab(TAB_IMPORT)
+			_on_import_source_selected(str(path))
+			return
+	emit_signal("notify", "请拖入 ZIP 皮肤包或已解压文件夹。")
+
+
+func _clean_error_text(text: String) -> String:
+	var clean = text.strip_edges()
+	if clean == "":
+		return "皮肤安装失败。"
+	var parsed = JSON.parse_string(clean)
+	if typeof(parsed) == TYPE_ARRAY:
+		return "皮肤安装失败，请确认 ZIP 是有效的 MascotMate 或 Shimeji-ee 皮肤包。"
+	clean = clean.replace("pet_helper.py:", "").strip_edges()
+	if clean.length() > 600:
+		clean = clean.left(600) + "..."
+	return clean
 
 
 func _load_installed_preview(skin: Dictionary) -> void:

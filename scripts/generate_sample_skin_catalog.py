@@ -254,6 +254,7 @@ def main() -> int:
             write_deterministic_zip(skin_root, package_path)
             entries.append({
                 "id": sample["id"],
+                "source_type": "curated_package",
                 "name": sample["name"],
                 "description": sample["description"],
                 "tags": sample["tags"],

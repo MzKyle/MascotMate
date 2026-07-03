@@ -40,11 +40,13 @@ copy_external_assets() {
   cp "$ROOT_DIR/scripts/pet_helper.py" "$DIST_DIR/scripts/pet_helper.py"
   cp "$ROOT_DIR/scripts/import_shimeji_skin.py" "$DIST_DIR/scripts/import_shimeji_skin.py"
   cp "$ROOT_DIR/scripts/skin_sdk.py" "$DIST_DIR/scripts/skin_sdk.py"
+  cp "$ROOT_DIR/scripts/cachomon_catalog.py" "$DIST_DIR/scripts/cachomon_catalog.py"
   chmod +x "$DIST_DIR/scripts/pet_helper.py"
   if [[ ! -x "$ROOT_DIR/build/helper/pet_helper" \
       || "$ROOT_DIR/scripts/pet_helper.py" -nt "$ROOT_DIR/build/helper/pet_helper" \
       || "$ROOT_DIR/scripts/import_shimeji_skin.py" -nt "$ROOT_DIR/build/helper/pet_helper" \
-      || "$ROOT_DIR/scripts/skin_sdk.py" -nt "$ROOT_DIR/build/helper/pet_helper" ]]; then
+      || "$ROOT_DIR/scripts/skin_sdk.py" -nt "$ROOT_DIR/build/helper/pet_helper" \
+      || "$ROOT_DIR/scripts/cachomon_catalog.py" -nt "$ROOT_DIR/build/helper/pet_helper" ]]; then
     if command -v pyinstaller >/dev/null 2>&1; then
       pyinstaller --onefile --clean --name pet_helper \
         --distpath "$ROOT_DIR/build/helper" \
