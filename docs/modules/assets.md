@@ -10,7 +10,7 @@
 | `skin_store/` | 浏览器版皮肤商店静态 HTML/CSS/JS |
 | `~/.config/mascotmate-desktop/skins/` | 用户导入皮肤 |
 | `assets/effects/` | 爱心、闪光、波纹等互动特效 |
-| `assets/games/` | 饭团、球、靶心、奖杯等小游戏素材 |
+| `assets/games/` | 饭团等轻互动素材 |
 | `assets/character/` | 贴边偷看图和来源说明 |
 | `assets/character/mischief/` | 捣乱动作候选素材和来源说明 |
 

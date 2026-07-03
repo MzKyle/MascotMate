@@ -1,6 +1,6 @@
 # 桌宠伙伴文档
 ----
-> Godot 4 驱动的透明桌面宠物，带物理互动、陪伴行为、小游戏、截图贴图、皮肤 SDK 和 Linux 打包流程。
+> Godot 4 驱动的透明桌面宠物，带物理互动、陪伴行为、轻互动、截图贴图、皮肤 SDK 和 Linux 打包流程。
 
 ![项目封面](assets/cover.png)
 
@@ -8,7 +8,7 @@
 
 桌宠伙伴是一个 Godot-only 的本地桌面宠物项目。应用运行后会创建透明、置顶、无边框窗口，让角色停留在桌面上，并通过物理模拟支持抱起、甩飞、重力落地、贴边行走和边缘偷看。
 
-项目的重点不是单张静态贴图，而是把角色动画帧、透明窗口穿透、输入控制、状态存储、行为调度、小游戏和跨平台截图贴图组合成一个完整的桌面体验。Python 脚本只用于素材处理、动作清单生成、Godot 运行时准备和跨平台 helper。
+项目的重点不是单张静态贴图，而是把角色动画帧、透明窗口穿透、输入控制、状态存储、行为调度、轻互动和跨平台截图贴图组合成一个完整的桌面体验。Python 脚本只用于素材处理、动作清单生成、Godot 运行时准备和跨平台 helper。
 
 ## 核心功能
 
@@ -16,7 +16,7 @@
 - **物理互动** - 长按抱起、弹簧跟随、按释放速度甩飞、重力落地、墙体反弹和贴边吸附
 - **边缘偷看** - 把角色拖到屏幕边缘释放后，窗口缩小并只露出偷看的贴边图
 - **陪伴行为** - 安静、活泼、捣乱三种模式，按时间段、状态、互动记忆和冷却控制主动行为
-- **小游戏** - 饭团投喂、接球挑战，并影响心情、饥饿、体力和亲密度
+- **轻互动** - 饭团投喂、鼠标逗一逗，并影响心情、饥饿、体力和亲密度
 - **截图贴图** - Windows、macOS、Linux 下支持 `F1` 区域截图、`F3` 轮换贴图、`F4` 关闭当前贴图
 - **素材管线** - 动作帧统一放在 `resource_hd/`，生成动作清单、默认皮肤和逐帧透明区域元数据
 - **皮肤 SDK** - v2 `skin.json`、皮肤商店 catalog、Shimeji-ee 导入报告、兼容评分和外置语料测试
@@ -46,7 +46,7 @@ flowchart LR
     Physics["PetPhysics.gd<br/>位置 / 速度 / 碰撞"]
     Input["InteractionController.gd<br/>点击 / 长按 / 甩飞"]
     Brain["BehaviorBrain.gd<br/>陪伴决策 / 打扰冷却"]
-    Games["MiniGames.gd<br/>投喂 / 接球"]
+    Games["MiniGames.gd<br/>投喂 / 逗一逗"]
     State["StateStore.gd<br/>状态 / 互动记忆"]
     Pins["ScreenshotPins.gd<br/>截图 / 贴图 / 快捷键"]
   end
@@ -81,16 +81,16 @@ flowchart LR
   Pins --> Tools
 ```
 
-核心链路是：`Main.gd` 负责把窗口、动画、物理、输入、行为和小游戏接到一起；`BehaviorBrain.gd` 根据时间段、状态和互动记忆发出低打扰请求；`StateStore.gd` 保存核心数值、被动衰减和最近互动；`PetPhysics.gd` 计算窗口位置；`PetSprite.gd` 用动作级 LRU 缓存渲染帧；截图贴图则通过 Godot 子窗口和跨平台 helper 扩展桌面能力。
+核心链路是：`Main.gd` 负责把窗口、动画、物理、输入、行为和轻互动接到一起；`BehaviorBrain.gd` 根据时间段、状态和互动记忆发出低打扰请求；`StateStore.gd` 保存核心数值、被动衰减和最近互动；`PetPhysics.gd` 计算窗口位置；`PetSprite.gd` 用动作级 LRU 缓存渲染帧；截图贴图则通过 Godot 子窗口和跨平台 helper 扩展桌面能力。
 
 ## 目录一览
 
 | 路径 | 说明 |
 | --- | --- |
 | `godot_pet/` | Godot 4 项目目录，主场景、脚本、导出配置和动作清单都在这里 |
-| `godot_pet/scripts/` | 桌宠核心脚本：窗口、物理、交互、陪伴行为、小游戏、状态、截图贴图 |
+| `godot_pet/scripts/` | 桌宠核心脚本：窗口、物理、交互、陪伴行为、轻互动、状态、截图贴图 |
 | `resource_hd/` | 运行时动画帧 |
-| `assets/` | 互动特效、小游戏图标、贴边偷看图和素材来源说明 |
+| `assets/` | 互动特效、轻互动图标、贴边偷看图和素材来源说明 |
 | `scripts/` | Godot 准备、运行、打包、素材生成、Shimeji 导入、smoke test 和快捷键桥接脚本 |
 | `packaging/` | Linux desktop entry 模板 |
 | `docs/` | docsify 项目文档站 |

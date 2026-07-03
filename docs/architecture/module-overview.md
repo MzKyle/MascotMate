@@ -18,7 +18,7 @@
 | `PetPhysics.gd` | 物理状态机、速度、重力、碰撞、贴边 | 释放速度、播放区域、接触矩形 | 窗口坐标、物理状态、碰撞信号 |
 | `InteractionController.gd` | 点击、双击、滚轮、长按、拖拽和甩飞识别 | Godot 鼠标事件 | 交互信号 |
 | `BehaviorBrain.gd` | 安静/活泼/捣乱模式调度 | 当前模式、暂停状态 | 自动行为请求 |
-| `MiniGames.gd` | 饭团投喂和接球挑战 | 鼠标拖拽、角色碰撞区域 | 成功信号和游戏结束信号 |
+| `MiniGames.gd` | 饭团投喂和逗一逗轻互动 | 鼠标拖拽、鼠标靠近、角色碰撞区域 | 成功信号和互动结束信号 |
 | `StateStore.gd` | 心情、饥饿、体力、亲密度持久化 | 行为增量 | `state.json` |
 | `ScreenshotPins.gd` | 截图、贴图、快捷键、配置、历史 | 快捷键、Godot 截图、剪贴板 helper | 贴图窗口、配置文件、截图历史 |
 | `PinImageWindow.gd` | 单张贴图窗口 | 图片、起始位置、最大尺寸 | 置顶可拖动贴图 |
@@ -51,7 +51,7 @@ Godot 运行层主要通过信号通信：
 - `InteractionController.gd` 发出 `single_clicked`、`double_clicked`、`grab_started`、`grab_released`
 - `PetPhysics.gd` 发出 `landed`、`bounced`、`attached_to_wall`
 - `BehaviorBrain.gd` 发出 `action_requested`、`mischief_requested`
-- `MiniGames.gd` 发出 `feed_success`、`catch_success`、`game_finished`
+- `MiniGames.gd` 发出 `feed_success`、`tease_success`、`game_finished`
 - `ScreenshotPins.gd` 发出 `notify`
 
 `Main.gd` 订阅这些信号，并决定播放哪段动画、是否更新状态、是否改变窗口大小和是否显示气泡。

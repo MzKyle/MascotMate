@@ -49,6 +49,9 @@ var peek_edge := ""
 var behavior_mode := "安静"
 var mischief_grab_active := false
 var configured_skin_id := "classic_shinchan"
+var feedback_window_until := 0.0
+var tease_reward_recorded := false
+var tease_nudge := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -67,10 +70,10 @@ func _ready() -> void:
 
 	_configure_window()
 	_create_nodes()
+	_play_capability("resting")
 	_sync_window_size(true)
 	physics.set_position_from_window(Vector2(get_window().position))
 	physics.set_gravity_enabled(gravity_enabled)
-	_play_capability("resting")
 	if transparent_window:
 		show_bubble("透明桌宠模式启动：%s。" % skin_manager.selected_skin_name())
 	else:
@@ -92,12 +95,14 @@ func _input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	pet_sprite.update_animation(delta)
+	_update_feedback_window_state()
 	if mischief_grab_active:
 		mischief_controller.tick(delta, get_window())
 		_update_pet_pose(delta)
 		_update_mouse_passthrough()
 		return
 	mini_games.tick(delta)
+	_decay_tease_nudge(delta)
 	physics.tick(delta, _play_area(), Vector2(get_window().size), _movement_contact_rect())
 	_sync_walk_animation_to_velocity()
 	get_window().position = Vector2i(round(physics.position.x), round(physics.position.y))
@@ -162,7 +167,7 @@ func _create_nodes() -> void:
 	add_child(mini_games)
 	mini_games.configure(repo_root, pet_sprite)
 	mini_games.feed_success.connect(_on_feed_success)
-	mini_games.catch_success.connect(_on_catch_success)
+	mini_games.tease_success.connect(_on_tease_success)
 	mini_games.game_finished.connect(_on_game_finished)
 
 	interaction = InteractionScript.new()
@@ -202,6 +207,7 @@ func _create_nodes() -> void:
 	feedback = FeedbackEffectsScript.new()
 	add_child(feedback)
 	feedback.configure(repo_root, pet_sprite)
+	feedback.temporary_window_extent_requested.connect(_on_feedback_window_requested)
 
 	skin_store_bridge = SkinStoreBridgeScript.new()
 	add_child(skin_store_bridge)
@@ -213,18 +219,54 @@ func _create_nodes() -> void:
 func _sync_window_size(keep_position := false) -> void:
 	var window = get_window()
 	var old_center = Vector2(window.position) + Vector2(window.size) * 0.5
-	var desired = PEEK_WINDOW_SIZE if peek_mode else pet_sprite.window_size()
-	if mini_games != null and mini_games.active != "":
-		desired.x = max(desired.x, 420)
-		desired.y = max(desired.y, 260)
+	var desired = _desired_window_size()
 	window.size = desired
 	if keep_position:
 		window.position = Vector2i(old_center - Vector2(desired) * 0.5)
-	pet_sprite.position = Vector2(desired) * 0.5
+	pet_sprite.position = _pet_default_position(Vector2(desired))
 	mini_games.position = Vector2.ZERO
-	feedback.set_bubble_position(Vector2(20, 14))
+	feedback.set_window_size(Vector2(desired))
+	feedback.set_bubble_position(_feedback_bubble_position(Vector2(desired)))
 	mischief_controller.position_stop_button(window.size)
 	_update_mouse_passthrough()
+
+
+func _desired_window_size() -> Vector2i:
+	if peek_mode:
+		return PEEK_WINDOW_SIZE
+	if pet_sprite == null:
+		return get_window().size
+	if mini_games != null and mini_games.active == "feed":
+		var desired = pet_sprite.padded_window_size()
+		desired.x = max(desired.x, 420)
+		desired.y = max(desired.y, 260)
+		return desired
+	if mischief_grab_active or _feedback_window_active():
+		return pet_sprite.padded_window_size()
+	return pet_sprite.compact_window_size()
+
+
+func _pet_default_position(window_size: Vector2) -> Vector2:
+	if pet_sprite == null:
+		return window_size * 0.5
+	if peek_mode or mischief_grab_active:
+		return window_size * 0.5
+	return pet_sprite.compact_pet_position(window_size)
+
+
+func _pet_pose_position(window_size: Vector2) -> Vector2:
+	var position = _pet_default_position(window_size)
+	if not peek_mode and not mischief_grab_active:
+		position += tease_nudge
+	return position
+
+
+func _feedback_bubble_position(window_size: Vector2) -> Vector2:
+	if peek_mode:
+		return Vector2(8, 8)
+	if mischief_grab_active:
+		return Vector2(16, 48)
+	return Vector2(14, max(8.0, min(14.0, window_size.y * 0.08)))
 
 
 func _update_pet_pose(delta: float) -> void:
@@ -236,19 +278,19 @@ func _update_pet_pose(delta: float) -> void:
 		feedback.set_bubble_position(Vector2(16, 48))
 		return
 	if landing_squash > 0.0:
-		pet_sprite.position = Vector2(get_window().size) * 0.5
+		pet_sprite.position = _pet_pose_position(Vector2(get_window().size))
 		landing_squash = max(0.0, landing_squash - delta * 3.2)
 		pet_sprite.squash(landing_squash)
 	elif physics.state == "Flinging" or physics.state == "Falling":
-		pet_sprite.position = Vector2(get_window().size) * 0.5
+		pet_sprite.position = _pet_pose_position(Vector2(get_window().size))
 		pet_sprite.lean_from_velocity(physics.velocity)
 	elif physics.state == "Grabbed":
-		pet_sprite.position = Vector2(get_window().size) * 0.5
+		pet_sprite.position = _pet_pose_position(Vector2(get_window().size))
 		pet_sprite.sprite.rotation = sin(Time.get_ticks_msec() / 90.0) * 0.10
 	elif physics.state == "WallAttached" or physics.state == "EdgeWalk":
 		_apply_wall_walk_pose()
 	else:
-		pet_sprite.position = Vector2(get_window().size) * 0.5
+		pet_sprite.position = _pet_pose_position(Vector2(get_window().size))
 		pet_sprite.reset_transform()
 
 
@@ -264,7 +306,7 @@ func _movement_contact_rect() -> Rect2:
 	var window_size = Vector2(get_window().size)
 	if peek_mode or pet_sprite == null:
 		return Rect2(Vector2.ZERO, window_size)
-	if mini_games != null and mini_games.active != "":
+	if mini_games != null and mini_games.active == "feed":
 		return Rect2(Vector2.ZERO, window_size)
 
 	var rect = _pet_visible_rect_for_physics()
@@ -284,7 +326,7 @@ func _pet_visible_rect_for_physics() -> Rect2:
 
 
 func _pet_anchor_position_for_physics(window_size: Vector2, visible_rect: Rect2) -> Vector2:
-	var anchor = window_size * 0.5
+	var anchor = _pet_default_position(window_size)
 	if physics == null:
 		return anchor
 	if (physics.state == "WallAttached" or physics.state == "EdgeWalk") and physics.wall_side != 0:
@@ -317,11 +359,7 @@ func _on_single_clicked(local_pos: Vector2) -> void:
 func _on_double_clicked() -> void:
 	if peek_mode:
 		_exit_peek_mode(true)
-	_record_interaction("play")
-	mini_games.start_catch()
-	_sync_window_size(true)
-	_update_mouse_passthrough()
-	show_bubble("接球挑战开始。")
+	_start_tease_interaction()
 
 
 func _on_right_clicked(_local_pos: Vector2) -> void:
@@ -441,17 +479,53 @@ func _on_feed_success() -> void:
 	show_bubble("吃到啦。" + _format_changes(changes))
 
 
-func _on_catch_success(count: int) -> void:
-	var changes = state_store.play()
-	_record_interaction("play")
-	show_bubble("接住 %d/3。%s" % [count, _format_changes(changes)])
+func _on_tease_success(count: int, direction: Vector2) -> void:
+	_apply_tease_nudge(direction, count)
+	if not tease_reward_recorded:
+		tease_reward_recorded = true
+		var changes = state_store.play()
+		_record_interaction("play")
+		show_bubble("嘿嘿，别挠啦。" + _format_changes(changes), 1.4)
+	elif count >= 3:
+		show_bubble("玩够啦。", 1.3)
+	if count >= 2:
+		feedback.spawn_heart()
 
 
 func _on_game_finished(name: String) -> void:
-	if name == "catch":
-		show_bubble("接球完成！")
 	call_deferred("_sync_window_size", true)
-	feedback.spawn_heart()
+	if name == "feed":
+		feedback.spawn_heart()
+
+
+func _start_tease_interaction() -> void:
+	if mini_games == null:
+		return
+	if peek_mode:
+		_exit_peek_mode(true)
+	mini_games.start_tease()
+	tease_reward_recorded = false
+	tease_nudge = Vector2.ZERO
+	_sync_window_size(true)
+	_update_mouse_passthrough()
+	show_bubble("来逗我呀。", 1.4)
+
+
+func _apply_tease_nudge(direction: Vector2, count: int) -> void:
+	var dodge_direction = direction
+	if dodge_direction.length() <= 0.001:
+		dodge_direction = Vector2(rng.randf_range(-1.0, 1.0), rng.randf_range(-0.35, 0.35))
+	if dodge_direction.length() <= 0.001:
+		dodge_direction = Vector2.RIGHT
+	var distance = 8.0 + float(min(count, 3)) * 2.0
+	tease_nudge = -dodge_direction.normalized() * distance
+
+
+func _decay_tease_nudge(delta: float) -> void:
+	if tease_nudge.length_squared() <= 0.01:
+		tease_nudge = Vector2.ZERO
+		return
+	tease_nudge = tease_nudge.lerp(Vector2.ZERO, min(1.0, delta * 8.0))
 
 
 func _show_status() -> void:
@@ -487,11 +561,8 @@ func _on_menu_command(command: String) -> void:
 			_record_interaction("wake")
 			_play_capability("waking")
 			_sync_window_size(true)
-		"catch":
-			_record_interaction("play")
-			mini_games.start_catch()
-			_sync_window_size(true)
-			_update_mouse_passthrough()
+		"tease":
+			_start_tease_interaction()
 		"scale_100":
 			_set_display_scale(1.0)
 		"scale_125":
@@ -631,14 +702,16 @@ func _sync_walk_animation_to_velocity(force := false) -> void:
 	desired = animation_resolver.resolve("locomotion", {"direction": "right" if physics.velocity.x > 0.0 else "left"})
 	if force or pet_sprite.current_action != desired:
 		if desired != "":
-			pet_sprite.play(desired)
+			if pet_sprite.play(desired):
+				_sync_window_size(true)
 
 
 func _play_wall_walk_action() -> void:
 	var desired = _wall_walk_action()
 	if pet_sprite.current_action != desired:
 		if desired != "":
-			pet_sprite.play(desired)
+			if pet_sprite.play(desired):
+				_sync_window_size(true)
 
 
 func _apply_wall_walk_pose() -> void:
@@ -674,16 +747,45 @@ func _wall_pose_rotation() -> float:
 func _play_capability(capability: String, constraints: Dictionary = {}) -> bool:
 	if pet_sprite == null:
 		return false
+	var played := false
 	if animation_resolver != null:
 		var action_id = animation_resolver.resolve(capability, constraints)
 		if action_id != "":
-			return pet_sprite.play(action_id)
-	return pet_sprite.play(capability)
+			played = pet_sprite.play(action_id)
+	if not played:
+		played = pet_sprite.play(capability)
+	if played:
+		_sync_window_size(true)
+	return played
 
 
 func show_bubble(text: String, seconds := 1.8) -> void:
 	if feedback != null:
 		feedback.show_bubble(text, seconds)
+
+
+func _on_feedback_window_requested(seconds: float) -> void:
+	if seconds <= 0.0:
+		return
+	var was_active = _feedback_window_active()
+	var now = float(Time.get_ticks_msec()) / 1000.0
+	feedback_window_until = max(feedback_window_until, now + seconds)
+	if not was_active:
+		_sync_window_size(true)
+	else:
+		_update_mouse_passthrough()
+
+
+func _feedback_window_active() -> bool:
+	return feedback_window_until > float(Time.get_ticks_msec()) / 1000.0
+
+
+func _update_feedback_window_state() -> void:
+	if feedback_window_until <= 0.0 or _feedback_window_active():
+		return
+	feedback_window_until = 0.0
+	if not peek_mode and not mischief_grab_active and (mini_games == null or mini_games.active != "feed"):
+		_sync_window_size(true)
 
 
 func _update_mouse_passthrough() -> void:
@@ -696,6 +798,12 @@ func _update_mouse_passthrough() -> void:
 		window.mouse_passthrough_polygon = _rect_polygon(rect)
 		return
 	if mini_games != null and mini_games.active != "":
+		if mini_games.active == "tease":
+			var visible_rect = pet_sprite.visible_rect()
+			var rect = Rect2(pet_sprite.position + visible_rect.position, visible_rect.size).grow(10.0)
+			rect = rect.intersection(Rect2(Vector2.ZERO, Vector2(window.size)))
+			window.mouse_passthrough_polygon = _rect_polygon(rect) if rect.size.x > 1.0 and rect.size.y > 1.0 else PackedVector2Array()
+			return
 		var size = Vector2(window.size)
 		window.mouse_passthrough_polygon = _rect_polygon(Rect2(Vector2.ZERO, size))
 		return
@@ -705,7 +813,11 @@ func _update_mouse_passthrough() -> void:
 		return
 
 	var visible_rect = pet_sprite.visible_rect()
-	var rect = Rect2(pet_sprite.position + visible_rect.position, visible_rect.size).grow(18.0)
+	var rect = Rect2(pet_sprite.position + visible_rect.position, visible_rect.size).grow(10.0)
+	rect = rect.intersection(Rect2(Vector2.ZERO, Vector2(window.size)))
+	if rect.size.x <= 1.0 or rect.size.y <= 1.0:
+		window.mouse_passthrough_polygon = PackedVector2Array()
+		return
 	var cut = min(rect.size.x, rect.size.y) * 0.22
 	window.mouse_passthrough_polygon = PackedVector2Array([
 		rect.position + Vector2(cut, 0),
@@ -768,7 +880,7 @@ func _exit_peek_mode(show_message: bool) -> void:
 		physics.release(Vector2.ZERO, false)
 	else:
 		physics.idle()
-	pet_sprite.position = size * 0.5
+	pet_sprite.position = _pet_default_position(size)
 	pet_sprite.reset_transform()
 	_update_mouse_passthrough()
 	if show_message:

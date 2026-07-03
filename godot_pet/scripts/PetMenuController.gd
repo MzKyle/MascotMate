@@ -6,7 +6,7 @@ const MENU_WALK := 1
 const MENU_FEED := 2
 const MENU_SLEEP := 3
 const MENU_WAKE := 4
-const MENU_CATCH := 5
+const MENU_TEASE := 5
 const MENU_SCALE_100 := 10
 const MENU_SCALE_125 := 11
 const MENU_SCALE_150 := 12
@@ -37,7 +37,7 @@ func show_menu(gravity_enabled: bool, peek_mode: bool, behavior_mode: String) ->
 	popup.add_item("饭团投喂", MENU_FEED)
 	popup.add_item("睡觉", MENU_SLEEP)
 	popup.add_item("唤醒", MENU_WAKE)
-	popup.add_item("接球挑战", MENU_CATCH)
+	popup.add_item("逗一逗", MENU_TEASE)
 	popup.add_separator()
 	popup.add_item("显示大小 100%", MENU_SCALE_100)
 	popup.add_item("显示大小 125%", MENU_SCALE_125)
@@ -77,7 +77,7 @@ func _on_menu_id_pressed(id: int) -> void:
 		MENU_FEED: "feed",
 		MENU_SLEEP: "sleep",
 		MENU_WAKE: "wake",
-		MENU_CATCH: "catch",
+		MENU_TEASE: "tease",
 		MENU_SCALE_100: "scale_100",
 		MENU_SCALE_125: "scale_125",
 		MENU_SCALE_150: "scale_150",

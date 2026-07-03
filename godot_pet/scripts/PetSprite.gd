@@ -4,6 +4,10 @@ signal action_finished(next_action)
 
 const MAX_CACHED_ACTIONS := 10
 const MAX_CACHED_FRAMES := 360
+const COMPACT_WINDOW_PADDING := Vector2(48, 48)
+const COMPACT_WINDOW_MIN := Vector2(96, 96)
+const PADDED_WINDOW_PADDING := Vector2(96, 84)
+const PADDED_WINDOW_MIN := Vector2(180, 160)
 
 var repo_root := ""
 var frame_root := ""
@@ -22,6 +26,7 @@ var elapsed := 0.0
 var sprite: Sprite2D
 var base_size := Vector2(130, 130)
 var window_extent_size := Vector2(130, 130)
+var action_visible_bounds := Rect2(Vector2(-65, -65), Vector2(130, 130))
 var current_texture_size := Vector2.ZERO
 var current_used_rect := Rect2()
 var current_anchor := Vector2.ZERO
@@ -76,6 +81,7 @@ func play(action_id: String) -> bool:
 	elapsed = 0.0
 	base_size = entry["base_size"]
 	window_extent_size = entry["window_extent"]
+	action_visible_bounds = entry["visible_bounds"]
 	_apply_current_frame()
 	return true
 
@@ -111,8 +117,35 @@ func update_animation(delta: float) -> void:
 
 
 func window_size() -> Vector2i:
-	var padded = window_extent_size * display_scale + Vector2(96, 84)
-	return Vector2i(max(180, int(padded.x)), max(160, int(padded.y)))
+	return compact_window_size()
+
+
+func compact_window_size() -> Vector2i:
+	var bounds = action_visible_rect()
+	var padded = bounds.size + COMPACT_WINDOW_PADDING
+	return Vector2i(
+		max(int(COMPACT_WINDOW_MIN.x), int(ceil(padded.x))),
+		max(int(COMPACT_WINDOW_MIN.y), int(ceil(padded.y)))
+	)
+
+
+func padded_window_size() -> Vector2i:
+	var padded = window_extent_size * display_scale + PADDED_WINDOW_PADDING
+	return Vector2i(
+		max(int(PADDED_WINDOW_MIN.x), int(ceil(padded.x))),
+		max(int(PADDED_WINDOW_MIN.y), int(ceil(padded.y)))
+	)
+
+
+func action_visible_rect() -> Rect2:
+	return Rect2(action_visible_bounds.position * display_scale, action_visible_bounds.size * display_scale)
+
+
+func compact_pet_position(window_size: Vector2) -> Vector2:
+	var bounds = action_visible_rect()
+	if bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
+		return window_size * 0.5
+	return window_size * 0.5 - (bounds.position + bounds.size * 0.5)
 
 
 func pet_rect() -> Rect2:
@@ -222,6 +255,7 @@ func _load_action_entry(config: Dictionary) -> Dictionary:
 		"texture_sizes": texture_sizes,
 		"base_size": entry_base_size,
 		"window_extent": _window_extent_for_entry(texture_sizes, entry_anchors, entry_base_size),
+		"visible_bounds": _visible_bounds_for_entry(used_rects, texture_sizes, entry_anchors, entry_base_size, bool(config.get("mirror_x", false))),
 		"frame_count": loaded.size(),
 	}
 
@@ -303,6 +337,7 @@ func _clear_cache() -> void:
 	frame_durations = []
 	frame_used_rects = []
 	frame_texture_sizes = []
+	action_visible_bounds = Rect2(-base_size * 0.5, base_size)
 
 
 func _apply_current_frame() -> void:
@@ -395,3 +430,40 @@ func _window_extent_for_entry(texture_sizes: Array, anchors: Array, entry_base_s
 		top = max(top, anchor.y * scale.y)
 		bottom = max(bottom, (texture_size.y - anchor.y) * scale.y)
 	return Vector2(max(left, right) * 2.0, max(top, bottom) * 2.0)
+
+
+func _visible_bounds_for_entry(used_rects: Array, texture_sizes: Array, anchors: Array, entry_base_size: Vector2, mirror_x: bool) -> Rect2:
+	var result := Rect2()
+	var has_bounds := false
+	var uses_anchors = anchors.size() == texture_sizes.size() and not texture_sizes.is_empty()
+	for i in range(texture_sizes.size()):
+		if i >= used_rects.size():
+			continue
+		var texture_size: Vector2 = texture_sizes[i]
+		var used_rect: Rect2 = used_rects[i]
+		if texture_size.x <= 0.0 or texture_size.y <= 0.0 or used_rect.size.x <= 0.0 or used_rect.size.y <= 0.0:
+			continue
+		var anchor: Vector2 = anchors[i] if uses_anchors else texture_size * 0.5
+		var frame_rect = _local_rect_for_frame(used_rect, texture_size, anchor, entry_base_size, mirror_x)
+		if has_bounds:
+			result = result.merge(frame_rect)
+		else:
+			result = frame_rect
+			has_bounds = true
+	if has_bounds:
+		return result
+	return Rect2(-entry_base_size * 0.5, entry_base_size)
+
+
+func _local_rect_for_frame(used_rect: Rect2, texture_size: Vector2, anchor: Vector2, entry_base_size: Vector2, mirror_x: bool) -> Rect2:
+	var scale = Vector2(entry_base_size.x / texture_size.x, entry_base_size.y / texture_size.y)
+	if mirror_x:
+		scale.x *= -1.0
+	var min_source = used_rect.position - anchor
+	var max_source = used_rect.position + used_rect.size - anchor
+	var min_scaled = Vector2(min_source.x * scale.x, min_source.y * scale.y)
+	var max_scaled = Vector2(max_source.x * scale.x, max_source.y * scale.y)
+	return Rect2(
+		Vector2(min(min_scaled.x, max_scaled.x), min(min_scaled.y, max_scaled.y)),
+		Vector2(abs(max_scaled.x - min_scaled.x), abs(max_scaled.y - min_scaled.y))
+	)

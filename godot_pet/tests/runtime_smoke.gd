@@ -5,6 +5,8 @@ const BehaviorBrainScript = preload("res://scripts/BehaviorBrain.gd")
 const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const PetSpriteScript = preload("res://scripts/PetSprite.gd")
 const MainScript = preload("res://scripts/Main.gd")
+const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
+const MiniGamesScript = preload("res://scripts/MiniGames.gd")
 const SkinCatalogClientScript = preload("res://scripts/SkinCatalogClient.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
 
@@ -136,6 +138,72 @@ func _run() -> void:
 		return
 	if pet_sprite.current_used_rect.size.x <= 0.0 or pet_sprite.current_used_rect.size.y <= 0.0:
 		_fail("PetSprite current used_rect is empty.")
+		return
+	var compact_size = pet_sprite.compact_window_size()
+	var padded_size = pet_sprite.padded_window_size()
+	if compact_size.x >= padded_size.x or compact_size.y >= padded_size.y:
+		_fail("PetSprite compact window was not smaller than padded window: compact=%s padded=%s" % [str(compact_size), str(padded_size)])
+		return
+	pet_sprite.position = pet_sprite.compact_pet_position(Vector2(compact_size))
+	var visible_rect = pet_sprite.visible_rect()
+	var visible_window_rect = Rect2(pet_sprite.position + visible_rect.position, visible_rect.size)
+	if visible_window_rect.position.x < -0.5 or visible_window_rect.position.y < -0.5:
+		_fail("PetSprite compact visible rect starts outside the window: %s" % str(visible_window_rect))
+		return
+	if visible_window_rect.position.x + visible_window_rect.size.x > float(compact_size.x) + 0.5 or visible_window_rect.position.y + visible_window_rect.size.y > float(compact_size.y) + 0.5:
+		_fail("PetSprite compact visible rect exceeds the window: %s in %s" % [str(visible_window_rect), str(compact_size)])
+		return
+
+	var feedback = FeedbackEffectsScript.new()
+	root_node.add_child(feedback)
+	await process_frame
+	feedback.configure(repo_root, pet_sprite)
+	feedback.set_window_size(Vector2(padded_size))
+	var feedback_requests := {"count": 0, "seconds": 0.0}
+	feedback.temporary_window_extent_requested.connect(func(seconds): feedback_requests["count"] = int(feedback_requests["count"]) + 1; feedback_requests["seconds"] = max(float(feedback_requests["seconds"]), float(seconds)))
+	feedback.show_bubble("测试气泡", 0.4)
+	if int(feedback_requests["count"]) != 1 or float(feedback_requests["seconds"]) < 0.4:
+		_fail("Feedback bubble did not request temporary window extent.")
+		return
+	if feedback.bubble == null or not feedback.bubble.visible:
+		_fail("Feedback bubble did not become visible.")
+		return
+	feedback.spawn_heart()
+	if int(feedback_requests["count"]) < 2:
+		_fail("Feedback heart did not request temporary window extent.")
+		return
+
+	var mini_games = MiniGamesScript.new()
+	root_node.add_child(mini_games)
+	await process_frame
+	mini_games.configure(repo_root, pet_sprite)
+	var tease_events := {"count": 0, "finished": ""}
+	mini_games.tease_success.connect(func(count, _direction): tease_events["count"] = int(count))
+	mini_games.game_finished.connect(func(name): tease_events["finished"] = str(name))
+	mini_games.start_tease()
+	if mini_games.active != "tease":
+		_fail("MiniGames did not enter tease mode.")
+		return
+	var pet_rect = pet_sprite.pet_rect()
+	var tease_point = pet_sprite.to_global(pet_rect.position + pet_rect.size * 0.5)
+	for _i in range(3):
+		mini_games.tease_cooldown = 0.0
+		mini_games._register_tease_sample(tease_point, Vector2(260, 0))
+	if int(tease_events["count"]) != 3 or str(tease_events["finished"]) != "tease" or mini_games.active != "":
+		_fail("MiniGames tease mode did not finish after three interactions: %s active=%s" % [JSON.stringify(tease_events), mini_games.active])
+		return
+	var feed_events := {"success": false, "finished": ""}
+	mini_games.feed_success.connect(func(): feed_events["success"] = true)
+	mini_games.game_finished.connect(func(name): feed_events["finished"] = str(name))
+	mini_games.start_feed()
+	if mini_games.active != "feed" or mini_games.food == null:
+		_fail("MiniGames did not enter feed mode.")
+		return
+	var mouth_rect = pet_sprite.mouth_rect()
+	mini_games.food.position = pet_sprite.to_global(mouth_rect.position + mouth_rect.size * 0.5)
+	mini_games._check_food_hit()
+	if not bool(feed_events["success"]) or str(feed_events["finished"]) != "feed" or mini_games.active != "":
+		_fail("MiniGames feed mode did not emit success and finish: %s active=%s" % [JSON.stringify(feed_events), mini_games.active])
 		return
 
 	state_store.flush_save()

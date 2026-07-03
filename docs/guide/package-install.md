@@ -94,7 +94,7 @@ portable bundle 主要包含：
 | `MascotMateDesktop` | 启动脚本，设置环境变量并启动项目 |
 | `godot_pet/` | Godot 项目 |
 | `resource_hd/` | 高清动作帧 |
-| `assets/` | 特效、小游戏和偷看素材 |
+| `assets/` | 特效、轻互动和偷看素材 |
 | `scripts/pet_helper` | 全局快捷键和图片剪贴板辅助程序 |
 | `scripts/pet_helper.py` | helper 源码兜底 |
 
