@@ -1,0 +1,6 @@
+Kenney Animal Pack featured skins
+===================================
+
+The bundled featured skins are adapted from Kenney Animal Pack assets.
+Source: https://opengameart.org/content/animal-pack
+License: Creative Commons CC0. Attribution is appreciated but not required.

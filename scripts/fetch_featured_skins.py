@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Fetch DPets sprites and build bundled featured MascotMate skins."""
+"""Fetch Kenney Animal Pack assets and build bundled featured MascotMate skins."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import shutil
 import sys
@@ -14,7 +15,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -27,64 +28,63 @@ ROOT = SCRIPT_DIR.parent
 CATALOG_ROOT = ROOT / "skin_catalog"
 PREVIEW_DIR = CATALOG_ROOT / "previews"
 PACKAGE_DIR = CATALOG_ROOT / "packages"
-NOTICE_DIR = CATALOG_ROOT / "notices" / "dpets"
+NOTICE_DIR = CATALOG_ROOT / "notices" / "kenney_animal_pack"
+SOURCE_SUBDIR = Path("PNG") / "Round (outline)"
 ZIP_DATE = (2026, 7, 3, 0, 0, 0)
-DPETS_RAW = "https://raw.githubusercontent.com/Denellyne/DPets/main"
+KENNEY_ANIMAL_PACK_URL = "https://opengameart.org/sites/default/files/kenney-animalpack.zip"
+KENNEY_PROJECT_URL = "https://opengameart.org/content/animal-pack"
 
 FEATURED_SKINS = [
     {
-        "id": "dpets_cat",
-        "name": "DPets Cat",
-        "description": "A crisp pixel cat companion adapted from the DPets desktop pet sprites.",
-        "sprite": "cat.png",
-        "tags": ["featured", "pixel", "cat", "dpets"],
-        "accent": [56, 189, 248],
+        "id": "kenney_panda",
+        "name": "Kenney Panda",
+        "description": "A clean high-resolution panda companion adapted from Kenney's CC0 Animal Pack.",
+        "sprite": "panda.png",
+        "tags": ["featured", "animal", "panda", "kenney", "cc0"],
+        "accent": [31, 157, 112],
     },
     {
-        "id": "dpets_pup",
-        "name": "DPets Pup",
-        "description": "A tiny pixel dog companion adapted from the DPets desktop pet sprites.",
-        "sprite": "sprite.png",
-        "tags": ["featured", "pixel", "dog", "dpets"],
-        "accent": [34, 197, 94],
+        "id": "kenney_rabbit",
+        "name": "Kenney Rabbit",
+        "description": "A bright high-resolution rabbit companion adapted from Kenney's CC0 Animal Pack.",
+        "sprite": "rabbit.png",
+        "tags": ["featured", "animal", "rabbit", "kenney", "cc0"],
+        "accent": [47, 128, 237],
     },
 ]
 
 
-def download_sources(source_dir: Path, timeout: float = 20.0) -> None:
-    files = {
-        "cat.png": f"{DPETS_RAW}/src/Graphics/cat.png",
-        "sprite.png": f"{DPETS_RAW}/src/Graphics/sprite.png",
-        "README.md": f"{DPETS_RAW}/README.md",
-        "LICENSE": f"{DPETS_RAW}/LICENSE",
-    }
+def download_sources(source_dir: Path, timeout: float = 30.0) -> None:
     source_dir.mkdir(parents=True, exist_ok=True)
-    for name, url in files.items():
-        request = urllib.request.Request(url, headers={"User-Agent": "MascotMateDesktop/1.0"})
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            (source_dir / name).write_bytes(response.read())
+    request = urllib.request.Request(
+        KENNEY_ANIMAL_PACK_URL,
+        headers={"User-Agent": "MascotMateDesktop/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        archive_bytes = response.read()
+    archive_path = source_dir / "kenney-animalpack.zip"
+    archive_path.write_bytes(archive_bytes)
+
+    with zipfile.ZipFile(io.BytesIO(archive_bytes)) as zf:
+        wanted = {
+            "License.txt",
+            "Preview.png",
+            str(SOURCE_SUBDIR / "panda.png").replace("\\", "/"),
+            str(SOURCE_SUBDIR / "rabbit.png").replace("\\", "/"),
+        }
+        for member in zf.infolist():
+            member_path = Path(member.filename)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise SystemExit(f"Unsafe path in Kenney archive: {member.filename}")
+            if member.filename not in wanted:
+                continue
+            target = source_dir / member.filename
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(zf.read(member))
 
 
-def split_sprite_sheet(path: Path) -> list[Image.Image]:
-    image = Image.open(path).convert("RGBA")
-    if image.width % 4 != 0:
-        raise ValueError(f"Sprite sheet width must be divisible by 4: {path}")
-    frame_w = image.width // 4
-    frames: list[Image.Image] = []
-    for index in range(4):
-        frame = image.crop((index * frame_w, 0, (index + 1) * frame_w, image.height))
-        frames.append(_normalize_frame(frame))
-    return frames
-
-
-def _normalize_frame(frame: Image.Image) -> Image.Image:
-    canvas = Image.new("RGBA", (128, 128), (0, 0, 0, 0))
-    scale = min(3, max(1, 112 // max(frame.width, frame.height)))
-    scaled = frame.resize((frame.width * scale, frame.height * scale), Image.Resampling.NEAREST)
-    x = (canvas.width - scaled.width) // 2
-    y = canvas.height - scaled.height - 12
-    canvas.alpha_composite(scaled, (x, y))
-    return canvas
+def sprite_path(source_dir: Path, name: str) -> Path:
+    return source_dir / SOURCE_SUBDIR / name
 
 
 def _used_rect(image: Image.Image) -> list[int]:
@@ -93,40 +93,115 @@ def _used_rect(image: Image.Image) -> list[int]:
     return [left, top, right - left, bottom - top]
 
 
+def _fit_source(source: Image.Image, max_extent: int) -> Image.Image:
+    image = source.convert("RGBA")
+    bbox = image.getchannel("A").getbbox()
+    if bbox is not None:
+        image = image.crop(bbox)
+    scale = min(max_extent / image.width, max_extent / image.height)
+    size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+    return image.resize(size, Image.Resampling.LANCZOS)
+
+
+def _shadow(sprite: Image.Image) -> Image.Image:
+    alpha = sprite.getchannel("A")
+    blur = alpha.filter(ImageFilter.GaussianBlur(2.4))
+    shadow = Image.new("RGBA", sprite.size, (23, 35, 44, 0))
+    shadow.putalpha(blur.point(lambda value: int(value * 0.24)))
+    return shadow
+
+
+def compose_frame(
+    source: Image.Image,
+    *,
+    canvas_size: int = 192,
+    max_extent: int = 164,
+    offset: tuple[int, int] = (0, 0),
+    scale: float = 1.0,
+    mirror: bool = False,
+    rotate: float = 0.0,
+) -> Image.Image:
+    sprite = _fit_source(source, round(max_extent * scale))
+    if mirror:
+        sprite = sprite.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    if rotate:
+        sprite = sprite.rotate(rotate, resample=Image.Resampling.BICUBIC, expand=True)
+    canvas = Image.new("RGBA", (canvas_size, canvas_size), (0, 0, 0, 0))
+    x = (canvas_size - sprite.width) // 2 + offset[0]
+    y = canvas_size - sprite.height - 14 + offset[1]
+    canvas.alpha_composite(_shadow(sprite), (x + 2, y + 4))
+    canvas.alpha_composite(sprite, (x, y))
+    return canvas
+
+
+def _variant_frames(source: Image.Image, action_id: str) -> list[Image.Image]:
+    if action_id == "idle":
+        return [
+            compose_frame(source, offset=(0, 0)),
+            compose_frame(source, offset=(0, -3), scale=1.01),
+            compose_frame(source, offset=(0, 0)),
+            compose_frame(source, offset=(0, 2), scale=0.995),
+        ]
+    if action_id == "walk_left":
+        return [
+            compose_frame(source, offset=(-5, 1), rotate=-2.0),
+            compose_frame(source, offset=(-1, -3), rotate=1.4),
+            compose_frame(source, offset=(4, 1), rotate=2.0),
+            compose_frame(source, offset=(0, -2), rotate=-1.2),
+        ]
+    if action_id == "walk_right":
+        return [
+            compose_frame(source, offset=(5, 1), rotate=2.0, mirror=True),
+            compose_frame(source, offset=(1, -3), rotate=-1.4, mirror=True),
+            compose_frame(source, offset=(-4, 1), rotate=-2.0, mirror=True),
+            compose_frame(source, offset=(0, -2), rotate=1.2, mirror=True),
+        ]
+    if action_id == "fall":
+        return [compose_frame(source, offset=(0, 8), rotate=8.0, scale=0.98)]
+    if action_id == "held":
+        return [compose_frame(source, offset=(0, -6), rotate=-5.0, scale=0.96)]
+    if action_id == "edge":
+        return [compose_frame(source, offset=(-12, -2), rotate=-7.0, scale=0.98)]
+    if action_id == "sleep":
+        return [compose_frame(source, offset=(0, 10), rotate=-11.0, scale=0.92)]
+    if action_id == "playful":
+        return [
+            compose_frame(source, offset=(0, -8), rotate=-6.0, scale=1.02),
+            compose_frame(source, offset=(0, -2), rotate=5.0, scale=1.0),
+        ]
+    return [compose_frame(source)]
+
+
 def _write_action(
     skin_root: Path,
     actions: dict[str, Any],
     action_id: str,
     name: str,
-    source_frames: list[Image.Image],
-    frame_indices: list[int],
+    source: Image.Image,
     fps: float,
     *,
-    mirror: bool = False,
     velocity_x: float = 0.0,
+    mirror: bool = False,
 ) -> None:
     frames: list[str] = []
     used_rects: list[list[int]] = []
     anchors: list[list[int]] = []
     velocities: list[list[float]] = []
     durations: list[int] = []
-    for out_index, frame_index in enumerate(frame_indices, start=1):
-        image = source_frames[frame_index]
-        if mirror:
-            image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    for out_index, image in enumerate(_variant_frames(source, action_id), start=1):
         rel = Path(action_id) / f"{out_index:03d}.png"
         output = skin_root / "frames" / rel
         output.parent.mkdir(parents=True, exist_ok=True)
         image.save(output)
         frames.append(str(rel).replace("\\", "/"))
         used_rects.append(_used_rect(image))
-        anchors.append([64, 116])
+        anchors.append([96, 178])
         velocities.append([velocity_x, 0.0])
         durations.append(round(1000 / fps))
     actions[action_id] = {
         "name": name,
         "resource": action_id,
-        "size": [128, 128],
+        "size": [192, 192],
         "fps": fps,
         "loop": True,
         "loop_start": -1,
@@ -144,15 +219,16 @@ def _write_action(
 def build_skin(sample: dict[str, Any], source_dir: Path, temp_root: Path) -> Path:
     skin_id = str(sample["id"])
     skin_root = temp_root / skin_id
-    frames = split_sprite_sheet(source_dir / str(sample["sprite"]))
+    source = Image.open(sprite_path(source_dir, str(sample["sprite"]))).convert("RGBA")
     actions: dict[str, Any] = {}
-    _write_action(skin_root, actions, "idle", "Idle", frames, [0, 1], 3.0)
-    _write_action(skin_root, actions, "walk_left", "Walk left", frames, [0, 1, 2, 3], 8.0, velocity_x=-2.0)
-    _write_action(skin_root, actions, "walk_right", "Walk right", frames, [0, 1, 2, 3], 8.0, mirror=True, velocity_x=2.0)
-    _write_action(skin_root, actions, "fall", "Fall", frames, [2], 3.0)
-    _write_action(skin_root, actions, "held", "Held", frames, [1], 3.0)
-    _write_action(skin_root, actions, "edge", "Edge hold", frames, [0], 3.0)
-    _write_action(skin_root, actions, "playful", "Playful", frames, [2, 3], 5.0)
+    _write_action(skin_root, actions, "idle", "Idle", source, 4.0)
+    _write_action(skin_root, actions, "walk_left", "Walk left", source, 8.0, velocity_x=-2.0)
+    _write_action(skin_root, actions, "walk_right", "Walk right", source, 8.0, velocity_x=2.0, mirror=True)
+    _write_action(skin_root, actions, "fall", "Fall", source, 3.0)
+    _write_action(skin_root, actions, "held", "Held", source, 3.0)
+    _write_action(skin_root, actions, "edge", "Edge hold", source, 3.0)
+    _write_action(skin_root, actions, "sleep", "Sleep", source, 2.0)
+    _write_action(skin_root, actions, "playful", "Playful", source, 5.0)
     skin = {
         "schema_version": SCHEMA_VERSION,
         "version": 1,
@@ -161,22 +237,23 @@ def build_skin(sample: dict[str, Any], source_dir: Path, temp_root: Path) -> Pat
         "description": sample["description"],
         "metadata": {
             "package_version": "1.0.0",
-            "authors": [{"name": "Gustavo dos Santos / Denellyne"}],
+            "authors": [{"name": "Kenney"}],
             "compatibility_level": "minimal",
             "compatibility_score": 0,
         },
         "preview": "idle/001.png",
         "frame_root": "frames",
         "license": {
-            "type": "MIT + attribution",
-            "summary": "Adapted from DPets sprites by Gustavo dos Santos / Denellyne. DPets README says the two bundled sprites are free to use with credit.",
+            "type": "Creative Commons CC0",
+            "summary": "Adapted from Kenney Animal Pack. CC0 assets may be redistributed and used in commercial projects.",
             "redistributable": True,
         },
         "source": {
-            "format": "dpets-sprite-sheet",
-            "project": "DPets",
-            "project_url": "https://github.com/Denellyne/DPets",
-            "sprite": str(sample["sprite"]),
+            "format": "kenney-animal-pack",
+            "project": "Animal Pack",
+            "project_url": KENNEY_PROJECT_URL,
+            "download_url": KENNEY_ANIMAL_PACK_URL,
+            "sprite": str(SOURCE_SUBDIR / sample["sprite"]).replace("\\", "/"),
         },
         "behavior_profile": {
             "version": 1,
@@ -185,6 +262,7 @@ def build_skin(sample: dict[str, Any], source_dir: Path, temp_root: Path) -> Pat
                     "actions": [
                         {"type": "action", "name": "walk", "weight": 3.0},
                         {"type": "action", "name": "idle", "weight": 2.0},
+                        {"type": "action", "name": "playful", "weight": 1.0},
                     ],
                 },
             },
@@ -198,6 +276,7 @@ def build_skin(sample: dict[str, Any], source_dir: Path, temp_root: Path) -> Pat
             "falling": [{"action": "fall", "score": 90}],
             "held": [{"action": "held", "score": 90}],
             "edge": [{"action": "edge", "score": 82, "direction": "left"}],
+            "sleeping": [{"action": "sleep", "score": 78}],
             "playful": [{"action": "playful", "score": 88}],
             "reaction": [{"action": "idle", "score": 70}],
         },
@@ -247,18 +326,28 @@ def sha256(path: Path) -> str:
 
 def write_notices(source_dir: Path) -> None:
     NOTICE_DIR.mkdir(parents=True, exist_ok=True)
-    for name in ("README.md", "LICENSE"):
+    for name in ("License.txt", "Preview.png"):
         source = source_dir / name
         if source.is_file():
             shutil.copy2(source, NOTICE_DIR / name)
     notice = (
-        "DPets featured skins\n"
-        "=====================\n\n"
-        "The two bundled featured skins are adapted from the two sprites included with DPets.\n"
-        "Credit: Gustavo dos Santos / Denellyne, https://github.com/Denellyne/DPets\n"
-        "The original README states that these two sprites are free to use as long as credit is given.\n"
+        "Kenney Animal Pack featured skins\n"
+        "===================================\n\n"
+        "The bundled featured skins are adapted from Kenney Animal Pack assets.\n"
+        f"Source: {KENNEY_PROJECT_URL}\n"
+        "License: Creative Commons CC0. Attribution is appreciated but not required.\n"
     )
     (NOTICE_DIR / "NOTICE.txt").write_text(notice, encoding="utf-8")
+
+
+def cleanup_obsolete_assets(catalog_root: Path) -> None:
+    for relative in [
+        Path("sources") / "dpets",
+        Path("notices") / "dpets",
+    ]:
+        target = catalog_root / relative
+        if target.exists():
+            shutil.rmtree(target)
 
 
 def generate_catalog(source_dir: Path, catalog_root: Path = CATALOG_ROOT) -> list[dict[str, Any]]:
@@ -272,7 +361,7 @@ def generate_catalog(source_dir: Path, catalog_root: Path = CATALOG_ROOT) -> lis
         path.unlink()
 
     entries: list[dict[str, Any]] = []
-    with tempfile.TemporaryDirectory(prefix="mascotmate-dpets-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="mascotmate-kenney-") as temp_dir:
         temp_root = Path(temp_dir)
         for sample in FEATURED_SKINS:
             skin_root = build_skin(sample, source_dir, temp_root)
@@ -287,8 +376,8 @@ def generate_catalog(source_dir: Path, catalog_root: Path = CATALOG_ROOT) -> lis
                 "description": sample["description"],
                 "tags": sample["tags"],
                 "license": {
-                    "type": "MIT + attribution",
-                    "summary": "Adapted from DPets sprites by Gustavo dos Santos / Denellyne. Credit required by the DPets README.",
+                    "type": "Creative Commons CC0",
+                    "summary": "Adapted from Kenney Animal Pack. Attribution is appreciated but not required.",
                     "redistributable": True,
                 },
                 "format": "mascotmate_skin_zip",
@@ -310,23 +399,29 @@ def generate_catalog(source_dir: Path, catalog_root: Path = CATALOG_ROOT) -> lis
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-dir", type=Path, help="Use an existing DPets source directory instead of downloading.")
+    parser.add_argument("--source-dir", type=Path, help="Use an existing Kenney Animal Pack source directory instead of downloading.")
     parser.add_argument("--catalog-root", type=Path, default=CATALOG_ROOT)
-    parser.add_argument("--timeout", type=float, default=20.0)
+    parser.add_argument("--timeout", type=float, default=30.0)
     args = parser.parse_args()
 
     if args.source_dir is None:
-        source_dir = args.catalog_root / "sources" / "dpets"
+        source_dir = args.catalog_root / "sources" / "kenney_animal_pack"
         download_sources(source_dir, args.timeout)
     else:
         source_dir = args.source_dir
-    missing = [name for name in ("cat.png", "sprite.png") if not (source_dir / name).is_file()]
+    missing = [
+        str(SOURCE_SUBDIR / name)
+        for name in ("panda.png", "rabbit.png")
+        if not sprite_path(source_dir, name).is_file()
+    ]
     if missing:
-        raise SystemExit("Missing DPets source files: " + ", ".join(missing))
+        raise SystemExit("Missing Kenney source files: " + ", ".join(missing))
+    cleanup_obsolete_assets(args.catalog_root)
     entries = generate_catalog(source_dir, args.catalog_root)
     if args.catalog_root == CATALOG_ROOT:
         write_notices(source_dir)
-    print(f"Generated {len(entries)} featured skins in {args.catalog_root.relative_to(ROOT) if args.catalog_root.is_relative_to(ROOT) else args.catalog_root}")
+    display_root = args.catalog_root.relative_to(ROOT) if args.catalog_root.is_relative_to(ROOT) else args.catalog_root
+    print(f"Generated {len(entries)} featured skins in {display_root}")
     return 0
 
 

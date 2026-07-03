@@ -10,6 +10,7 @@
   --blue: #2f80ed;
   --coral: #e87555;
   --amber: #d9982f;
+  --violet: #7952d6;
   --shadow: 0 18px 40px rgba(29, 45, 61, 0.12);
 }
 
@@ -82,6 +83,58 @@ h2 {
   border-radius: 8px;
 }
 
+.quick-panel {
+  margin: 0 0 20px;
+}
+
+.drop-zone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  min-height: 132px;
+  padding: 18px;
+  background:
+    linear-gradient(135deg, rgba(31, 157, 112, 0.12), rgba(47, 128, 237, 0.10)),
+    var(--panel);
+  border: 1px dashed #9ecabd;
+  border-radius: 8px;
+}
+
+.url-import {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(260px, 1fr) 148px;
+  gap: 10px;
+}
+
+.url-import input {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.drop-zone.dragging {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 4px rgba(47, 128, 237, 0.12);
+}
+
+.drop-zone p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.drop-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+#importStatus {
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -130,6 +183,10 @@ select:focus {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
+.installed-grid {
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+}
+
 .card {
   display: grid;
   gap: 10px;
@@ -147,6 +204,12 @@ select:focus {
   min-height: 196px;
 }
 
+.card.local-card {
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  min-height: 156px;
+}
+
 .preview {
   display: grid;
   place-items: center;
@@ -161,6 +224,10 @@ select:focus {
   height: 136px;
 }
 
+.local-card .preview {
+  height: 112px;
+}
+
 .preview img {
   display: block;
   max-width: 100%;
@@ -169,8 +236,15 @@ select:focus {
   image-rendering: auto;
 }
 
-.featured .preview img {
-  image-rendering: pixelated;
+.preview-placeholder {
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--violet);
+  font-weight: 800;
 }
 
 .content {
@@ -238,6 +312,10 @@ select:focus {
   justify-content: space-between;
 }
 
+.actions.two {
+  justify-content: end;
+}
+
 button {
   min-height: 38px;
   border: 0;
@@ -266,6 +344,10 @@ button.secondary {
 button.ghost {
   color: var(--blue);
   background: #e9f1ff;
+}
+
+.drop-zone button {
+  min-width: 128px;
 }
 
 .toast {
@@ -304,7 +386,27 @@ button.ghost {
     grid-template-columns: 1fr;
   }
 
+  .drop-zone {
+    grid-template-columns: 1fr;
+  }
+
+  .url-import {
+    grid-template-columns: 1fr;
+  }
+
+  .drop-actions {
+    justify-items: start;
+  }
+
+  #importStatus {
+    text-align: left;
+  }
+
   .card.featured {
+    grid-template-columns: 1fr;
+  }
+
+  .card.local-card {
     grid-template-columns: 1fr;
   }
 }

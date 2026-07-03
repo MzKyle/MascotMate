@@ -7,7 +7,7 @@
 | `external_browser` | 第三方 Shimeji 浏览条目，例如 Cachomon SFW 列表 | 只打开原站页面，用户下载后拖入或导入 ZIP |
 | `curated_package` | 项目维护、明确允许再分发的精选皮肤包 | 应用内下载、校验 SHA-256、安装并启用 |
 
-默认体验由浏览器版皮肤商店承载：顶部展示随包可直装精选皮肤，下面展示 `external_browser` 条目，让用户能看到真实 Shimeji 皮肤生态。
+默认体验由浏览器版皮肤商店承载：顶部展示本地 ZIP 导入、本地已安装皮肤和随包可直装精选皮肤，下面展示 `external_browser` 条目，让用户能看到真实 Shimeji 皮肤生态。
 
 ## 浏览器商店服务
 
@@ -17,7 +17,7 @@
 python3 scripts/pet_helper.py skin-store --repo-root . --config-dir ~/.config/mascotmate-desktop --open-browser
 ```
 
-服务只监听 `127.0.0.1`，启动时生成随机 token。浏览器页面通过本地 API 安装精选皮肤、启用已安装皮肤或打开第三方原站。安装或启用成功后，helper 会写入：
+服务只监听 `127.0.0.1`，启动时生成随机 token。浏览器页面通过本地 API 安装精选皮肤、上传并导入 ZIP、从允许直链的 HTTPS ZIP 下载并导入、启用已安装皮肤或打开第三方原站。安装、导入或启用成功后，helper 会写入：
 
 ```text
 ~/.config/mascotmate-desktop/skin_store_command.json
@@ -27,7 +27,7 @@ Godot 运行时会轮询这个文件并立即切换皮肤。
 
 ## Cachomon 浏览索引
 
-运行时会读取 Cachomon SFW 列表的元数据和预览图 URL，但不会镜像、内置或代下载第三方 ZIP。点击“打开原站”会跳到原始详情页，下载完成后可以把 ZIP 拖到皮肤商店窗口，或用“导入 ZIP”安装。
+运行时会读取 Cachomon SFW 列表的元数据和预览图 URL，但不会镜像、内置或代下载第三方 ZIP。点击“打开原站”会跳到原始详情页，下载完成后可以把 ZIP 拖到皮肤商店窗口，或用“导入 ZIP”安装。直链导入会拒绝 Cachomon 域名，避免把应用变成第三方下载入口。
 
 本地缓存位置：
 
@@ -78,25 +78,25 @@ python3 scripts/pet_helper.py fetch-cachomon-index --safe --json
 https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_catalog/catalog.json
 ```
 
-网络不可用或远端格式错误时，运行时会回退到随包复制的本地 `skin_catalog/catalog.json`。精选源只收录明确允许再分发的皮肤。当前随包精选包含两款由 DPets 的 `cat.png` 和 `sprite.png` 转换来的原生皮肤包，署名和许可文件位于 `skin_catalog/notices/dpets/`。
+网络不可用或远端格式错误时，运行时会回退到随包复制的本地 `skin_catalog/catalog.json`。精选源只收录明确允许再分发的皮肤。当前随包精选包含两款由 Kenney Animal Pack 的 CC0 PNG 转换来的原生皮肤包，许可说明位于 `skin_catalog/notices/kenney_animal_pack/`。
 
 `curated_package` 条目字段：
 
 ```json
 {
   "source_type": "curated_package",
-  "id": "dpets_cat",
-  "name": "DPets Cat",
-  "description": "A crisp pixel cat companion adapted from the DPets desktop pet sprites.",
-  "tags": ["featured", "pixel", "cat", "dpets"],
+  "id": "kenney_panda",
+  "name": "Kenney Panda",
+  "description": "A clean high-resolution panda companion adapted from Kenney's CC0 Animal Pack.",
+  "tags": ["featured", "animal", "panda", "kenney", "cc0"],
   "license": {
-    "type": "MIT + attribution",
-    "summary": "Adapted from DPets sprites by Gustavo dos Santos / Denellyne.",
+    "type": "Creative Commons CC0",
+    "summary": "Adapted from Kenney Animal Pack. Attribution is appreciated but not required.",
     "redistributable": true
   },
   "format": "mascotmate_skin_zip",
-  "preview": "previews/dpets_cat.png",
-  "package": "packages/dpets_cat.zip",
+  "preview": "previews/kenney_panda.png",
+  "package": "packages/kenney_panda.zip",
   "sha256": "...",
   "size_bytes": 12345,
   "min_app_version": "1.2.0"
@@ -121,7 +121,7 @@ https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_c
 python3 scripts/validate_skin_catalog.py --check
 ```
 
-重新下载 DPets 素材并生成随包精选源：
+重新下载 Kenney Animal Pack 素材并生成随包精选源：
 
 ```bash
 python3 scripts/fetch_featured_skins.py

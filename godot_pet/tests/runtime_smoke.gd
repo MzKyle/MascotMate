@@ -6,7 +6,6 @@ const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const PetSpriteScript = preload("res://scripts/PetSprite.gd")
 const MainScript = preload("res://scripts/Main.gd")
 const SkinCatalogClientScript = preload("res://scripts/SkinCatalogClient.gd")
-const SkinManagerWindowScript = preload("res://scripts/SkinManagerWindow.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
 
 const FIXED_ENTERTAINMENT_TIME := 1761998400
@@ -90,11 +89,6 @@ func _run() -> void:
 	if str(download_result["path"]) == "":
 		_fail("Skin catalog fallback download validation failed: %s" % str(download_result["failure"]))
 		return
-
-	var skin_window = SkinManagerWindowScript.new()
-	root_node.add_child(skin_window)
-	await process_frame
-	skin_window.configure(skin_manager, null, repo_root)
 
 	var skin_store_bridge = SkinStoreBridgeScript.new()
 	root_node.add_child(skin_store_bridge)

@@ -3,49 +3,51 @@
   "updated_at": "2026-07-03",
   "skins": [
     {
-      "id": "dpets_cat",
+      "id": "kenney_panda",
       "source_type": "curated_package",
-      "name": "DPets Cat",
-      "description": "A crisp pixel cat companion adapted from the DPets desktop pet sprites.",
+      "name": "Kenney Panda",
+      "description": "A clean high-resolution panda companion adapted from Kenney's CC0 Animal Pack.",
       "tags": [
         "featured",
-        "pixel",
-        "cat",
-        "dpets"
+        "animal",
+        "panda",
+        "kenney",
+        "cc0"
       ],
       "license": {
-        "type": "MIT + attribution",
-        "summary": "Adapted from DPets sprites by Gustavo dos Santos / Denellyne. Credit required by the DPets README.",
+        "type": "Creative Commons CC0",
+        "summary": "Adapted from Kenney Animal Pack. Attribution is appreciated but not required.",
         "redistributable": true
       },
       "format": "mascotmate_skin_zip",
-      "preview": "previews/dpets_cat.png",
-      "package": "packages/dpets_cat.zip",
-      "sha256": "8fbc6fc57cf253e5f56c7dd6a3bbb9fe513d045a028740d0a07b4b5a9d1410df",
-      "size_bytes": 14605,
+      "preview": "previews/kenney_panda.png",
+      "package": "packages/kenney_panda.zip",
+      "sha256": "cc2d7913fe3b9303e5e2c9090c77a210f7b3c9f8df6293eccc3e6606314b60d4",
+      "size_bytes": 366593,
       "min_app_version": "1.2.0"
     },
     {
-      "id": "dpets_pup",
+      "id": "kenney_rabbit",
       "source_type": "curated_package",
-      "name": "DPets Pup",
-      "description": "A tiny pixel dog companion adapted from the DPets desktop pet sprites.",
+      "name": "Kenney Rabbit",
+      "description": "A bright high-resolution rabbit companion adapted from Kenney's CC0 Animal Pack.",
       "tags": [
         "featured",
-        "pixel",
-        "dog",
-        "dpets"
+        "animal",
+        "rabbit",
+        "kenney",
+        "cc0"
       ],
       "license": {
-        "type": "MIT + attribution",
-        "summary": "Adapted from DPets sprites by Gustavo dos Santos / Denellyne. Credit required by the DPets README.",
+        "type": "Creative Commons CC0",
+        "summary": "Adapted from Kenney Animal Pack. Attribution is appreciated but not required.",
         "redistributable": true
       },
       "format": "mascotmate_skin_zip",
-      "preview": "previews/dpets_pup.png",
-      "package": "packages/dpets_pup.zip",
-      "sha256": "21bc3e38dba8bb1547e8327ce16962b1c5325b6bafbdc4fccfb921c9634abb47",
-      "size_bytes": 13905,
+      "preview": "previews/kenney_rabbit.png",
+      "package": "packages/kenney_rabbit.zip",
+      "sha256": "b37b8cc29850d570f3e0bf7186480b9cbc33ca7cbfe67f2a32319db452c9dd3a",
+      "size_bytes": 370497,
       "min_app_version": "1.2.0"
     }
   ]

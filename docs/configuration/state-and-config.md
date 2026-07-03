@@ -85,7 +85,7 @@ clipboard_<timestamp>_<ticks>.png
 ~/.config/mascotmate-desktop/skins/
 ```
 
-浏览器皮肤商店、原生兜底窗口和 `scripts/import_shimeji_skin.py` 会把 Shimeji-ee 导入结果写到这个目录。每个皮肤是一个独立目录，包含 `skin.json` 和 `frames/`。
+浏览器皮肤商店和 `scripts/import_shimeji_skin.py` 会把 Shimeji-ee 导入结果写到这个目录。每个皮肤是一个独立目录，包含 `skin.json` 和 `frames/`。
 
 ## 清理配置
 

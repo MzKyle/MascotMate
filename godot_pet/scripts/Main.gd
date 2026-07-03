@@ -14,7 +14,6 @@ const MischiefControllerScript = preload("res://scripts/MischiefController.gd")
 const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
 const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const AnimationResolverScript = preload("res://scripts/AnimationResolver.gd")
-const SkinManagerWindowScript = preload("res://scripts/SkinManagerWindow.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
 
 const HIDE_EDGE_THRESHOLD := 52.0
@@ -37,7 +36,6 @@ var mischief_controller
 var feedback
 var skin_manager
 var animation_resolver
-var skin_window
 var skin_store_bridge
 var display_scale := 1.0
 var drag_offset := Vector2.ZERO
@@ -204,12 +202,6 @@ func _create_nodes() -> void:
 	feedback = FeedbackEffectsScript.new()
 	add_child(feedback)
 	feedback.configure(repo_root, pet_sprite)
-
-	skin_window = SkinManagerWindowScript.new()
-	add_child(skin_window)
-	skin_window.configure(skin_manager, config_store, repo_root)
-	skin_window.skin_selected.connect(_set_skin)
-	skin_window.notify.connect(_on_skin_window_notify)
 
 	skin_store_bridge = SkinStoreBridgeScript.new()
 	add_child(skin_store_bridge)
@@ -561,14 +553,9 @@ func _set_gravity_enabled(value: bool) -> void:
 
 
 func _open_skin_manager() -> void:
-	if _env_flag("MASCOTMATE_NATIVE_SKIN_WINDOW", false):
-		if skin_window != null:
-			skin_window.open_window()
-		return
 	if skin_store_bridge != null and skin_store_bridge.open_store():
 		return
-	if skin_window != null:
-		skin_window.open_window()
+	show_bubble("皮肤商店启动失败，请检查 helper。", 2.8)
 
 
 func _set_skin(skin_id: String) -> void:
@@ -592,10 +579,6 @@ func _set_skin(skin_id: String) -> void:
 	_sync_window_size(true)
 	_update_mouse_passthrough()
 	show_bubble("已切换：%s。" % skin_manager.selected_skin_name())
-
-
-func _on_skin_window_notify(message: String) -> void:
-	show_bubble(message, 2.8)
 
 
 func _on_skin_store_skin_requested(skin_id: String) -> void:

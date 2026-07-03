@@ -25,6 +25,7 @@
         <span>来源</span>
         <select id="sourceFilter">
           <option value="all">全部</option>
+          <option value="installed">本地已安装</option>
           <option value="featured">本地直装精选</option>
           <option value="external">Shimeji 浏览</option>
         </select>
@@ -41,10 +42,36 @@
       </label>
     </section>
 
+    <section class="quick-panel" aria-label="本地资源导入">
+      <div id="dropZone" class="drop-zone">
+        <div>
+          <h2>导入下载好的 ZIP</h2>
+          <p>从原站下载后拖到这里，或选择本地 ZIP。导入成功会立即启用。</p>
+        </div>
+        <div class="drop-actions">
+          <input id="importInput" type="file" accept=".zip,application/zip" hidden>
+          <button id="importButton" type="button">选择 ZIP</button>
+          <span id="importStatus">支持 MascotMate 原生包和 Shimeji-ee ZIP</span>
+        </div>
+        <div class="url-import">
+          <input id="sourceUrlInput" type="url" placeholder="粘贴允许直链的 ZIP URL">
+          <button id="downloadImportButton" type="button" class="ghost">下载并导入</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="installedSection" class="section">
+      <div class="section-title">
+        <h2>本地已安装</h2>
+        <span>点击即可替换当前桌宠皮肤</span>
+      </div>
+      <div id="installedGrid" class="grid installed-grid"></div>
+    </section>
+
     <section id="featuredSection" class="section">
       <div class="section-title">
         <h2>本地直装精选</h2>
-        <span>随包提供，可直接安装并启用</span>
+        <span>授权清晰，可直接安装并启用</span>
       </div>
       <div id="featuredGrid" class="grid featured-grid"></div>
     </section>

@@ -1,6 +1,0 @@
-DPets featured skins
-=====================
-
-The two bundled featured skins are adapted from the two sprites included with DPets.
-Credit: Gustavo dos Santos / Denellyne, https://github.com/Denellyne/DPets
-The original README states that these two sprites are free to use as long as credit is given.

@@ -13,7 +13,6 @@
 | `SkinManager.gd` | 发现、选择和删除皮肤 | 内置皮肤、用户皮肤、配置目录 | 当前皮肤和帧根目录 |
 | `AnimationResolver.gd` | 将场景能力映射到皮肤动作 | `skin.json`、能力标签、方向约束 | 具体动作 ID |
 | `SkinStoreBridge.gd` | 浏览器皮肤商店桥接 | 本地 helper、配置目录、command 文件 | 打开浏览器商店、接收皮肤切换请求 |
-| `SkinManagerWindow.gd` | 原生兜底皮肤窗口 | 已安装皮肤、精选源、Shimeji zip/目录 | 下载、导入、启用、目录跳转 |
 | `SkinCatalogClient.gd` | 皮肤商店数据源客户端 | Cachomon 索引、`catalog.json`、预览图、皮肤 ZIP | 商店 fallback、预览缓存、下载缓存、哈希校验 |
 | `PetSprite.gd` | 加载动作帧、播放动画、计算可见区域 | `skin.json`、帧根目录 | 当前帧、窗口建议尺寸、可见矩形 |
 | `PetPhysics.gd` | 物理状态机、速度、重力、碰撞、贴边 | 释放速度、播放区域、接触矩形 | 窗口坐标、物理状态、碰撞信号 |
@@ -35,7 +34,7 @@
 | `scripts/import_shimeji_skin.py` | 把 Shimeji-ee zip/目录导入为皮肤包 |
 | `scripts/cachomon_catalog.py` | 抓取并解析 Cachomon SFW 列表元数据，不下载第三方 ZIP |
 | `scripts/skin_store_server.py` | 提供只监听 `127.0.0.1` 的浏览器皮肤商店 API |
-| `scripts/fetch_featured_skins.py` | 下载 DPets sprites 并生成随包精选皮肤包 |
+| `scripts/fetch_featured_skins.py` | 下载 Kenney Animal Pack CC0 资源并生成随包精选皮肤包 |
 | `scripts/validate_skin_catalog.py` | 校验精选皮肤源和随包精选皮肤 |
 | `scripts/generate_hd_assets.py` | 生成高清资源副本 |
 | `scripts/generate_peek_assets.py` | 生成贴边偷看图 |

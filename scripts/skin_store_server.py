@@ -4,15 +4,19 @@
 from __future__ import annotations
 
 import json
+import io
 import mimetypes
 import secrets
 import sys
 import time
 import urllib.parse
+import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+import tempfile
+import zipfile
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -22,6 +26,7 @@ from import_shimeji_skin import install_skin_source
 
 
 CONFIG_DIR_NAME = "mascotmate-desktop"
+MAX_IMPORT_BYTES = 100 * 1024 * 1024
 
 
 def default_config_dir() -> Path:
@@ -42,6 +47,20 @@ def is_subpath(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _friendly_import_error(message: str) -> str:
+    if "Unsafe path in zip" in message:
+        return "ZIP 内包含不安全路径，已拒绝导入。"
+    if "No Shimeji image sets found" in message:
+        return "未识别到 Shimeji-ee 或 MascotMate 原生皮肤结构。"
+    if "Unsupported source" in message:
+        return "不支持的皮肤包格式，请选择 ZIP 文件。"
+    if "Invalid skin package" in message:
+        return "原生皮肤包校验失败。"
+    if "Missing native skin manifest" in message:
+        return "原生皮肤包缺少 skin.json。"
+    return message or "皮肤导入失败。"
 
 
 class SkinStoreApp:
@@ -73,7 +92,7 @@ class SkinStoreApp:
             if isinstance(entry, dict):
                 external.append(dict(entry))
 
-        installed = self.installed_skins()
+        installed = self.installed_skins(token)
         current_skin_id = self.current_skin_id()
         installed_ids = {str(item.get("id", "")) for item in installed}
         for entry in curated:
@@ -118,6 +137,78 @@ class SkinStoreApp:
             "report": installed[0].report,
         }
 
+    def import_zip_bytes(self, filename: str, data: bytes) -> dict[str, Any]:
+        safe_name = Path(filename or "skin.zip").name
+        if not safe_name.lower().endswith(".zip"):
+            raise ValueError("请选择 ZIP 格式的皮肤包。")
+        if len(data) <= 0:
+            raise ValueError("ZIP 文件为空。")
+        if len(data) > MAX_IMPORT_BYTES:
+            raise ValueError("ZIP 文件超过 100MB 上限。")
+        if not zipfile.is_zipfile(io.BytesIO(data)):
+            raise ValueError("文件不是有效的 ZIP。")
+
+        self.user_skin_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="mascotmate-skin-upload-") as temp_dir:
+            upload_path = Path(temp_dir) / safe_name
+            upload_path.write_bytes(data)
+            try:
+                installed = install_skin_source(upload_path, self.user_skin_root)
+            except SystemExit as exc:
+                raise ValueError(_friendly_import_error(str(exc))) from exc
+        if not installed:
+            raise ValueError("未在 ZIP 中找到可用皮肤。")
+        selected = installed[0]
+        selected_id = str(selected.report.get("skin_id", "")).strip()
+        if selected_id == "":
+            raise ValueError("导入完成但无法识别皮肤 ID。")
+        self.select_skin(selected_id)
+        return {
+            "ok": True,
+            "skin_id": selected_id,
+            "skin_name": str(selected.report.get("skin_name", selected_id)),
+            "message": "皮肤已导入并启用。",
+            "installed": [
+                {
+                    "skin_id": str(item.report.get("skin_id", "")),
+                    "skin_name": str(item.report.get("skin_name", item.report.get("skin_id", ""))),
+                    "report": item.report,
+                }
+                for item in installed
+            ],
+            "report": selected.report,
+        }
+
+    def import_zip_url(self, url: str) -> dict[str, Any]:
+        parsed = urllib.parse.urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in ("http", "https") or host == "":
+            raise ValueError("请输入有效的 ZIP 下载链接。")
+        if parsed.scheme == "http" and host not in ("127.0.0.1", "localhost"):
+            raise ValueError("原站直链必须使用 HTTPS。")
+        if host == "cachomon.com" or host.endswith(".cachomon.com"):
+            raise ValueError("Cachomon 不允许第三方应用代下载，请打开原站下载后再导入 ZIP。")
+        request = urllib.request.Request(url, headers={"User-Agent": "MascotMateDesktop/1.0"})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if host in ("127.0.0.1", "localhost") else None
+        try:
+            open_url = opener.open if opener is not None else urllib.request.urlopen
+            with open_url(request, timeout=30) as response:
+                length = int(response.headers.get("Content-Length", "0") or "0")
+                if length > MAX_IMPORT_BYTES:
+                    raise ValueError("ZIP 文件超过 100MB 上限。")
+                data = response.read(MAX_IMPORT_BYTES + 1)
+                final_url = response.geturl()
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise ValueError(f"下载失败：{exc}") from exc
+        if len(data) > MAX_IMPORT_BYTES:
+            raise ValueError("ZIP 文件超过 100MB 上限。")
+        filename = Path(urllib.parse.urlparse(final_url).path).name or "download.zip"
+        if not filename.lower().endswith(".zip"):
+            filename = "download.zip"
+        return self.import_zip_bytes(filename, data)
+
     def select_skin(self, skin_id: str) -> dict[str, Any]:
         if skin_id != "classic_shinchan" and skin_id not in {str(item.get("id", "")) for item in self.installed_skins()}:
             raise ValueError("皮肤未安装。")
@@ -135,12 +226,15 @@ class SkinStoreApp:
         webbrowser.open(url)
         return {"ok": True, "url": url, "message": "已打开原站页面。"}
 
-    def installed_skins(self) -> list[dict[str, Any]]:
+    def installed_skins(self, token: str | None = None) -> list[dict[str, Any]]:
+        current = self.current_skin_id()
+        default_preview = self._default_preview_url(token)
         result = [{
             "id": "classic_shinchan",
             "name": "蜡笔小新默认皮肤",
             "kind": "builtin",
-            "selected": self.current_skin_id() == "classic_shinchan",
+            "selected": current == "classic_shinchan",
+            "preview_url": default_preview,
         }]
         for root, kind in ((self.repo_root / "skins", "packaged"), (self.user_skin_root, "user")):
             if not root.is_dir():
@@ -156,7 +250,8 @@ class SkinStoreApp:
                     "id": skin_id,
                     "name": str(data.get("name", skin_id)),
                     "kind": kind,
-                    "selected": skin_id == self.current_skin_id(),
+                    "selected": skin_id == current,
+                    "preview_url": self._installed_preview_url(skin_id, data, token),
                 })
         return result
 
@@ -177,6 +272,26 @@ class SkinStoreApp:
         if not is_subpath(target, self.repo_root) or not target.is_file():
             raise FileNotFoundError(relative)
         return target
+
+    def installed_asset_file(self, skin_id: str, relative: str) -> Path:
+        if not is_safe_relative_ref(relative) or Path(relative).suffix.lower() != ".png":
+            raise FileNotFoundError(relative)
+        for root in (self.repo_root / "skins", self.user_skin_root):
+            if not root.is_dir():
+                continue
+            for skin_json in sorted(root.glob("*/skin.json")):
+                data = self._load_json(skin_json)
+                if str(data.get("id", "")) != skin_id:
+                    continue
+                frame_root = str(data.get("frame_root", "frames"))
+                if not is_safe_relative_ref(frame_root):
+                    raise FileNotFoundError(relative)
+                target = (skin_json.parent / frame_root / relative).resolve()
+                allowed_root = (skin_json.parent / frame_root).resolve()
+                if not is_subpath(target, allowed_root) or not target.is_file():
+                    raise FileNotFoundError(relative)
+                return target
+        raise FileNotFoundError(relative)
 
     def _curated_entry(self, skin_id: str) -> dict[str, Any]:
         catalog = self._load_json(self.catalog_dir / "catalog.json")
@@ -208,6 +323,33 @@ class SkinStoreApp:
             urllib.parse.quote(relative.replace("\\", "/")),
             urllib.parse.quote(token),
         )
+
+    def _installed_asset_url(self, skin_id: str, relative: str, token: str | None) -> str:
+        if not token:
+            return ""
+        return "/installed-asset/%s/%s?token=%s" % (
+            urllib.parse.quote(skin_id, safe=""),
+            urllib.parse.quote(relative.replace("\\", "/"), safe=""),
+            urllib.parse.quote(token),
+        )
+
+    def _installed_preview_url(self, skin_id: str, skin: dict[str, Any], token: str | None) -> str:
+        preview = str(skin.get("preview", ""))
+        if not is_safe_relative_ref(preview) or Path(preview).suffix.lower() != ".png":
+            return ""
+        return self._installed_asset_url(skin_id, preview, token)
+
+    def _default_preview_url(self, token: str | None) -> str:
+        if not token:
+            return ""
+        resource_root = self.repo_root / "resource_hd"
+        if not resource_root.is_dir():
+            return ""
+        images = sorted(path for path in resource_root.rglob("*.png") if path.is_file())
+        if not images:
+            return ""
+        relative = images[0].relative_to(self.repo_root)
+        return self._asset_url(str(relative).replace("\\", "/"), token)
 
     def _write_config_skin(self, skin_id: str) -> None:
         self.config_dir.mkdir(parents=True, exist_ok=True)
@@ -278,6 +420,21 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
             except FileNotFoundError:
                 self.send_error(404)
             return
+        if parsed.path.startswith("/installed-asset/"):
+            if not self._authorized(parsed):
+                self.send_error(403)
+                return
+            parts = parsed.path.removeprefix("/installed-asset/").split("/", 1)
+            if len(parts) != 2:
+                self.send_error(404)
+                return
+            skin_id = urllib.parse.unquote(parts[0])
+            relative = urllib.parse.unquote(parts[1])
+            try:
+                self._send_file(self.server.app.installed_asset_file(skin_id, relative))
+            except FileNotFoundError:
+                self.send_error(404)
+            return
         if parsed.path in ("", "/"):
             try:
                 self._send_file(self.server.app.static_file("index.html"))
@@ -297,7 +454,14 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
             self._json({"ok": False, "error": "unauthorized"}, 403)
             return
         try:
+            if parsed.path == "/api/import-zip":
+                filename, data = self._read_zip_upload()
+                self._json(self.server.app.import_zip_bytes(filename, data))
+                return
             body = self._read_json()
+            if parsed.path == "/api/import-url":
+                self._json(self.server.app.import_zip_url(str(body.get("url", ""))))
+                return
             if parsed.path == "/api/install":
                 self._json(self.server.app.install_curated(str(body.get("id", ""))))
                 return
@@ -317,6 +481,42 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
             return {}
         data = json.loads(self.rfile.read(length).decode("utf-8"))
         return data if isinstance(data, dict) else {}
+
+    def _read_zip_upload(self) -> tuple[str, bytes]:
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0:
+            raise ValueError("没有收到 ZIP 文件。")
+        if length > MAX_IMPORT_BYTES + 2 * 1024 * 1024:
+            raise ValueError("ZIP 文件超过 100MB 上限。")
+        content_type = self.headers.get("Content-Type", "")
+        raw = self.rfile.read(length)
+        if content_type.startswith("application/zip"):
+            return "upload.zip", raw
+        if "multipart/form-data" not in content_type:
+            raise ValueError("请使用表单上传 ZIP 文件。")
+        import cgi
+
+        environ = {
+            "REQUEST_METHOD": "POST",
+            "CONTENT_TYPE": content_type,
+            "CONTENT_LENGTH": str(length),
+        }
+        form = cgi.FieldStorage(
+            fp=io.BytesIO(raw),
+            headers=self.headers,
+            environ=environ,
+            keep_blank_values=True,
+        )
+        field = form["file"] if "file" in form else None
+        if isinstance(field, list):
+            field = field[0] if field else None
+        if field is None or not getattr(field, "file", None):
+            raise ValueError("请选择 ZIP 文件。")
+        filename = Path(str(getattr(field, "filename", "") or "upload.zip")).name
+        data = field.file.read(MAX_IMPORT_BYTES + 1)
+        if len(data) > MAX_IMPORT_BYTES:
+            raise ValueError("ZIP 文件超过 100MB 上限。")
+        return filename, data
 
     def _authorized(self, parsed) -> bool:
         query = urllib.parse.parse_qs(parsed.query)
