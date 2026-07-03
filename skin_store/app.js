@@ -35,11 +35,20 @@ function apiUrl(path) {
   return `${path}?token=${encodeURIComponent(token)}`;
 }
 
+async function readJsonResponse(response, fallback) {
+  let data = {};
+  try {
+    data = await response.json();
+  } catch (_error) {
+    data = {};
+  }
+  if (!response.ok || data.ok === false) throw new Error(data.error || fallback);
+  return data;
+}
+
 async function apiGet(path) {
   const response = await fetch(apiUrl(path), { cache: "no-store" });
-  const data = await response.json();
-  if (!response.ok || data.ok === false) throw new Error(data.error || "请求失败");
-  return data;
+  return readJsonResponse(response, "请求失败");
 }
 
 async function apiPost(path, body) {
@@ -51,9 +60,7 @@ async function apiPost(path, body) {
     },
     body: JSON.stringify(body),
   });
-  const data = await response.json();
-  if (!response.ok || data.ok === false) throw new Error(data.error || "请求失败");
-  return data;
+  return readJsonResponse(response, "请求失败");
 }
 
 async function apiUpload(path, file) {
@@ -64,12 +71,15 @@ async function apiUpload(path, file) {
     headers: { "X-MascotMate-Token": token },
     body: form,
   });
-  const data = await response.json();
-  if (!response.ok || data.ok === false) throw new Error(data.error || "上传失败");
-  return data;
+  return readJsonResponse(response, "上传失败");
 }
 
 async function loadCatalog() {
+  if (window.location.protocol === "file:") {
+    els.summary.textContent = "请从桌宠右键菜单重新打开皮肤商店";
+    showToast("本页面需要由本地 helper 服务打开，不能直接双击 HTML 文件。");
+    return;
+  }
   if (!token) {
     showToast("缺少本地会话 token，请从桌宠菜单重新打开皮肤商店。");
     return;
@@ -280,7 +290,7 @@ async function importFile(file) {
     await loadCatalog();
   } catch (error) {
     els.importStatus.textContent = "导入失败，请检查 ZIP 是否为皮肤包。";
-    showToast(error.message);
+    showToast(importErrorMessage(error));
   } finally {
     els.importButton.disabled = false;
     els.importInput.value = "";
@@ -303,7 +313,7 @@ async function importUrl() {
     await loadCatalog();
   } catch (error) {
     els.importStatus.textContent = "下载或导入失败。";
-    showToast(error.message);
+    showToast(importErrorMessage(error));
   } finally {
     els.downloadImportButton.disabled = false;
   }
@@ -342,6 +352,13 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value);
+}
+
+function importErrorMessage(error) {
+  if (error instanceof TypeError) {
+    return "无法连接本地皮肤商店服务，请从桌宠右键菜单重新打开皮肤商店。";
+  }
+  return error.message || "导入失败。";
 }
 
 let toastTimer = 0;

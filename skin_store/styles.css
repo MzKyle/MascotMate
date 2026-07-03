@@ -89,9 +89,12 @@ h2 {
 
 .drop-zone {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: center;
+  grid-template-areas:
+    "copy actions"
+    "url url";
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+  gap: 16px 18px;
+  align-items: start;
   min-height: 132px;
   padding: 18px;
   background:
@@ -101,11 +104,17 @@ h2 {
   border-radius: 8px;
 }
 
+.drop-zone > div:first-child {
+  grid-area: copy;
+  min-width: 0;
+}
+
 .url-import {
   display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: minmax(260px, 1fr) 148px;
+  grid-area: url;
+  grid-template-columns: minmax(0, 1fr) 148px;
   gap: 10px;
+  min-width: 0;
 }
 
 .url-import input {
@@ -124,8 +133,10 @@ h2 {
 
 .drop-actions {
   display: grid;
+  grid-area: actions;
   gap: 8px;
   justify-items: end;
+  min-width: 220px;
 }
 
 #importStatus {
@@ -307,23 +318,26 @@ select:focus {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   justify-content: space-between;
 }
 
 .actions.two {
-  justify-content: end;
+  justify-content: space-between;
 }
 
 button {
   min-height: 38px;
+  max-width: 100%;
   border: 0;
   border-radius: 8px;
   color: #fff;
   background: var(--blue);
   padding: 0 13px;
   font-weight: 760;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -387,6 +401,10 @@ button.ghost {
   }
 
   .drop-zone {
+    grid-template-areas:
+      "copy"
+      "actions"
+      "url";
     grid-template-columns: 1fr;
   }
 
@@ -396,6 +414,7 @@ button.ghost {
 
   .drop-actions {
     justify-items: start;
+    min-width: 0;
   }
 
   #importStatus {

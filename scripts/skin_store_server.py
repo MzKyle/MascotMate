@@ -63,6 +63,55 @@ def _friendly_import_error(message: str) -> str:
     return message or "皮肤导入失败。"
 
 
+def _content_type_param(content_type: str, key: str) -> str:
+    for part in content_type.split(";")[1:]:
+        if "=" not in part:
+            continue
+        name, value = part.split("=", 1)
+        if name.strip().lower() == key:
+            return value.strip().strip('"')
+    return ""
+
+
+def _content_disposition_param(header: str, key: str) -> str:
+    for part in header.split(";")[1:]:
+        if "=" not in part:
+            continue
+        name, value = part.split("=", 1)
+        if name.strip().lower() == key:
+            return value.strip().strip('"')
+    return ""
+
+
+def _parse_multipart_file(raw: bytes, content_type: str) -> tuple[str, bytes]:
+    boundary_text = _content_type_param(content_type, "boundary")
+    if boundary_text == "":
+        raise ValueError("上传表单缺少 boundary。")
+    boundary = boundary_text.encode("utf-8")
+    delimiter = b"--" + boundary
+    for part in raw.split(delimiter):
+        part = part.strip(b"\r\n")
+        if not part or part == b"--":
+            continue
+        if part.endswith(b"--"):
+            part = part[:-2].rstrip(b"\r\n")
+        header_bytes, separator, body = part.partition(b"\r\n\r\n")
+        if separator == b"":
+            continue
+        headers: dict[str, str] = {}
+        for line in header_bytes.decode("utf-8", errors="replace").split("\r\n"):
+            if ":" not in line:
+                continue
+            name, value = line.split(":", 1)
+            headers[name.strip().lower()] = value.strip()
+        disposition = headers.get("content-disposition", "")
+        if _content_disposition_param(disposition, "name") != "file":
+            continue
+        filename = Path(_content_disposition_param(disposition, "filename") or "upload.zip").name
+        return filename, body.rstrip(b"\r\n")
+    raise ValueError("请选择 ZIP 文件。")
+
+
 class SkinStoreApp:
     def __init__(self, repo_root: Path, config_dir: Path) -> None:
         self.repo_root = repo_root.resolve()
@@ -474,6 +523,8 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
             self._json({"ok": False, "error": "not found"}, 404)
         except ValueError as exc:
             self._json({"ok": False, "error": str(exc)}, 400)
+        except Exception:
+            self._json({"ok": False, "error": "服务器处理上传时失败，请重新打开皮肤商店后再试。"}, 500)
 
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0") or "0")
@@ -494,26 +545,7 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
             return "upload.zip", raw
         if "multipart/form-data" not in content_type:
             raise ValueError("请使用表单上传 ZIP 文件。")
-        import cgi
-
-        environ = {
-            "REQUEST_METHOD": "POST",
-            "CONTENT_TYPE": content_type,
-            "CONTENT_LENGTH": str(length),
-        }
-        form = cgi.FieldStorage(
-            fp=io.BytesIO(raw),
-            headers=self.headers,
-            environ=environ,
-            keep_blank_values=True,
-        )
-        field = form["file"] if "file" in form else None
-        if isinstance(field, list):
-            field = field[0] if field else None
-        if field is None or not getattr(field, "file", None):
-            raise ValueError("请选择 ZIP 文件。")
-        filename = Path(str(getattr(field, "filename", "") or "upload.zip")).name
-        data = field.file.read(MAX_IMPORT_BYTES + 1)
+        filename, data = _parse_multipart_file(raw, content_type)
         if len(data) > MAX_IMPORT_BYTES:
             raise ValueError("ZIP 文件超过 100MB 上限。")
         return filename, data
