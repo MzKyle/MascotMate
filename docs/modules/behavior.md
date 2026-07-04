@@ -77,7 +77,7 @@ godot_pet/assets/behavior.json
 
 ## 本地陪伴控制台
 
-右键菜单的“陪伴控制台”会打开本地浏览器页面。控制台读取 `companion_debug_snapshot.json`，展示当前状态、文案语气、最近 decision、intent、adaptation、记忆摘要和最近事件。
+右键菜单的“陪伴控制台”会打开本地浏览器页面。控制台读取 `companion_debug_snapshot.json`，展示当前状态、文案语气、最近 decision、intent、adaptation、记忆摘要和最近事件。运行时会在控制台 helper 活跃期间每 1 秒刷新快照；控制台关闭时，只在启动、状态变化、配置变化、场景回放和退出等事件点写入快照。
 
 控制台还展示长期画像、AI 表达状态、AI health、fallback reason 和最近表达来源。固定场景回放会在 Godot 运行时创建临时行为脑执行 dry-run decision，包括工作低打扰、饥饿照料、低心情陪玩、休息边界、忙碌保护、强制捣乱、长期低打扰用户、长期高陪玩用户、长期高照料用户、工作时段长期偏好保护和休息时段保护。回放结果写入 `companion_scenario_result.json`，不会触发真实动画、不会写入事件日志，也不会改变状态数值。
 
@@ -129,6 +129,8 @@ godot_pet/assets/behavior.json
 - 右上角显示“停”按钮
 
 它不会移动系统鼠标，也不会锁定鼠标。鼠标穿透多边形会被收缩到“停”按钮区域，避免演出期间影响用户操作桌面。
+
+捣乱演出会根据鼠标位置和抖动偏移移动桌宠窗口。窗口位置会先比较再写入，避免同一帧目标坐标不变时重复提交窗口系统调用。
 
 ## 忙碌判断
 

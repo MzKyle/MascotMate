@@ -42,9 +42,12 @@ sequenceDiagram
   User->>Input: 松开鼠标
   Input-->>Main: grab_released(velocity, held, global_pos)
   Main->>Physics: release(velocity, flinging)
-  Physics-->>Main: 每帧更新 position
-  Main->>Window: window.position = physics.position
+  Main->>Main: _physics_needs_tick()
+  Physics-->>Main: 运动状态更新 position
+  Main->>Window: 位置变化后写入 window.position
 ```
+
+空闲或不需要物理推进的状态不会每帧调用 `PetPhysics.tick()`，窗口位置也会先比较再写入。这样保持窗口坐标即物理坐标的模型，同时降低空闲 CPU 和窗口系统调用。
 
 ## 资源加载
 

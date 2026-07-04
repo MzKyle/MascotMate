@@ -113,7 +113,7 @@ scripts/install_desktop_entry.sh
 - `companion_events.json`：最近 200 条结构化陪伴事件。
 - `companion_memory.json`：从事件日志聚合的短期记忆。
 - `companion_profile.json`：长期画像和可选 AI 记忆总结。
-- `companion_debug_snapshot.json`：陪伴控制台读取的运行时快照。
+- `companion_debug_snapshot.json`：陪伴控制台读取的运行时快照；控制台活跃时定时刷新，普通后台运行只在关键事件点写入。
 - `screenshots/`：截图历史。
 - `skins/`：用户导入皮肤。
 

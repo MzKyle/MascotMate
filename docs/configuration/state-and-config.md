@@ -72,7 +72,11 @@
 ~/.config/mascotmate-desktop/companion_console_command.json
 ```
 
-浏览器陪伴控制台会读取运行时快照和场景回放结果。快照包含当前状态、行为模式、文案语气、时段、忙碌状态、透明窗口状态、皮肤人格、短期记忆、长期画像、AI health、最近表达来源统计、最近事件和最近一次 decision。控制台命令通过 `companion_console_command.json` 传给 Godot，处理后会删除该命令文件。
+浏览器陪伴控制台会读取运行时快照和场景回放结果。快照包含当前状态、行为模式、文案语气、时段、忙碌状态、透明窗口状态、皮肤人格、短期记忆、长期画像、AI health、最近表达来源统计、最近事件和最近一次 decision。
+
+Godot 会在启动、配置/状态变化、场景回放和退出时主动写入快照。陪伴控制台 helper 运行期间，运行时还会每 1 秒刷新一次 `companion_debug_snapshot.json`，供浏览器页面轮询读取；控制台未打开时不会无条件持续写该文件。
+
+控制台命令通过 `companion_console_command.json` 传给 Godot，处理后会删除该命令文件。
 
 ## 应用与截图贴图配置
 

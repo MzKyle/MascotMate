@@ -16,13 +16,19 @@
 
 ## 窗口坐标即物理坐标
 
-桌宠不是在一个全屏 canvas 里移动，而是移动 Godot 窗口本身。`PetPhysics.gd` 保存的 `position` 对应窗口左上角坐标，`Main.gd` 每帧同步：
+桌宠不是在一个全屏 canvas 里移动，而是移动 Godot 窗口本身。`PetPhysics.gd` 保存的 `position` 对应窗口左上角坐标。`Main.gd` 只在需要物理推进的状态同步窗口位置：
 
 ```gdscript
-get_window().position = Vector2i(round(physics.position.x), round(physics.position.y))
+if _physics_needs_tick():
+	physics.tick(delta, _play_area(), Vector2(get_window().size), _movement_contact_rect())
+	_apply_window_position(physics.position)
 ```
 
+`_physics_needs_tick()` 当前覆盖 `Grabbed`、`Flinging`、`Falling`、`Walk`、`WallAttached`、`EdgeWalk`。`Idle`、`Landing`、`Peeking` 等不需要持续推进的位置状态会跳过物理和窗口位置写入，降低空闲占用。
+
 这样的好处是桌宠可以像独立桌面对象一样漂浮、落地和贴边，不需要占用整屏透明窗口。
+
+窗口尺寸也会先比较再写入。需要保持窗口中心时，`Main.gd` 会同步更新 `physics.position`，避免下一次进入运动状态时从旧坐标跳动。
 
 ## 接触矩形
 
@@ -58,6 +64,8 @@ PNG 动画帧可能存在透明留白。`PetSprite.gd` 会用 `Image.get_used_re
 - 投喂状态：整个窗口接收事件，方便拖拽饭团
 - 偷看状态：整个小窗口接收事件，方便点击唤回
 - 捣乱演出：只让右上角“停”按钮区域接收事件
+
+运行时会缓存上一次写入的穿透多边形。多边形没有变化时不会重复设置 `Window.mouse_passthrough_polygon`，减少透明窗口环境下的无效窗口系统调用。
 
 如果桌面环境对穿透支持不好，可以关闭：
 

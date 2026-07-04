@@ -72,7 +72,9 @@ func tick(delta: float, window: Window) -> void:
 	var offset = Vector2(-window_size.x * 0.28, window_size.y * 0.22)
 	var shake = Vector2(sin(elapsed * 34.0) * 4.0, cos(elapsed * 29.0) * 3.0)
 	physics.position = _clamp_window_position(mouse - window_size * 0.5 + offset + shake, window_size)
-	window.position = Vector2i(round(physics.position.x), round(physics.position.y))
+	var next_position = Vector2i(round(physics.position.x), round(physics.position.y))
+	if window.position != next_position:
+		window.position = next_position
 	cursor_local = mouse - physics.position
 	position_stop_button(window.size)
 	queue_redraw()

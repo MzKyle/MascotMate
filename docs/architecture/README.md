@@ -73,7 +73,7 @@ flowchart LR
 | 能力 | 主要依赖 | 备注 |
 | --- | --- | --- |
 | 透明背景 | Godot Window + 合成器 | `CRAYON_PET_SAFE_WINDOW=1` 可绕过 |
-| 鼠标穿透 | `Window.mouse_passthrough_polygon` | 根据帧 used rect 更新 |
+| 鼠标穿透 | `Window.mouse_passthrough_polygon` | 按可见区域生成，变化时才写入 |
 | 置顶窗口 | 窗口管理器 | Wayland 限制更多 |
 | 全局快捷键 | `pet_helper` / X11 / pynput | Wayland 下可能不可用 |
 | 区域截图 | Godot `DisplayServer` + 平台工具 | Linux 可兜底 Spectacle/ImageMagick |

@@ -26,6 +26,7 @@ const CompanionExpressionResolverScript = preload("res://scripts/CompanionExpres
 
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
+const COMPANION_DEBUG_REFRESH_SECONDS := 1.0
 
 var repo_root := ""
 var manifest := {}
@@ -75,6 +76,7 @@ var companion_scenario_result_path := ""
 var last_behavior_decision := {}
 var last_behavior_context := {}
 var last_expression := {}
+var last_mouse_passthrough_polygon := PackedVector2Array()
 
 
 func _ready() -> void:
@@ -129,9 +131,10 @@ func _process(delta: float) -> void:
 		return
 	mini_games.tick(delta)
 	_decay_tease_nudge(delta)
-	physics.tick(delta, _play_area(), Vector2(get_window().size), _movement_contact_rect())
-	_sync_walk_animation_to_velocity()
-	get_window().position = Vector2i(round(physics.position.x), round(physics.position.y))
+	if _physics_needs_tick():
+		physics.tick(delta, _play_area(), Vector2(get_window().size), _movement_contact_rect())
+		_sync_walk_animation_to_velocity()
+		_apply_window_position(physics.position)
 	_update_pet_pose(delta)
 
 
@@ -280,8 +283,8 @@ func _create_nodes() -> void:
 
 	companion_debug_timer = Timer.new()
 	add_child(companion_debug_timer)
-	companion_debug_timer.wait_time = 1.0
-	companion_debug_timer.timeout.connect(_write_companion_debug_snapshot)
+	companion_debug_timer.wait_time = COMPANION_DEBUG_REFRESH_SECONDS
+	companion_debug_timer.timeout.connect(_on_companion_debug_timer)
 	companion_debug_timer.start()
 	_write_companion_debug_snapshot()
 	call_deferred("_maybe_summarize_memory", false)
@@ -291,9 +294,12 @@ func _sync_window_size(keep_position := false) -> void:
 	var window = get_window()
 	var old_center = Vector2(window.position) + Vector2(window.size) * 0.5
 	var desired = _desired_window_size()
-	window.size = desired
+	if window.size != desired:
+		window.size = desired
 	if keep_position:
-		window.position = Vector2i(old_center - Vector2(desired) * 0.5)
+		_apply_window_position(old_center - Vector2(desired) * 0.5)
+		if physics != null:
+			physics.set_position_from_window(Vector2(window.position))
 	pet_sprite.position = _pet_default_position(Vector2(desired))
 	mini_games.position = Vector2.ZERO
 	feedback.set_window_size(Vector2(desired))
@@ -330,6 +336,19 @@ func _pet_pose_position(window_size: Vector2) -> Vector2:
 	if not peek_mode and not mischief_grab_active:
 		position += tease_nudge
 	return position
+
+
+func _physics_needs_tick() -> bool:
+	if physics == null:
+		return false
+	return physics.state in ["Grabbed", "Flinging", "Falling", "Walk", "WallAttached", "EdgeWalk"]
+
+
+func _apply_window_position(position: Vector2) -> void:
+	var window = get_window()
+	var next_position = Vector2i(round(position.x), round(position.y))
+	if window.position != next_position:
+		window.position = next_position
 
 
 func _feedback_bubble_position(window_size: Vector2) -> Vector2:
@@ -1228,35 +1247,35 @@ func _update_feedback_window_state() -> void:
 func _update_mouse_passthrough() -> void:
 	var window = get_window()
 	if not transparent_window or not mouse_passthrough_enabled:
-		window.mouse_passthrough_polygon = PackedVector2Array()
+		_set_mouse_passthrough_polygon(PackedVector2Array())
 		return
 	if mischief_grab_active:
 		var rect = mischief_controller.stop_rect().grow(4.0)
-		window.mouse_passthrough_polygon = _rect_polygon(rect)
+		_set_mouse_passthrough_polygon(_rect_polygon(rect))
 		return
 	if mini_games != null and mini_games.active != "":
 		if mini_games.active == "tease":
 			var visible_rect = pet_sprite.visible_rect()
 			var rect = Rect2(pet_sprite.position + visible_rect.position, visible_rect.size).grow(10.0)
 			rect = rect.intersection(Rect2(Vector2.ZERO, Vector2(window.size)))
-			window.mouse_passthrough_polygon = _rect_polygon(rect) if rect.size.x > 1.0 and rect.size.y > 1.0 else PackedVector2Array()
+			_set_mouse_passthrough_polygon(_rect_polygon(rect) if rect.size.x > 1.0 and rect.size.y > 1.0 else PackedVector2Array())
 			return
 		var size = Vector2(window.size)
-		window.mouse_passthrough_polygon = _rect_polygon(Rect2(Vector2.ZERO, size))
+		_set_mouse_passthrough_polygon(_rect_polygon(Rect2(Vector2.ZERO, size)))
 		return
 	if peek_mode:
 		var size = Vector2(window.size)
-		window.mouse_passthrough_polygon = _rect_polygon(Rect2(Vector2.ZERO, size))
+		_set_mouse_passthrough_polygon(_rect_polygon(Rect2(Vector2.ZERO, size)))
 		return
 
 	var visible_rect = pet_sprite.visible_rect()
 	var rect = Rect2(pet_sprite.position + visible_rect.position, visible_rect.size).grow(10.0)
 	rect = rect.intersection(Rect2(Vector2.ZERO, Vector2(window.size)))
 	if rect.size.x <= 1.0 or rect.size.y <= 1.0:
-		window.mouse_passthrough_polygon = PackedVector2Array()
+		_set_mouse_passthrough_polygon(PackedVector2Array())
 		return
 	var cut = min(rect.size.x, rect.size.y) * 0.22
-	window.mouse_passthrough_polygon = PackedVector2Array([
+	_set_mouse_passthrough_polygon(PackedVector2Array([
 		rect.position + Vector2(cut, 0),
 		rect.position + Vector2(rect.size.x - cut, 0),
 		rect.position + Vector2(rect.size.x, cut),
@@ -1265,7 +1284,7 @@ func _update_mouse_passthrough() -> void:
 		rect.position + Vector2(cut, rect.size.y),
 		rect.position + Vector2(0, rect.size.y - cut),
 		rect.position + Vector2(0, cut),
-	])
+	]))
 
 
 func _rect_polygon(rect: Rect2) -> PackedVector2Array:
@@ -1275,6 +1294,22 @@ func _rect_polygon(rect: Rect2) -> PackedVector2Array:
 		rect.position + rect.size,
 		rect.position + Vector2(0, rect.size.y),
 	])
+
+
+func _set_mouse_passthrough_polygon(polygon: PackedVector2Array) -> void:
+	if _polygons_equal(last_mouse_passthrough_polygon, polygon):
+		return
+	last_mouse_passthrough_polygon = polygon
+	get_window().mouse_passthrough_polygon = polygon
+
+
+func _polygons_equal(left: PackedVector2Array, right: PackedVector2Array) -> bool:
+	if left.size() != right.size():
+		return false
+	for i in range(left.size()):
+		if left[i] != right[i]:
+			return false
+	return true
 
 
 func _hide_edge_for_release(global_pos: Vector2) -> String:
@@ -1292,7 +1327,7 @@ func _enter_peek_mode(edge: String) -> void:
 	pet_sprite.visible = false
 	_sync_window_size(false)
 	physics.position = _peek_window_position(edge, DisplayServer.mouse_get_position())
-	get_window().position = Vector2i(round(physics.position.x), round(physics.position.y))
+	_apply_window_position(physics.position)
 	_apply_peek_pose()
 	_update_mouse_passthrough()
 
@@ -1475,6 +1510,15 @@ func _write_companion_debug_snapshot() -> void:
 	if companion_debug_snapshot_path == "":
 		return
 	_write_json_file(companion_debug_snapshot_path, _companion_debug_snapshot())
+
+
+func _on_companion_debug_timer() -> void:
+	if _companion_console_active():
+		_write_companion_debug_snapshot()
+
+
+func _companion_console_active() -> bool:
+	return companion_console_bridge != null and int(companion_console_bridge.helper_pid) > 0
 
 
 func _companion_debug_snapshot() -> Dictionary:
