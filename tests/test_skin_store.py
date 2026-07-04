@@ -184,6 +184,11 @@ class SkinStoreTests(unittest.TestCase):
                 "version": 1,
                 "runtime": {"behavior_mode": "活泼"},
                 "last_decision": {"type": "none", "reason": "busy"},
+                "ai_expression": {
+                    "health": {"provider": "local_stub", "configured": True, "status": "ready"},
+                    "source_stats": {"ai": 1, "local": 2, "fallback": 1},
+                    "fallback_reasons": [{"key": "pet_head", "reason": "timeout"}],
+                },
             }), encoding="utf-8")
             (config_dir / "companion_scenario_result.json").write_text(json.dumps({
                 "version": 1,
@@ -196,6 +201,7 @@ class SkinStoreTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertTrue(body["ok"])
             self.assertEqual(body["snapshot"]["runtime"]["behavior_mode"], "活泼")
+            self.assertEqual(body["snapshot"]["ai_expression"]["health"]["status"], "ready")
             status, body = get_json_status(f"{base}/api/companion/scenario-result", token)
             self.assertEqual(status, 200)
             self.assertTrue(body["result"]["scenarios"][0]["passed"])
@@ -217,9 +223,15 @@ class SkinStoreTests(unittest.TestCase):
             self.assertEqual(body["payload"], {"enabled": True, "provider": "local_stub", "timeout_ms": 1200})
             status, body = post_json(f"{base}/api/companion/command", {"command": "set_ai_expression", "payload": {"provider": "bad"}}, token)
             self.assertEqual(status, 400)
+            status, body = post_json(f"{base}/api/companion/command", {"command": "check_ai_health"}, token)
+            self.assertEqual(status, 200)
+            self.assertEqual(body["command"], "check_ai_health")
             status, body = post_json(f"{base}/api/companion/command", {"command": "run_scenario", "payload": {"scenario_id": "busy_guard"}}, token)
             self.assertEqual(status, 200)
             self.assertEqual(body["payload"]["scenario_id"], "busy_guard")
+            status, body = post_json(f"{base}/api/companion/command", {"command": "run_scenario", "payload": {"scenario_id": "profile_care"}}, token)
+            self.assertEqual(status, 200)
+            self.assertEqual(body["payload"]["scenario_id"], "profile_care")
             status, body = post_json(f"{base}/api/companion/command", {"command": "run_scenario", "payload": {"scenario_id": "../bad"}}, token)
             self.assertEqual(status, 400)
 

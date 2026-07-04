@@ -14,6 +14,7 @@ from typing import Any
 
 
 ALLOWED_PROVIDERS = {"local_stub", "openai_compatible"}
+ALLOWED_RESPONSE_KEYS = {"text", "seconds", "emotion", "safety"}
 MAX_BODY_BYTES = 64 * 1024
 DEFAULT_TIMEOUT = 8.0
 
@@ -149,9 +150,12 @@ class CompanionAIApp:
             return fallback_response(fallback_text, default_seconds)
         if not isinstance(parsed, dict):
             return fallback_response(fallback_text, default_seconds)
-        text = clean_text(parsed.get("text", ""), max_chars=max_chars_from_request(payload))
+        if any(str(key) not in ALLOWED_RESPONSE_KEYS for key in parsed.keys()):
+            return fallback_response(fallback_text, default_seconds)
+        max_chars = max_chars_from_request(payload)
+        text = clean_text(parsed.get("text", ""), max_chars=0)
         safety = str(parsed.get("safety", "fallback"))
-        if text == "" or safety != "ok":
+        if text == "" or len(text) > max_chars or safety != "ok":
             return fallback_response(fallback_text, default_seconds)
         return ok_response(text, parsed.get("seconds", default_seconds), parsed.get("emotion", "neutral"))
 

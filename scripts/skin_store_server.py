@@ -28,11 +28,24 @@ from import_shimeji_skin import install_skin_source
 CONFIG_DIR_NAME = "mascotmate-desktop"
 MAX_IMPORT_BYTES = 100 * 1024 * 1024
 INSTALLABLE_SOURCE_TYPES = {"curated_package", "local_package"}
-COMPANION_COMMANDS = {"set_behavior_mode", "set_adaptation", "set_ai_expression", "rebuild_memory", "run_scenario"}
+COMPANION_COMMANDS = {"set_behavior_mode", "set_adaptation", "set_ai_expression", "check_ai_health", "rebuild_memory", "run_scenario"}
 COMPANION_MODES = {"安静", "活泼", "捣乱"}
 COMPANION_STRENGTHS = {"subtle", "visible", "bold"}
 COMPANION_AI_PROVIDERS = {"local_stub", "openai_compatible"}
-COMPANION_SCENARIOS = {"all", "work_focus", "hungry_care", "low_mood_play", "rest_boundary", "busy_guard", "mischief_forced"}
+COMPANION_SCENARIOS = {
+    "all",
+    "work_focus",
+    "hungry_care",
+    "low_mood_play",
+    "rest_boundary",
+    "busy_guard",
+    "mischief_forced",
+    "profile_low_interrupt",
+    "profile_playful",
+    "profile_care",
+    "profile_work_protected",
+    "profile_rest_protected",
+}
 
 
 def default_config_dir() -> Path:

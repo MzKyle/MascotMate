@@ -827,6 +827,13 @@ func _on_companion_console_command(command: Dictionary) -> void:
 			if command.has("timeout_ms"):
 				ai_values["timeout_ms"] = command["timeout_ms"]
 			_set_ai_expression_config(ai_values)
+		"check_ai_health":
+			var health = {}
+			if companion_ai_expression_client != null and companion_ai_expression_client.has_method("check_health"):
+				health = await companion_ai_expression_client.check_health()
+			var status_text = str(health.get("status", "unknown")) if typeof(health) == TYPE_DICTIONARY else "unknown"
+			show_bubble("AI health：%s。" % status_text, 1.8)
+			_write_companion_debug_snapshot()
 		"rebuild_memory":
 			if companion_memory != null and companion_memory.has_method("refresh"):
 				companion_memory.refresh()
@@ -1381,7 +1388,19 @@ func _write_json_file(path: String, payload: Dictionary) -> void:
 
 
 func _run_companion_scenarios(requested_id := "all") -> Dictionary:
-	var available = ["work_focus", "hungry_care", "low_mood_play", "rest_boundary", "busy_guard", "mischief_forced"]
+	var available = [
+		"work_focus",
+		"hungry_care",
+		"low_mood_play",
+		"rest_boundary",
+		"busy_guard",
+		"mischief_forced",
+		"profile_low_interrupt",
+		"profile_playful",
+		"profile_care",
+		"profile_work_protected",
+		"profile_rest_protected",
+	]
 	var selected := []
 	for scenario_id in available:
 		if requested_id == "all" or requested_id == scenario_id:
@@ -1415,6 +1434,7 @@ func _run_companion_scenario(scenario_id: String) -> Dictionary:
 		"busy": false,
 		"state": _debug_calm_state(now),
 		"memory": _debug_adaptive_memory([], 40, 20, 20),
+		"profile": _debug_adaptive_profile(0, 0, "medium"),
 		"personality": _selected_personality(),
 	}
 	match scenario_id:
@@ -1446,6 +1466,39 @@ func _run_companion_scenario(scenario_id: String) -> Dictionary:
 			mode = "捣乱"
 			context["state"]["memory"]["last_interaction_at"] = now
 			context["personality"] = _debug_adaptive_personality(40, 90, 20, 35)
+		"profile_low_interrupt":
+			mode = "活泼"
+			context["state"]["memory"]["last_action_at"] = now - 130
+			context["memory"] = _debug_adaptive_memory([], 20, 0, 0)
+			context["profile"] = _debug_adaptive_profile(10, 10, "low", "安静", "entertainment")
+			context["personality"] = _debug_adaptive_personality(45, 20, 85, 20)
+		"profile_playful":
+			mode = "活泼"
+			context["state"]["mood"] = 38
+			context["memory"] = _debug_adaptive_memory([], 25, 0, 0)
+			context["profile"] = _debug_adaptive_profile(10, 90, "high", "活泼", "entertainment", ["tease_success"])
+			context["personality"] = _debug_adaptive_personality(50, 20, 50, 40)
+		"profile_care":
+			mode = "活泼"
+			context["state"]["hunger"] = 78
+			context["memory"] = _debug_adaptive_memory([], 25, 0, 0)
+			context["profile"] = _debug_adaptive_profile(90, 10, "medium", "活泼", "entertainment", ["feed_success"])
+			context["personality"] = _debug_adaptive_personality(50, 20, 50, 40)
+		"profile_work_protected":
+			now = work_time
+			mode = "活泼"
+			context["state"] = _debug_calm_state(now)
+			context["state"]["memory"]["last_action_at"] = now - 130
+			context["memory"] = _debug_adaptive_memory([], 25, 0, 0)
+			context["profile"] = _debug_adaptive_profile(20, 95, "high", "活泼", "work", ["tease_success"])
+			context["personality"] = _debug_adaptive_personality(55, 20, 40, 60)
+		"profile_rest_protected":
+			now = rest_time
+			mode = "活泼"
+			context["state"] = _debug_calm_state(now)
+			context["state"]["energy"] = 80
+			context["profile"] = _debug_adaptive_profile(20, 95, "high", "活泼", "rest", ["tease_success"])
+			context["personality"] = _debug_adaptive_personality(70, 20, 30, 70)
 	var scenario_brain = BehaviorBrainScript.new()
 	scenario_brain.configure(_behavior_config_with_app_overrides())
 	if skin_manager != null:
@@ -1487,6 +1540,16 @@ func _scenario_passed(scenario_id: String, decision: Dictionary) -> bool:
 			return decision_type == "none" and str(decision.get("reason", "")) == "busy"
 		"mischief_forced":
 			return decision_type == "mischief" and decision_name == "grab" and str(intent.get("source", "")) == "forced"
+		"profile_low_interrupt":
+			return decision_type == "none" and str(decision.get("reason", "")) == "attention_cooldown" and _decision_has_profile_reason(decision) and float(decision.get("adaptation", {}).get("cooldown_multiplier", 1.0)) > 1.0
+		"profile_playful":
+			return decision_type == "prompt" and decision_name == "play" and str(intent.get("type", "")) == "play_request" and _decision_has_profile_reason(decision)
+		"profile_care":
+			return decision_type == "prompt" and decision_name == "hungry" and str(intent.get("type", "")) == "care_request" and _decision_has_profile_reason(decision)
+		"profile_work_protected":
+			return decision_type == "none" and str(decision.get("reason", "")) == "attention_cooldown" and _decision_has_profile_reason(decision)
+		"profile_rest_protected":
+			return decision_type == "action" and decision_name == "sleep" and _decision_has_profile_reason(decision)
 	return false
 
 
@@ -1498,6 +1561,11 @@ func _scenario_label(scenario_id: String) -> String:
 		"rest_boundary": "休息边界",
 		"busy_guard": "忙碌保护",
 		"mischief_forced": "强制捣乱",
+		"profile_low_interrupt": "长期低打扰用户",
+		"profile_playful": "长期高陪玩用户",
+		"profile_care": "长期高照料用户",
+		"profile_work_protected": "工作时段长期偏好保护",
+		"profile_rest_protected": "休息时段保护",
 	}
 	return str(labels.get(scenario_id, scenario_id))
 
@@ -1510,8 +1578,26 @@ func _scenario_expected(scenario_id: String) -> String:
 		"rest_boundary": "休息时段且 energy<85 进入 sleep",
 		"busy_guard": "busy=true 时返回 none/busy",
 		"mischief_forced": "捣乱强制首轮返回 mischief grab 且 source=forced",
+		"profile_low_interrupt": "低打扰画像拉长活泼模式主动冷却，返回 none",
+		"profile_playful": "高陪玩画像提高低心情陪玩提示阈值",
+		"profile_care": "高照料画像温和降低饥饿提示阈值",
+		"profile_work_protected": "长期偏好不能绕过工作时段基础冷却",
+		"profile_rest_protected": "长期偏好不能绕过休息时段睡眠边界",
 	}
 	return str(expected.get(scenario_id, ""))
+
+
+func _decision_has_profile_reason(decision: Dictionary) -> bool:
+	var adaptation = decision.get("adaptation", {})
+	if typeof(adaptation) != TYPE_DICTIONARY:
+		return false
+	var reasons = adaptation.get("reasons", [])
+	if typeof(reasons) != TYPE_ARRAY:
+		return false
+	for reason in reasons:
+		if str(reason).find("profile") >= 0:
+			return true
+	return false
 
 
 func _recent_companion_event_count() -> int:
@@ -1557,6 +1643,39 @@ func _debug_adaptive_memory(favorites: Array, familiarity: int, care_score: int,
 		"short_term": {
 			"counts": {},
 			"recent_kinds": favorites,
+		},
+	}
+
+
+func _debug_adaptive_profile(care_tendency: int, play_tendency: int, interruption_tolerance: String, favorite_mode := "活泼", favorite_period := "entertainment", favorites := []) -> Dictionary:
+	return {
+		"version": 1,
+		"updated_at": 0,
+		"lifetime": {
+			"total_events": 0,
+			"counts": {},
+			"mode_counts": {},
+			"period_counts": {},
+			"care_score": care_tendency,
+			"play_score": play_tendency,
+			"disruption_score": 0,
+			"last_event_at": 0,
+			"processed_event_ids": [],
+		},
+		"trends": {},
+		"preferences": {
+			"favorite_interactions": favorites,
+			"favorite_mode": favorite_mode,
+			"favorite_period": favorite_period,
+			"care_tendency": care_tendency,
+			"play_tendency": play_tendency,
+			"interruption_tolerance": interruption_tolerance,
+		},
+		"relationship": {
+			"level": "familiar",
+			"familiarity": 45,
+			"care_score": care_tendency,
+			"play_score": play_tendency,
 		},
 	}
 

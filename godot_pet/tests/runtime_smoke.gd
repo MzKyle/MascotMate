@@ -145,6 +145,14 @@ func _run() -> void:
 	if str(disabled_ai.get("source", "")) != "local" or str(disabled_ai.get("text", "")) != "摸摸头。":
 		_fail("CompanionAIExpressionClient disabled path should use local expression: %s" % JSON.stringify(disabled_ai))
 		return
+	var disabled_ai_status = ai_client.status()
+	if typeof(disabled_ai_status.get("recent_results", [])) != TYPE_ARRAY or disabled_ai_status.get("recent_results", []).size() != 1 or int(disabled_ai_status.get("source_stats", {}).get("local", 0)) != 1:
+		_fail("CompanionAIExpressionClient did not record local expression diagnostics: %s" % JSON.stringify(disabled_ai_status))
+		return
+	var disabled_health = await ai_client.check_health()
+	if str(disabled_health.get("status", "")) != "disabled":
+		_fail("CompanionAIExpressionClient disabled health should be explicit: %s" % JSON.stringify(disabled_health))
+		return
 	var valid_ai = ai_client._validate_response({
 		"text": "AI摸摸头。",
 		"seconds": 1.2,
@@ -318,6 +326,19 @@ func _run() -> void:
 		_fail("BehaviorBrain adaptation bypassed work cooldown: %s" % JSON.stringify(work_decision))
 		return
 
+	var low_interrupt_state = _calm_state(FIXED_ENTERTAINMENT_TIME)
+	low_interrupt_state["memory"]["last_action_at"] = FIXED_ENTERTAINMENT_TIME - 130
+	var low_interrupt_decision = adaptive_brain.decide({
+		"busy": false,
+		"state": low_interrupt_state,
+		"memory": _adaptive_memory([], 20, 0, 0),
+		"profile": _adaptive_profile(10, 10, "low", "安静", "entertainment"),
+		"personality": _adaptive_personality(45, 20, 85, 20),
+	}, FIXED_ENTERTAINMENT_TIME)
+	if str(low_interrupt_decision.get("type", "")) != "none" or str(low_interrupt_decision.get("reason", "")) != "attention_cooldown" or float(low_interrupt_decision.get("adaptation", {}).get("cooldown_multiplier", 1.0)) <= 1.0 or not _decision_has_profile_reason(low_interrupt_decision):
+		_fail("BehaviorBrain low-interruption profile did not lengthen active cooldown: %s" % JSON.stringify(low_interrupt_decision))
+		return
+
 	var threshold_brain = BehaviorBrainScript.new()
 	root_node.add_child(threshold_brain)
 	await process_frame
@@ -349,6 +370,18 @@ func _run() -> void:
 	if typeof(adapted_hungry_intent) != TYPE_DICTIONARY or str(adapted_hungry_intent.get("reason", "")).find("adaptation") < 0:
 		_fail("BehaviorBrain adaptive hunger intent did not explain adaptation: %s" % JSON.stringify(adapted_hungry_decision))
 		return
+	var profile_hungry_state = _calm_state(FIXED_ENTERTAINMENT_TIME)
+	profile_hungry_state["hunger"] = 78
+	var profile_hungry_decision = threshold_brain.decide({
+		"busy": false,
+		"state": profile_hungry_state,
+		"memory": _adaptive_memory([], 25, 0, 0),
+		"profile": _adaptive_profile(90, 10, "medium", "活泼", "entertainment", ["feed_success"]),
+		"personality": _adaptive_personality(50, 20, 50, 40),
+	}, FIXED_ENTERTAINMENT_TIME)
+	if str(profile_hungry_decision.get("type", "")) != "prompt" or str(profile_hungry_decision.get("name", "")) != "hungry" or not _decision_has_profile_reason(profile_hungry_decision) or int(profile_hungry_decision.get("adaptation", {}).get("hunger_threshold", 80)) >= 80:
+		_fail("BehaviorBrain profile care tendency did not lower hunger threshold: %s" % JSON.stringify(profile_hungry_decision))
+		return
 
 	var plain_mood_state = _calm_state(FIXED_ENTERTAINMENT_TIME)
 	plain_mood_state["mood"] = 45
@@ -364,6 +397,18 @@ func _run() -> void:
 	}, FIXED_ENTERTAINMENT_TIME)
 	if str(adapted_mood_decision.get("type", "")) != "prompt" or str(adapted_mood_decision.get("name", "")) != "play":
 		_fail("BehaviorBrain adaptive mood threshold did not trigger at 45: %s" % JSON.stringify(adapted_mood_decision))
+		return
+	var profile_mood_state = _calm_state(FIXED_ENTERTAINMENT_TIME)
+	profile_mood_state["mood"] = 38
+	var profile_mood_decision = threshold_brain.decide({
+		"busy": false,
+		"state": profile_mood_state,
+		"memory": _adaptive_memory([], 25, 0, 0),
+		"profile": _adaptive_profile(10, 90, "high", "活泼", "entertainment", ["tease_success"]),
+		"personality": _adaptive_personality(50, 20, 50, 40),
+	}, FIXED_ENTERTAINMENT_TIME)
+	if str(profile_mood_decision.get("type", "")) != "prompt" or str(profile_mood_decision.get("name", "")) != "play" or not _decision_has_profile_reason(profile_mood_decision) or int(profile_mood_decision.get("adaptation", {}).get("play_threshold", 35)) <= 35:
+		_fail("BehaviorBrain profile play tendency did not raise play threshold: %s" % JSON.stringify(profile_mood_decision))
 		return
 
 	adaptive_brain.set_mode("安静")
@@ -401,6 +446,7 @@ func _run() -> void:
 		"busy": false,
 		"state": _calm_state(local_rest_time),
 		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
+		"profile": _adaptive_profile(10, 90, "high", "活泼", "rest", ["tease_success"]),
 		"personality": _adaptive_personality(95, 25, 20, 90),
 	}, local_rest_time)
 	if str(rest_decision.get("type", "")) != "action" or str(rest_decision.get("name", "")) != "sleep":
@@ -622,6 +668,10 @@ func _run() -> void:
 	if str(debug_snapshot.get("last_expression", {}).get("source", "")) != "ai" or typeof(debug_snapshot.get("ai_expression", {})) != TYPE_DICTIONARY:
 		_fail("Main debug snapshot did not include AI expression state: %s" % JSON.stringify(debug_snapshot))
 		return
+	var ai_snapshot = debug_snapshot.get("ai_expression", {})
+	if typeof(ai_snapshot.get("health", {})) != TYPE_DICTIONARY or typeof(ai_snapshot.get("source_stats", {})) != TYPE_DICTIONARY or typeof(ai_snapshot.get("fallback_reasons", [])) != TYPE_ARRAY:
+		_fail("Main debug snapshot did not include AI diagnostics: %s" % JSON.stringify(debug_snapshot))
+		return
 	main_debug._on_companion_console_command({
 		"command": "set_adaptation",
 		"payload": {"enabled": true, "strength": "subtle"},
@@ -638,6 +688,10 @@ func _run() -> void:
 	if bool(updated_ai_config.get("enabled", true)) or str(updated_ai_config.get("provider", "")) != "openai_compatible" or int(updated_ai_config.get("timeout_ms", 0)) != 500:
 		_fail("Main console AI expression command did not update config: %s" % JSON.stringify(config_store.get_config()))
 		return
+	await main_debug._on_companion_console_command({"command": "check_ai_health"})
+	if str(ai_client.status().get("health", {}).get("status", "")) != "disabled":
+		_fail("Main console AI health command did not update disabled health: %s" % JSON.stringify(ai_client.status()))
+		return
 	main_debug._on_companion_console_command({"command": "set_behavior_mode", "payload": {"mode": "捣乱"}})
 	if main_debug.behavior_mode != "捣乱":
 		_fail("Main console mode command did not change behavior mode.")
@@ -652,7 +706,7 @@ func _run() -> void:
 		_fail("Main companion scenario replay mutated events: %s" % JSON.stringify(scenario_result))
 		return
 	var scenarios = scenario_result.get("scenarios", [])
-	if typeof(scenarios) != TYPE_ARRAY or scenarios.size() != 6:
+	if typeof(scenarios) != TYPE_ARRAY or scenarios.size() != 11:
 		_fail("Main companion scenario replay did not return all scenarios: %s" % JSON.stringify(scenario_result))
 		return
 	for scenario in scenarios:
@@ -660,7 +714,7 @@ func _run() -> void:
 			_fail("Main companion scenario failed: %s" % JSON.stringify(scenario_result))
 			return
 	var scenario_file = _load_json(main_debug.companion_scenario_result_path)
-	if scenario_file.get("scenarios", []).size() != 6:
+	if scenario_file.get("scenarios", []).size() != 11:
 		_fail("Main companion scenario result file was not written: %s" % JSON.stringify(scenario_file))
 		return
 	main_debug.physics.free()
@@ -800,6 +854,52 @@ func _adaptive_memory(favorites: Array, familiarity: int, care_score: int, play_
 			"recent_kinds": favorites,
 		},
 	}
+
+
+func _adaptive_profile(care_tendency: int, play_tendency: int, interruption_tolerance: String, favorite_mode := "活泼", favorite_period := "entertainment", favorites := []) -> Dictionary:
+	return {
+		"version": 1,
+		"updated_at": 0,
+		"lifetime": {
+			"total_events": 0,
+			"counts": {},
+			"mode_counts": {},
+			"period_counts": {},
+			"care_score": care_tendency,
+			"play_score": play_tendency,
+			"disruption_score": 0,
+			"last_event_at": 0,
+			"processed_event_ids": [],
+		},
+		"trends": {},
+		"preferences": {
+			"favorite_interactions": favorites,
+			"favorite_mode": favorite_mode,
+			"favorite_period": favorite_period,
+			"care_tendency": care_tendency,
+			"play_tendency": play_tendency,
+			"interruption_tolerance": interruption_tolerance,
+		},
+		"relationship": {
+			"level": "familiar",
+			"familiarity": 45,
+			"care_score": care_tendency,
+			"play_score": play_tendency,
+		},
+	}
+
+
+func _decision_has_profile_reason(decision: Dictionary) -> bool:
+	var adaptation = decision.get("adaptation", {})
+	if typeof(adaptation) != TYPE_DICTIONARY:
+		return false
+	var reasons = adaptation.get("reasons", [])
+	if typeof(reasons) != TYPE_ARRAY:
+		return false
+	for reason in reasons:
+		if str(reason).find("profile") >= 0:
+			return true
+	return false
 
 
 func _adaptive_personality(playfulness: int, mischief: int, patience: int, clinginess: int) -> Dictionary:

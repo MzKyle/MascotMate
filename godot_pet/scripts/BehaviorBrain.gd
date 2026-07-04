@@ -457,25 +457,60 @@ func _adaptation_for_context(context: Dictionary, _status: Dictionary, period: S
 	var care_score = clampf(float(relationship.get("care_score", 0.0)) / 100.0, 0.0, 1.0)
 	var play_score = clampf(float(relationship.get("play_score", 0.0)) / 100.0, 0.0, 1.0)
 
+	var companion_profile = context.get("profile", {})
+	if typeof(companion_profile) != TYPE_DICTIONARY:
+		companion_profile = {}
+	var profile_preferences = companion_profile.get("preferences", {})
+	if typeof(profile_preferences) != TYPE_DICTIONARY:
+		profile_preferences = {}
+	var profile_favorites = _clean_string_array(profile_preferences.get("favorite_interactions", []))
+	var profile_care_tendency = clampf(float(profile_preferences.get("care_tendency", 0.0)) / 100.0, 0.0, 1.0)
+	var profile_play_tendency = clampf(float(profile_preferences.get("play_tendency", 0.0)) / 100.0, 0.0, 1.0)
+	var profile_interruption_tolerance = str(profile_preferences.get("interruption_tolerance", "medium"))
+	if not (profile_interruption_tolerance in ["low", "medium", "high"]):
+		profile_interruption_tolerance = "medium"
+	var profile_favorite_mode = str(profile_preferences.get("favorite_mode", ""))
+	var profile_favorite_period = str(profile_preferences.get("favorite_period", ""))
+
 	var strength_scale = _adaptation_strength_scale(str(config.get("strength", "visible")))
 	var feed_favorite = "feed_success" in favorites
 	var play_favorite = "tease_success" in favorites or "tease_start" in favorites
 	var poke_favorite = "poke_body" in favorites or "grab_start" in favorites or "throw_fast" in favorites
 	var peek_favorite = "peek_enter" in favorites or "peek_exit" in favorites
+	var profile_feed_favorite = "feed_success" in profile_favorites or "feed_start" in profile_favorites
+	var profile_play_favorite = "tease_success" in profile_favorites or "tease_start" in profile_favorites
+	var profile_disruptive_favorite = "poke_body" in profile_favorites or "grab_start" in profile_favorites or "throw_fast" in profile_favorites
+	var profile_peek_favorite = "peek_enter" in profile_favorites or "peek_exit" in profile_favorites
 
 	var care_bias = (0.65 if feed_favorite else 0.0) + care_score * 0.45 + familiarity * 0.25 + max(0.0, -patience_norm) * 0.2
+	care_bias += profile_care_tendency * 0.35 + (0.15 if profile_feed_favorite else 0.0)
 	result["hunger_threshold"] = clampi(int(round(80.0 - min(1.0, care_bias * strength_scale) * 6.0)), 74, 80)
 	var play_bias = max(0.0, play_norm) * 0.45 + (0.65 if play_favorite else 0.0) + play_score * 0.35 + familiarity * 0.25 + max(0.0, cling_norm) * 0.25
+	play_bias += profile_play_tendency * 0.30 + (0.15 if profile_play_favorite else 0.0)
 	result["play_threshold"] = clampi(int(round(35.0 + min(1.0, play_bias * strength_scale) * 15.0)), 35, 50)
 
 	var active_cooldown_bias = max(0.0, play_norm) * 0.35 + max(0.0, cling_norm) * 0.25 + familiarity * 0.25 + (0.20 if play_favorite else 0.0) - patience_norm * 0.30
 	var mischief_cooldown_bias = max(0.0, mischief_norm) * 0.55 + (0.25 if poke_favorite else 0.0) - patience_norm * 0.40
+	active_cooldown_bias += profile_play_tendency * 0.12 + (0.08 if profile_play_favorite else 0.0)
+	mischief_cooldown_bias += (0.08 if profile_disruptive_favorite else 0.0)
+	if profile_favorite_period == period and profile_interruption_tolerance != "low":
+		active_cooldown_bias += 0.05
+	if profile_favorite_mode == mode and profile_interruption_tolerance != "low":
+		active_cooldown_bias += 0.04
 	var cooldown_multiplier = 1.0
 	if mode == "捣乱":
 		cooldown_multiplier = 1.0 - mischief_cooldown_bias * strength_scale
+		if profile_interruption_tolerance == "low":
+			cooldown_multiplier *= 1.0 + 0.30 * strength_scale
+		elif profile_interruption_tolerance == "high":
+			cooldown_multiplier *= 1.0 - 0.08 * strength_scale
 		cooldown_multiplier = _clamp_to_range(cooldown_multiplier, config.get("mischief_cooldown_multiplier_range", [0.50, 1.80]), 0.50, 1.80)
 	elif mode == "活泼":
 		cooldown_multiplier = 1.0 - active_cooldown_bias * strength_scale
+		if profile_interruption_tolerance == "low":
+			cooldown_multiplier *= 1.0 + 0.28 * strength_scale
+		elif profile_interruption_tolerance == "high":
+			cooldown_multiplier *= 1.0 - 0.10 * strength_scale
 		cooldown_multiplier = _clamp_to_range(cooldown_multiplier, config.get("active_cooldown_multiplier_range", [0.55, 1.65]), 0.55, 1.65)
 	result["cooldown_multiplier"] = cooldown_multiplier
 
@@ -486,12 +521,37 @@ func _adaptation_for_context(context: Dictionary, _status: Dictionary, period: S
 	multipliers["edge"] = 1.0 + mischief_norm * 0.80 + (0.85 if peek_favorite else 0.0) + (0.30 if poke_favorite else 0.0)
 	multipliers["footprint"] = 1.0 + play_norm * 0.55 + mischief_norm * 0.55 + (0.45 if poke_favorite else 0.0)
 	multipliers["grab"] = 1.0 + mischief_norm * 1.20 + (0.95 if poke_favorite else 0.0) - patience_norm * 0.80
+	multipliers["invite"] += profile_play_tendency * 0.35 + (0.25 if profile_play_favorite else 0.0)
+	multipliers["walk"] += profile_play_tendency * 0.12
+	multipliers["footprint"] += profile_play_tendency * 0.12 + (0.15 if profile_disruptive_favorite else 0.0)
+	multipliers["edge"] += (0.15 if profile_peek_favorite else 0.0)
+	if profile_interruption_tolerance == "low":
+		multipliers["invite"] *= 0.70
+		multipliers["footprint"] *= 0.68
+		multipliers["edge"] *= 0.72
+		multipliers["grab"] *= 0.65
+	elif profile_interruption_tolerance == "high":
+		multipliers["invite"] *= 1.08
+		multipliers["footprint"] *= 1.06
+		multipliers["edge"] *= 1.04
 	var range = config.get("weight_multiplier_range", [0.25, 2.75])
 	for key in multipliers.keys():
 		multipliers[key] = _clamp_to_range(float(multipliers[key]) * strength_scale + (1.0 - strength_scale), range, 0.25, 2.75)
 	result["weight_multipliers"] = multipliers
 
 	var reasons := []
+	if profile_interruption_tolerance == "low":
+		reasons.append("profile low interruption tolerance lengthens active gaps")
+	elif profile_interruption_tolerance == "high":
+		reasons.append("profile high interruption tolerance slightly shortens non-work gaps")
+	if profile_play_tendency >= 0.60:
+		reasons.append("profile play_tendency boosts invite and play prompt threshold")
+	if profile_care_tendency >= 0.60:
+		reasons.append("profile care_tendency lowers hunger prompt threshold")
+	if profile_favorite_mode == mode and profile_favorite_mode != "":
+		reasons.append("profile favorite mode %s supports current mode" % profile_favorite_mode)
+	if profile_favorite_period == period and profile_favorite_period != "":
+		reasons.append("profile favorite period %s supports current period" % profile_favorite_period)
 	if playfulness >= 70:
 		reasons.append("adaptation playfulness boosts active behavior")
 	if mischief >= 65:

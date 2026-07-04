@@ -31,8 +31,9 @@ v2 的目标是把当前规则系统升级成“本地优先、可解释、低�
 - `CompanionExpressionBank.gd` 负责互动和自动提示气泡的本地表达选择，可读取记忆、人格 tone 和最近文案。
 - 行为适配 v1 已让记忆和皮肤人格影响主动提示阈值、自动行为权重和非工作时段冷却，并在 decision 中附带 `adaptation` 元数据。
 - 本地陪伴控制台 v1 已提供浏览器观测、行为适配开关/强度调参和固定场景回放；运行时会写入 `companion_debug_snapshot.json` 和 `companion_scenario_result.json` 供排查。
-- `CompanionLongTermProfile.gd` 已持久化长期画像聚合结果，AI 表达 sidecar v1 已作为可选文案增强接入表达管线。
-- 长期画像影响行为权重、更细粒度行为画像和自由聊天入口仍是后续阶段。
+- `CompanionLongTermProfile.gd` 已持久化长期画像聚合结果，并温和影响主动提示阈值、自动行为权重和非工作时段冷却。
+- AI 表达 sidecar 已完成可选接入和硬化：默认关闭，只生成气泡文案，控制台可查看 health、provider 配置状态、最近表达来源统计和 fallback reason。
+- 更细粒度行为画像、自由聊天入口和 AI 主动陪伴仍是后续阶段。
 
 ## 设计原则
 
@@ -57,8 +58,10 @@ v2 的目标是把当前规则系统升级成“本地优先、可解释、低�
 flowchart TB
   Main["Main.gd"] --> EventStore["CompanionEventStore"]
   EventStore --> Memory["CompanionMemory"]
+  EventStore --> Profile["CompanionLongTermProfile"]
   Main --> Brain["CompanionBrain"]
   Memory --> Brain
+  Profile --> Brain
   State["StateStore.gd"] --> Brain
   Skin["skin.json / behavior_profile"] --> Brain
   Brain --> Intent["CompanionIntent"]
@@ -75,7 +78,7 @@ flowchart TB
 - `BehaviorBrain.gd` 先演进为 v2 决策入口，内部逐步拆出子模块。
 - `Main.gd` 继续作为运行时编排中心，但不再散落大量陪伴文案。
 - 事件日志和表达库先用 Godot 本地 JSON 文件实现。
-- AI sidecar 作为后续可选模块，不阻塞 v2 基础模型。
+- AI sidecar 是当前可选模块，默认关闭；没有 sidecar、超时或返回不合规时继续使用本地表达。
 
 ## 核心概念
 
@@ -395,7 +398,7 @@ v1 用 `work`、`entertainment`、`rest` 三段即可继续保留。v2 应把时
 
 AI 作为可选表达生成器，不参与动作、状态或行为权重。
 
-当前 sidecar 由 `pet_helper.py companion-ai-sidecar` 启动，只监听 `127.0.0.1`。默认 provider 为 `local_stub`；`openai_compatible` 的 endpoint、API key 和 model 只从环境变量读取。
+当前 sidecar 由 `pet_helper.py companion-ai-sidecar` 启动，只监听 `127.0.0.1`。默认 provider 为 `local_stub`；`openai_compatible` 的 endpoint、API key 和 model 只从环境变量读取，不写入 `config.json`。
 
 推荐协议：
 
@@ -435,7 +438,7 @@ AI 作为可选表达生成器，不参与动作、状态或行为权重。
 - 是否超出当前 intent 范围。
 - 超时、失败或不合规时回退本地文案。
 
-AI 不返回动作命令。动作仍由本地 expression resolver 决定。当前实现只接受 `text`、`seconds`、`emotion`、`safety` 四个响应字段；未知字段、超长文本、空文本、超时或 `safety != "ok"` 都回退本地表达。
+AI 不返回动作命令。动作仍由本地 expression resolver 决定。当前实现只接受 `text`、`seconds`、`emotion`、`safety` 四个响应字段；未知字段、超长文本、空文本、超时、HTTP 错误、坏 JSON 或 `safety != "ok"` 都回退本地表达。控制台快照会记录 sidecar health、provider configured 状态、最近 10 次表达来源统计和 fallback reason。
 
 ## 文件与模块建议
 
@@ -528,6 +531,15 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。当�
 - AI 返回不合规时使用本地表达库。
 - 所有 AI 输出都受长度、字符和 intent 范围限制。
 
+### 第六步：长期行为画像适配与 AI 硬化
+
+- `BehaviorBrain.gd` 读取长期画像的照料倾向、陪玩倾向、打扰容忍度、常用模式和常用时段。
+- 长期画像只做温和修正：影响提示阈值、权重倍率和非工作时段冷却，不新增行为类型。
+- 低打扰画像会拉长主动冷却并降低邀请、脚印、贴边和捣乱倾向；高陪玩画像提高 invite/陪玩提示倾向；高照料画像略降低饥饿提示阈值。
+- 工作时段、休息时段、忙碌状态、暂停状态和安静模式仍是硬边界。
+- 控制台场景回放新增低打扰用户、高陪玩用户、高照料用户、工作时段长期偏好保护和休息时段保护。
+- sidecar `/health`、上游 HTTP 错误、坏 JSON、非 JSON、非法 schema 和超长输出都有稳定 fallback。
+
 ## 测试策略
 
 ### 单元和 smoke 覆盖
@@ -539,9 +551,10 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。当�
 - v2 状态迁移。
 - intent 生成原因。
 - adaptation 阈值、权重、冷却和边界约束。
+- 长期画像对阈值、权重、冷却的温和适配，以及工作/休息/忙碌边界保护。
 - expression 文案选择、上下文候选和去重。
 - 皮肤人格缺省合并。
-- AI 超时和回退。
+- AI health、超时、坏 JSON、非法 schema、超长输出和回退统计。
 
 ### 固定场景测试
 
@@ -556,6 +569,9 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。当�
 | 忙碌状态 | grabbing / tease / mischief | 不切换物理动作 |
 | 刚摸头 | `pet_head` 事件 | 即时回应，不触发长冷却 |
 | 重复提示 | 最近说过同一句 | 换句或静默 |
+| 长期低打扰 | `interruption_tolerance=low` | 拉长主动冷却，不绕过边界 |
+| 长期高陪玩 | `play_tendency` 高 | 娱乐时段更容易触发陪玩提示 |
+| 长期高照料 | `care_tendency` 高 | 饥饿提示阈值温和下降 |
 
 ### 可解释性测试
 
@@ -599,6 +615,7 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。当�
 4. 已完成本地陪伴闭环 v1：从事件中聚合记忆，结合皮肤人格选择表达。
 5. 已完成行为适配 v1：让记忆和人格在全局冷却约束内影响提示阈值、自动行为权重和冷却。
 6. 已完成长期画像 + AI 表达增强 v1：长期画像进入表达上下文，AI 只增强文案、不接管行为。
-7. 后续长期行为画像适配：在控制台和回放稳定后，再决定是否让长期画像影响行为权重。
+7. 已完成长期行为画像适配 + AI 接入硬化 v1：长期画像温和影响行为倾向，AI health、fallback reason 和表达来源统计进入控制台。
+8. 后续自由聊天或 AI 主动陪伴：需要单独规划权限、隐私、交互入口和更严格的安全边界。
 
 这一顺序的好处是每一步都能单独验收，并且不会要求一次性重写运行时。

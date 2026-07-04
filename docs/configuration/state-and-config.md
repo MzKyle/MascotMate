@@ -62,7 +62,7 @@
 ~/.config/mascotmate-desktop/companion_profile.json
 ```
 
-`CompanionLongTermProfile.gd` 会保存长期聚合结果，包括常见互动、常用模式、常用时段、照料/陪玩倾向、打扰容忍度和 7/30 天趋势摘要。画像只保存聚合结果和少量去重标记，不保存大量原始事件。当前画像只进入表达上下文和控制台快照，不改变行为权重。
+`CompanionLongTermProfile.gd` 会保存长期聚合结果，包括常见互动、常用模式、常用时段、照料/陪玩倾向、打扰容忍度和 7/30 天趋势摘要。画像只保存聚合结果和少量去重标记，不保存大量原始事件。当前画像会进入表达上下文、行为适配和控制台快照；只温和影响主动提示阈值、自动行为权重和非工作时段冷却，不改变核心状态数值。
 
 ## 陪伴控制台诊断文件
 
@@ -72,7 +72,7 @@
 ~/.config/mascotmate-desktop/companion_console_command.json
 ```
 
-浏览器陪伴控制台会读取运行时快照和场景回放结果。快照包含当前状态、行为模式、时段、忙碌状态、透明窗口状态、皮肤人格、记忆摘要、最近事件和最近一次 decision。控制台命令通过 `companion_console_command.json` 传给 Godot，处理后会删除该命令文件。
+浏览器陪伴控制台会读取运行时快照和场景回放结果。快照包含当前状态、行为模式、时段、忙碌状态、透明窗口状态、皮肤人格、短期记忆、长期画像、AI health、最近表达来源统计、最近事件和最近一次 decision。控制台命令通过 `companion_console_command.json` 传给 Godot，处理后会删除该命令文件。
 
 ## 应用与截图贴图配置
 

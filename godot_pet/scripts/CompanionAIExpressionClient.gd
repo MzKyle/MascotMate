@@ -9,6 +9,7 @@ const ALLOWED_KEYS := [
 	"auto_prompt:play",
 ]
 const ALLOWED_RESPONSE_KEYS := ["text", "seconds", "emotion", "safety"]
+const RECENT_STATUS_LIMIT := 10
 
 var enabled := false
 var provider := "local_stub"
@@ -22,6 +23,14 @@ var last_status := {
 	"last_source": "local",
 	"last_error": "",
 }
+var health_status := {
+	"checked_at": 0,
+	"ok": false,
+	"provider": "local_stub",
+	"configured": false,
+	"status": "not_checked",
+}
+var recent_results := []
 
 
 func configure(values := {}) -> void:
@@ -40,10 +49,23 @@ func configure(values := {}) -> void:
 		"last_source": "local",
 		"last_error": "",
 	}
+	health_status = {
+		"checked_at": 0,
+		"ok": false,
+		"provider": provider,
+		"configured": false,
+		"status": "not_checked",
+	}
+	recent_results = []
 
 
 func status() -> Dictionary:
-	return last_status.duplicate(true)
+	var result = last_status.duplicate(true)
+	result["health"] = health_status.duplicate(true)
+	result["recent_results"] = recent_results.duplicate(true)
+	result["source_stats"] = _source_stats()
+	result["fallback_reasons"] = _fallback_reasons()
+	return result
 
 
 func should_try(key: String) -> bool:
@@ -53,14 +75,14 @@ func should_try(key: String) -> bool:
 func resolve_expression(key: String, context: Dictionary, local_expression: Dictionary, fallback_text: String, default_seconds := 1.8):
 	var local_result = _local_result(local_expression, fallback_text, default_seconds, "local")
 	if not enabled:
-		_update_status("local", "disabled", false)
+		_update_status("local", "disabled", false, key)
 		return local_result
 	if not key in ALLOWED_KEYS:
-		_update_status(local_result.get("source", "local"), "key_not_allowed", false)
+		_update_status(local_result.get("source", "local"), "key_not_allowed", false, key)
 		local_result["fallback_reason"] = "key_not_allowed"
 		return local_result
 	if not is_inside_tree():
-		_update_status(local_result.get("source", "local"), "client_not_inside_tree", false)
+		_update_status(local_result.get("source", "local"), "client_not_inside_tree", false, key)
 		local_result["fallback_reason"] = "client_not_inside_tree"
 		return local_result
 
@@ -72,7 +94,7 @@ func resolve_expression(key: String, context: Dictionary, local_expression: Dict
 	var err = request_node.request(_expression_url(), headers, HTTPClient.METHOD_POST, JSON.stringify(payload))
 	if err != OK:
 		request_node.queue_free()
-		_update_status(local_result.get("source", "local"), "request_start_failed", false)
+		_update_status(local_result.get("source", "local"), "request_start_failed", false, key)
 		local_result["fallback_reason"] = "request_start_failed"
 		return local_result
 	var completed = await request_node.request_completed
@@ -81,13 +103,56 @@ func resolve_expression(key: String, context: Dictionary, local_expression: Dict
 	var response_code = int(completed[1])
 	var body: PackedByteArray = completed[3]
 	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
-		_update_status(local_result.get("source", "local"), "http_failed", false)
+		_update_status(local_result.get("source", "local"), "http_failed", false, key)
 		local_result["fallback_reason"] = "http_failed"
 		return local_result
 	var parsed = JSON.parse_string(body.get_string_from_utf8())
 	var ai_result = _validate_response(parsed, local_result, context)
-	_update_status(str(ai_result.get("source", "local")), str(ai_result.get("fallback_reason", "")), str(ai_result.get("source", "")) == "ai")
+	_update_status(str(ai_result.get("source", "local")), str(ai_result.get("fallback_reason", "")), str(ai_result.get("source", "")) == "ai", key)
 	return ai_result
+
+
+func check_health():
+	if not enabled:
+		health_status = _health_result(false, false, "disabled")
+		_update_status(str(last_status.get("last_source", "local")), "disabled", false, "", false)
+		return health_status.duplicate(true)
+	if not is_inside_tree():
+		health_status = _health_result(false, false, "client_not_inside_tree")
+		_update_status(str(last_status.get("last_source", "local")), "client_not_inside_tree", false, "", false)
+		return health_status.duplicate(true)
+	var request_node = HTTPRequest.new()
+	request_node.timeout = max(0.05, float(timeout_ms) / 1000.0)
+	add_child(request_node)
+	var err = request_node.request(_health_url(), PackedStringArray(), HTTPClient.METHOD_GET)
+	if err != OK:
+		request_node.queue_free()
+		health_status = _health_result(false, false, "request_start_failed")
+		_update_status(str(last_status.get("last_source", "local")), "health_request_start_failed", false, "", false)
+		return health_status.duplicate(true)
+	var completed = await request_node.request_completed
+	request_node.queue_free()
+	var result = int(completed[0])
+	var response_code = int(completed[1])
+	var body: PackedByteArray = completed[3]
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
+		health_status = _health_result(false, false, "http_failed")
+		_update_status(str(last_status.get("last_source", "local")), "health_http_failed", false, "", false)
+		return health_status.duplicate(true)
+	var parsed = JSON.parse_string(body.get_string_from_utf8())
+	if typeof(parsed) != TYPE_DICTIONARY:
+		health_status = _health_result(false, false, "bad_json")
+		_update_status(str(last_status.get("last_source", "local")), "health_bad_json", false, "", false)
+		return health_status.duplicate(true)
+	health_status = {
+		"checked_at": int(Time.get_unix_time_from_system()),
+		"ok": bool(parsed.get("ok", false)),
+		"provider": str(parsed.get("provider", provider)),
+		"configured": bool(parsed.get("configured", false)),
+		"status": str(parsed.get("status", "unknown")),
+	}
+	_update_status(str(last_status.get("last_source", "local")), str(health_status.get("status", "")), bool(health_status.get("ok", false)) and bool(health_status.get("configured", false)), "", false)
+	return health_status.duplicate(true)
 
 
 func _validate_response(parsed, local_result: Dictionary, context := {}) -> Dictionary:
@@ -146,10 +211,18 @@ func _request_payload(key: String, context: Dictionary, local_result: Dictionary
 
 
 func _expression_url() -> String:
+	return _base_endpoint() + "/v1/expression"
+
+
+func _health_url() -> String:
+	return _base_endpoint() + "/health"
+
+
+func _base_endpoint() -> String:
 	var base = endpoint
 	while base.ends_with("/") and base.length() > 0:
 		base = base.substr(0, base.length() - 1)
-	return base + "/v1/expression"
+	return base
 
 
 func _local_result(local_expression: Dictionary, fallback_text: String, default_seconds: float, reason: String) -> Dictionary:
@@ -173,7 +246,7 @@ func _fallback(local_result: Dictionary, reason: String) -> Dictionary:
 	return result
 
 
-func _update_status(source: String, error: String, available: bool) -> void:
+func _update_status(source: String, error: String, available: bool, key := "", record_result := true) -> void:
 	last_status = {
 		"enabled": enabled,
 		"provider": provider,
@@ -181,6 +254,55 @@ func _update_status(source: String, error: String, available: bool) -> void:
 		"available": available,
 		"last_source": source,
 		"last_error": error,
+	}
+	if record_result and key != "":
+		_record_result(key, source, error)
+
+
+func _record_result(key: String, source: String, reason: String) -> void:
+	recent_results.append({
+		"key": key,
+		"source": source,
+		"fallback_reason": reason,
+		"at": int(Time.get_unix_time_from_system()),
+	})
+	while recent_results.size() > RECENT_STATUS_LIMIT:
+		recent_results.pop_front()
+
+
+func _source_stats() -> Dictionary:
+	var stats := {"ai": 0, "local": 0, "fallback": 0}
+	for item in recent_results:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var source = str(item.get("source", "fallback"))
+		stats[source] = int(stats.get(source, 0)) + 1
+	return stats
+
+
+func _fallback_reasons() -> Array:
+	var reasons := []
+	for item in recent_results:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var reason = str(item.get("fallback_reason", "")).strip_edges()
+		if reason != "":
+			reasons.append({
+				"key": str(item.get("key", "")),
+				"reason": reason,
+				"source": str(item.get("source", "")),
+				"at": int(item.get("at", 0)),
+			})
+	return reasons
+
+
+func _health_result(ok: bool, configured: bool, status_text: String) -> Dictionary:
+	return {
+		"checked_at": int(Time.get_unix_time_from_system()),
+		"ok": ok,
+		"provider": provider,
+		"configured": configured,
+		"status": status_text,
 	}
 
 

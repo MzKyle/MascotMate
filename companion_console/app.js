@@ -131,11 +131,19 @@ function renderMemory(memory, profile, lastExpression, aiStatus) {
     setText("lastExpression", "-");
   }
   if (aiStatus && Object.keys(aiStatus).length) {
+    const health = aiStatus.health || {};
+    const stats = aiStatus.source_stats || {};
     const available = aiStatus.available ? "可用" : "未确认";
+    const configured = health.configured === undefined ? "-" : boolText(health.configured);
+    const healthText = health.status ? ` / health ${health.status} / configured ${configured}` : "";
+    const statsText = Object.keys(stats).length ? ` / ai ${stats.ai || 0} local ${stats.local || 0} fallback ${stats.fallback || 0}` : "";
     const error = aiStatus.last_error ? ` / ${aiStatus.last_error}` : "";
-    setText("aiStatus", `${aiStatus.enabled ? "开启" : "关闭"} / ${aiStatus.provider || "-"} / ${available}${error}`);
+    setText("aiStatus", `${aiStatus.enabled ? "开启" : "关闭"} / ${aiStatus.provider || "-"} / ${available}${healthText}${statsText}${error}`);
+    const fallbackReasons = Array.isArray(aiStatus.fallback_reasons) ? aiStatus.fallback_reasons.slice(-5).reverse() : [];
+    setText("aiFallbackReasons", fallbackReasons.length ? fallbackReasons.map((item) => `${item.key || "-"}:${item.reason || "-"}`).join(" / ") : "-");
   } else {
     setText("aiStatus", "-");
+    setText("aiFallbackReasons", "-");
   }
 }
 
@@ -158,7 +166,15 @@ function renderScenarios(result) {
     const decision = item.decision || {};
     const name = decision.name ? `${decision.type}:${decision.name}` : decision.type || "-";
     const reason = decision.reason || valueAt(decision, ["intent", "reason"], "-");
-    return `<div class="scenario-result ${ok}"><strong>${escapeHtml(item.label || item.id)} · ${mark}</strong><code>${escapeHtml(name)} | ${escapeHtml(reason)}</code></div>`;
+    const adaptation = decision.adaptation || {};
+    const thresholds = adaptation.enabled
+      ? `cooldown x${Number(adaptation.cooldown_multiplier || 1).toFixed(2)} / hunger ${adaptation.hunger_threshold ?? "-"} / play ${adaptation.play_threshold ?? "-"}`
+      : "-";
+    const profile = valueAt(item, ["context", "profile", "preferences"], {});
+    const profileText = profile && Object.keys(profile).length
+      ? `profile care ${profile.care_tendency ?? "-"} play ${profile.play_tendency ?? "-"} interrupt ${profile.interruption_tolerance || "-"}`
+      : "profile -";
+    return `<div class="scenario-result ${ok}"><strong>${escapeHtml(item.label || item.id)} · ${mark}</strong><code>${escapeHtml(name)} | ${escapeHtml(reason)}</code><code>${escapeHtml(thresholds)} | ${escapeHtml(profileText)}</code></div>`;
   }).join("");
 }
 
@@ -225,6 +241,7 @@ function bindControls() {
       timeout_ms: Number($("aiTimeout").value || 800),
     },
   }));
+  $("checkAiHealth").addEventListener("click", () => sendCommand({ command: "check_ai_health" }));
   $("rebuildMemory").addEventListener("click", () => sendCommand({ command: "rebuild_memory" }));
   $("scenarioButtons").addEventListener("click", async (event) => {
     const button = event.target.closest("[data-scenario]");

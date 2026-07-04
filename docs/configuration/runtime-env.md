@@ -82,4 +82,22 @@ MASCOTMATE_SKIN_CATALOG_URL=http://127.0.0.1:8000/catalog.json scripts/run_godot
 python3 scripts/pet_helper.py companion-ai-sidecar --provider local_stub
 ```
 
-AI 表达默认关闭。开启后也只生成气泡文案；sidecar 不可用、超时或返回不合规时会使用本地表达库。
+接入本地 OpenAI-compatible 服务：
+
+```bash
+MASCOTMATE_OPENAI_COMPATIBLE_URL=http://127.0.0.1:11434/v1/chat/completions \
+MASCOTMATE_OPENAI_COMPATIBLE_API_KEY=local \
+MASCOTMATE_OPENAI_COMPATIBLE_MODEL=your-local-model \
+python3 scripts/pet_helper.py companion-ai-sidecar --provider openai_compatible
+```
+
+接入平台 key：
+
+```bash
+MASCOTMATE_OPENAI_COMPATIBLE_URL=https://your-provider.example/v1/chat/completions \
+MASCOTMATE_OPENAI_COMPATIBLE_API_KEY=... \
+MASCOTMATE_OPENAI_COMPATIBLE_MODEL=... \
+python3 scripts/pet_helper.py companion-ai-sidecar --provider openai_compatible
+```
+
+AI 表达默认关闭。开启后也只生成气泡文案；sidecar 不可用、超时、HTTP 错误、坏 JSON、超长输出或返回不合规时会使用本地表达库。API key 只从环境变量读取，不写入 `config.json`。

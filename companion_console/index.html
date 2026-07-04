@@ -72,6 +72,7 @@
       </label>
       <div class="button-row">
         <button id="applyAiExpression">应用 AI 表达</button>
+        <button id="checkAiHealth">检查 AI</button>
       </div>
       <p id="commandStatus" class="muted">-</p>
     </section>
@@ -95,6 +96,7 @@
         <div><dt>最近表达</dt><dd id="recentExpressions">-</dd></div>
         <div><dt>表达来源</dt><dd id="lastExpression">-</dd></div>
         <div><dt>AI 状态</dt><dd id="aiStatus">-</dd></div>
+        <div><dt>AI 回退</dt><dd id="aiFallbackReasons">-</dd></div>
       </dl>
     </section>
 
@@ -116,6 +118,11 @@
         <button data-scenario="rest_boundary">休息</button>
         <button data-scenario="busy_guard">忙碌</button>
         <button data-scenario="mischief_forced">捣乱</button>
+        <button data-scenario="profile_low_interrupt">低打扰</button>
+        <button data-scenario="profile_playful">高陪玩</button>
+        <button data-scenario="profile_care">高照料</button>
+        <button data-scenario="profile_work_protected">工作保护</button>
+        <button data-scenario="profile_rest_protected">休息保护</button>
       </div>
       <div id="scenarioResults" class="scenario-results"></div>
     </section>
