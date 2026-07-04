@@ -59,7 +59,9 @@ func _poll_command() -> void:
 	var file = FileAccess.open(command_path, FileAccess.READ)
 	if file == null:
 		return
-	var parsed = JSON.parse_string(file.get_as_text())
+	var content := file.get_as_text()
+	file = null
+	var parsed = JSON.parse_string(content)
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return
 	var nonce = str(parsed.get("nonce", ""))
