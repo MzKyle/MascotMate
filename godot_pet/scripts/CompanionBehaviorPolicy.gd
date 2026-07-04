@@ -1,13 +1,6 @@
-extends Node
+extends RefCounted
 
-const CompanionBehaviorPolicyScript = preload("res://scripts/CompanionBehaviorPolicy.gd")
-
-signal action_requested(action_name)
-signal mischief_requested(kind)
-signal prompt_requested(kind, message)
-signal effect_requested(kind)
-signal decision_observed(decision, context)
-signal intent_requested(intent, decision)
+const CompanionIntent = preload("res://scripts/CompanionIntent.gd")
 
 const VALID_MODES := ["安静", "活泼", "捣乱"]
 const DEFAULT_BEHAVIOR := {
@@ -54,164 +47,98 @@ const DEFAULT_BEHAVIOR := {
 
 var mode := "安静"
 var rng := RandomNumberGenerator.new()
-var timer: Timer
-var paused := false
 var base_behavior_config := DEFAULT_BEHAVIOR.duplicate(true)
 var skin_behavior_profile := {}
 var behavior_config := DEFAULT_BEHAVIOR.duplicate(true)
 var companion_config := DEFAULT_BEHAVIOR["companion"].duplicate(true)
-var context_provider := Callable()
-var local_memory := {
-	"last_interaction_at": 0,
-	"last_prompt_at": 0,
-	"last_action_at": 0,
-}
-var behavior_policy = CompanionBehaviorPolicyScript.new()
-var forced_mischief_kind := ""
-var forced_mischief_ready_at := 0.0
-var forced_mischief_expires_at := 0.0
 
 
-func _ready() -> void:
+func _init() -> void:
 	rng.randomize()
-	timer = Timer.new()
-	timer.one_shot = true
-	timer.timeout.connect(_decide)
-	add_child(timer)
-	schedule_next()
 
 
 func configure(config: Dictionary) -> void:
 	base_behavior_config = _merged_behavior_config(config)
 	companion_config = _merged_companion_config(config.get("companion", {}))
 	_rebuild_behavior_config()
-	behavior_policy.configure(config)
-	behavior_policy.set_skin_behavior_profile(skin_behavior_profile)
-	behavior_policy.set_mode(mode)
-	if timer != null:
-		schedule_next()
-
-
-func set_context_provider(provider: Callable) -> void:
-	context_provider = provider
 
 
 func set_skin_behavior_profile(profile: Dictionary) -> void:
 	skin_behavior_profile = profile.duplicate(true)
 	_rebuild_behavior_config()
-	behavior_policy.set_skin_behavior_profile(profile)
-	if timer != null:
-		schedule_next()
 
 
 func set_mode(value: String) -> void:
-	var previous_mode = mode
 	mode = value if value in VALID_MODES else "安静"
-	behavior_policy.set_mode(mode)
-	if mode != "捣乱":
-		clear_forced_mischief()
-	if timer != null:
-		var initial_delay = _initial_delay_for_mode(mode)
-		if initial_delay > 0.0 and previous_mode != mode:
-			schedule_soon(initial_delay)
-		else:
-			schedule_next()
 
 
-func set_paused(value: bool) -> void:
-	paused = value
+func decide(context: Dictionary, now_unix: int, local_memory: Dictionary, forced_state: Dictionary, paused: bool) -> Dictionary:
+	var now = _coerce_now(now_unix)
+	var period = period_for(now)
+	context = context.duplicate(true)
+	context["period"] = period
+	_apply_passive_time(context, now, period)
+	var status = _state_from_context(context)
+	var memory = _memory_from_state(status, local_memory)
+	var adaptation = _adaptation_for_context(context, status, period)
+
+	var forced_decision = _forced_mischief_decision(float(now), paused or bool(context.get("busy", false)), period, adaptation, forced_state)
+	if not forced_decision.is_empty():
+		return forced_decision
+
+	if paused:
+		return _none_decision("paused", 2.0, adaptation)
+	if bool(context.get("busy", false)):
+		return _none_decision("busy", 2.0, adaptation)
+
+	var urgent = _urgent_decision(status, memory, period, now, adaptation)
+	if not urgent.is_empty():
+		return urgent
+
+	var remaining = _attention_cooldown_remaining(memory, period, now, adaptation)
+	if remaining > 0.0:
+		return _none_decision("attention_cooldown", clamp(remaining, 10.0, 120.0), adaptation, {"cooldown_remaining": remaining})
+	if mode == "安静":
+		return _none_decision("quiet_mode", float(companion_config.get("tick_seconds", 60.0)), adaptation)
+	if period == "rest":
+		return _attach_adaptation(_attach_intent(
+			{"type": "action", "name": "sleep", "retry_after": 180.0},
+			_intent("rest_request", "rest_period", "period is rest and active behavior should sleep", 85, "action:sleep", "low")
+		), adaptation)
+
+	var action = _pick_contextual_action(mode, status, period, adaptation)
+	if action.is_empty():
+		return _none_decision("no_weighted_action", float(companion_config.get("tick_seconds", 60.0)), adaptation)
+	action["retry_after"] = _adapted_cooldown_seconds(period, adaptation)
+	action["intent"] = _intent_for_contextual_action(action, status, period, adaptation)
+	action = _attach_adaptation(action, adaptation)
+	return action
 
 
-func record_interaction(_kind: String, now_unix := 0) -> void:
-	local_memory["last_interaction_at"] = _coerce_now(now_unix)
+func period_for(now: int) -> String:
+	var time = _local_datetime_from_unix(now)
+	var hour = int(time.get("hour", 12))
+	var weekday = int(time.get("weekday", 1))
+	var workday = weekday >= 1 and weekday <= 5
+	if hour >= 23 or hour < 7:
+		return "rest"
+	if workday and hour >= 9 and hour < 18:
+		return "work"
+	return "entertainment"
 
 
-func request_forced_mischief(kind: String, delay_seconds := 0.8, ttl_seconds := 6.0, now_unix := 0) -> void:
-	var clean_kind = kind.strip_edges()
-	if clean_kind == "":
-		clear_forced_mischief()
-		return
-	var now = _coerce_now_float(now_unix)
-	forced_mischief_kind = clean_kind
-	forced_mischief_ready_at = now + max(0.0, delay_seconds)
-	forced_mischief_expires_at = forced_mischief_ready_at + max(0.1, ttl_seconds)
-	schedule_soon(delay_seconds)
+func interval_for_mode(target_mode: String) -> Vector2:
+	var mode_config = _mode_config(target_mode)
+	var interval = mode_config.get("interval", [4.0, 8.0])
+	if typeof(interval) != TYPE_ARRAY or interval.size() < 2:
+		return Vector2(4.0, 8.0)
+	var min_value = max(0.1, float(interval[0]))
+	var max_value = max(min_value, float(interval[1]))
+	return Vector2(min_value, max_value)
 
 
-func clear_forced_mischief() -> void:
-	forced_mischief_kind = ""
-	forced_mischief_ready_at = 0.0
-	forced_mischief_expires_at = 0.0
-
-
-func schedule_next() -> void:
-	if timer == null:
-		return
-	var interval = _interval_for_mode(mode)
-	timer.start(rng.randf_range(interval.x, interval.y))
-
-
-func schedule_soon(seconds := 1.0) -> void:
-	if timer != null:
-		timer.start(max(0.1, seconds))
-
-
-func decide(context: Dictionary, now_unix := 0) -> Dictionary:
-	behavior_policy.set_mode(mode)
-	var forced_state := {
-		"kind": forced_mischief_kind,
-		"ready_at": forced_mischief_ready_at,
-		"expires_at": forced_mischief_expires_at,
-	}
-	var decision = behavior_policy.decide(context, now_unix, local_memory.duplicate(true), forced_state, paused)
-	_apply_forced_state(forced_state)
-	return decision
-
-
-func _decide() -> void:
-	var context = _current_context()
-	var decision = decide(context)
-	emit_signal("decision_observed", decision.duplicate(true), context.duplicate(false))
-	_emit_decision(decision, context)
-	var retry_after = float(decision.get("retry_after", 0.0))
-	if retry_after > 0.0:
-		schedule_soon(retry_after)
-	else:
-		schedule_next()
-
-
-func _emit_decision(decision: Dictionary, context: Dictionary) -> void:
-	var decision_type = str(decision.get("type", "none"))
-	if decision_type == "none":
-		return
-	if bool(decision.get("forced_mischief", false)):
-		clear_forced_mischief()
-	_remember_decision(decision, context)
-	var intent = decision.get("intent", {})
-	if typeof(intent) == TYPE_DICTIONARY and not intent.is_empty():
-		emit_signal("intent_requested", intent.duplicate(true), decision.duplicate(true))
-	if decision_type == "mischief":
-		emit_signal("mischief_requested", str(decision.get("name", "")))
-	elif decision_type == "effect":
-		emit_signal("effect_requested", str(decision.get("name", "")))
-	elif decision_type == "prompt":
-		emit_signal("prompt_requested", str(decision.get("name", "")), str(decision.get("message", "")))
-	else:
-		emit_signal("action_requested", str(decision.get("name", "")))
-
-
-func _apply_forced_state(forced_state: Dictionary) -> void:
-	forced_mischief_kind = str(forced_state.get("kind", ""))
-	forced_mischief_ready_at = float(forced_state.get("ready_at", 0.0))
-	forced_mischief_expires_at = float(forced_state.get("expires_at", 0.0))
-
-
-func _current_context() -> Dictionary:
-	if context_provider.is_valid():
-		var value = context_provider.call()
-		if typeof(value) == TYPE_DICTIONARY:
-			return value
-	return {"mode": mode, "busy": false, "state": {}}
+func initial_delay_for_mode(target_mode: String) -> float:
+	return max(0.0, float(_mode_config(target_mode).get("initial_delay", 0.0)))
 
 
 func _apply_passive_time(context: Dictionary, now: int, period: String) -> void:
@@ -343,29 +270,34 @@ func _attention_cooldown_remaining(memory: Dictionary, period: String, now: int,
 	return max(0.0, _adapted_cooldown_seconds(period, adaptation) - float(now - last_attention))
 
 
-func _forced_mischief_decision(now: float, blocked: bool, period: String, adaptation: Dictionary) -> Dictionary:
-	if forced_mischief_kind == "":
+func _forced_mischief_decision(now: float, blocked: bool, period: String, adaptation: Dictionary, forced_state: Dictionary) -> Dictionary:
+	var forced_kind = str(forced_state.get("kind", "")).strip_edges()
+	if forced_kind == "":
 		return {}
-	if now > forced_mischief_expires_at:
-		clear_forced_mischief()
+	var ready_at = float(forced_state.get("ready_at", 0.0))
+	var expires_at = float(forced_state.get("expires_at", 0.0))
+	if now > expires_at:
+		forced_state["kind"] = ""
+		forced_state["ready_at"] = 0.0
+		forced_state["expires_at"] = 0.0
 		return {}
 	if blocked:
-		return _none_decision("forced_mischief_blocked", _forced_retry_after(now), adaptation)
-	if now < forced_mischief_ready_at:
-		return _none_decision("forced_mischief_waiting", max(0.1, min(1.0, forced_mischief_ready_at - now)), adaptation)
+		return _none_decision("forced_mischief_blocked", _forced_retry_after(now, expires_at), adaptation)
+	if now < ready_at:
+		return _none_decision("forced_mischief_waiting", max(0.1, min(1.0, ready_at - now)), adaptation)
 	return _attach_adaptation({
 		"type": "mischief",
-		"name": forced_mischief_kind,
+		"name": forced_kind,
 		"forced_mischief": true,
 		"retry_after": _adapted_cooldown_seconds(period, adaptation),
-		"intent": _intent("mischief", "grab_mouse", _reason_with_adaptation("forced mischief requested and ready", adaptation), 90, "mischief:%s" % forced_mischief_kind, "medium", "forced"),
+		"intent": _intent("mischief", "grab_mouse", _reason_with_adaptation("forced mischief requested and ready", adaptation), 90, "mischief:%s" % forced_kind, "medium", "forced"),
 	}, adaptation)
 
 
-func _forced_retry_after(now: float) -> float:
-	if forced_mischief_expires_at <= now:
+func _forced_retry_after(now: float, expires_at: float) -> float:
+	if expires_at <= now:
 		return 0.1
-	return max(0.1, min(1.0, forced_mischief_expires_at - now))
+	return max(0.1, min(1.0, expires_at - now))
 
 
 func _cooldown_seconds(period: String) -> float:
@@ -444,7 +376,9 @@ func _adaptation_for_context(context: Dictionary, _status: Dictionary, period: S
 	var companion_profile = context.get("profile", {})
 	if typeof(companion_profile) != TYPE_DICTIONARY:
 		companion_profile = {}
-	var profile_preferences = companion_profile.get("preferences", {})
+	var profile_preferences = companion_profile.get("effective_preferences", {})
+	if typeof(profile_preferences) != TYPE_DICTIONARY or profile_preferences.is_empty():
+		profile_preferences = companion_profile.get("preferences", {})
 	if typeof(profile_preferences) != TYPE_DICTIONARY:
 		profile_preferences = {}
 	var profile_favorites = _clean_string_array(profile_preferences.get("favorite_interactions", []))
@@ -518,9 +452,9 @@ func _adaptation_for_context(context: Dictionary, _status: Dictionary, period: S
 		multipliers["invite"] *= 1.08
 		multipliers["footprint"] *= 1.06
 		multipliers["edge"] *= 1.04
-	var range = config.get("weight_multiplier_range", [0.25, 2.75])
+	var range_value = config.get("weight_multiplier_range", [0.25, 2.75])
 	for key in multipliers.keys():
-		multipliers[key] = _clamp_to_range(float(multipliers[key]) * strength_scale + (1.0 - strength_scale), range, 0.25, 2.75)
+		multipliers[key] = _clamp_to_range(float(multipliers[key]) * strength_scale + (1.0 - strength_scale), range_value, 0.25, 2.75)
 	result["weight_multipliers"] = multipliers
 
 	var reasons := []
@@ -642,55 +576,6 @@ func _clean_string_array(value) -> Array:
 	return result
 
 
-func _remember_decision(decision: Dictionary, context: Dictionary) -> void:
-	var now = _coerce_now(0)
-	var decision_type = str(decision.get("type", ""))
-	if decision_type == "prompt":
-		local_memory["last_prompt_at"] = now
-	elif decision_type in ["action", "mischief", "effect"]:
-		local_memory["last_action_at"] = now
-	var store = context.get("state_store", null)
-	if store != null:
-		if decision_type == "prompt" and store.has_method("record_prompt"):
-			store.record_prompt(str(decision.get("name", "")), now)
-		elif decision_type in ["action", "mischief", "effect"] and store.has_method("record_action"):
-			store.record_action("%s:%s" % [decision_type, str(decision.get("name", ""))], now)
-	_record_automatic_event(decision, context, now)
-
-
-func _record_automatic_event(decision: Dictionary, context: Dictionary, now: int) -> void:
-	var decision_type = str(decision.get("type", ""))
-	if not decision_type in ["prompt", "action", "mischief", "effect"]:
-		return
-	var event_store = context.get("event_store", null)
-	if event_store == null or not event_store.has_method("record_event"):
-		return
-	var event_kind = "auto_action"
-	if decision_type == "prompt":
-		event_kind = "auto_prompt"
-	elif decision_type == "effect":
-		event_kind = "auto_effect"
-	var intent = decision.get("intent", {})
-	if typeof(intent) != TYPE_DICTIONARY:
-		intent = {}
-	var event_context = context.duplicate(true)
-	if not event_context.has("period"):
-		event_context["period"] = _period_for(now)
-	var store = context.get("state_store", null)
-	if store != null and store.has_method("snapshot"):
-		event_context["state"] = store.snapshot()
-	var meta = {
-		"decision_type": decision_type,
-		"decision_name": str(decision.get("name", "")),
-		"intent_key": _intent_key(intent),
-		"reason": str(intent.get("reason", "")),
-	}
-	var event = event_store.record_event(event_kind, "system", event_context, meta, [decision_type], {}, {}, now)
-	var memory_store = context.get("memory_store", null)
-	if typeof(event) == TYPE_DICTIONARY and not event.is_empty() and memory_store != null and memory_store.has_method("refresh"):
-		memory_store.refresh(now)
-
-
 func _state_from_context(context: Dictionary) -> Dictionary:
 	var status = context.get("state", {})
 	if typeof(status) == TYPE_DICTIONARY:
@@ -698,10 +583,12 @@ func _state_from_context(context: Dictionary) -> Dictionary:
 	return {}
 
 
-func _memory_from_state(status: Dictionary) -> Dictionary:
+func _memory_from_state(status: Dictionary, local_memory: Dictionary) -> Dictionary:
 	var memory = status.get("memory", {})
 	if typeof(memory) != TYPE_DICTIONARY:
 		memory = {}
+	else:
+		memory = memory.duplicate(true)
 	for key in local_memory.keys():
 		if not memory.has(key):
 			memory[key] = local_memory[key]
@@ -727,41 +614,13 @@ func _none_decision(reason: String, retry_after: float, adaptation := {}, extra 
 
 
 func _intent(intent_type: String, intent_name: String, reason: String, priority: int, cooldown_key: String, interruption_level: String, source := "rule") -> Dictionary:
-	return {
-		"type": intent_type,
-		"name": intent_name,
-		"reason": reason,
-		"priority": priority,
-		"cooldown_key": cooldown_key,
-		"interruption_level": interruption_level,
-		"source": source,
-	}
-
-
-func _intent_key(intent: Dictionary) -> String:
-	var intent_type = str(intent.get("type", ""))
-	var intent_name = str(intent.get("name", ""))
-	if intent_type == "" or intent_name == "":
-		return ""
-	return "%s:%s" % [intent_type, intent_name]
-
-
-func _period_for(now: int) -> String:
-	return behavior_policy.period_for(now)
+	return CompanionIntent.make(intent_type, intent_name, reason, priority, cooldown_key, interruption_level, source)
 
 
 func _local_datetime_from_unix(unix_time: int) -> Dictionary:
 	var time_zone = Time.get_time_zone_from_system()
 	var bias_minutes = int(time_zone.get("bias", 0)) if typeof(time_zone) == TYPE_DICTIONARY else 0
 	return Time.get_datetime_dict_from_unix_time(unix_time + bias_minutes * 60)
-
-
-func _interval_for_mode(target_mode: String) -> Vector2:
-	return behavior_policy.interval_for_mode(target_mode)
-
-
-func _initial_delay_for_mode(target_mode: String) -> float:
-	return behavior_policy.initial_delay_for_mode(target_mode)
 
 
 func _mode_config(target_mode: String) -> Dictionary:
@@ -876,7 +735,3 @@ func _is_behavior_action_type(value: String) -> bool:
 
 func _coerce_now(now_unix: int) -> int:
 	return now_unix if now_unix > 0 else int(Time.get_unix_time_from_system())
-
-
-func _coerce_now_float(now_unix: int) -> float:
-	return float(now_unix) if now_unix > 0 else Time.get_unix_time_from_system()

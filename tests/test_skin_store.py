@@ -223,9 +223,30 @@ class SkinStoreTests(unittest.TestCase):
             self.assertEqual(body["payload"], {"enabled": True, "provider": "local_stub", "timeout_ms": 1200})
             status, body = post_json(f"{base}/api/companion/command", {"command": "set_ai_expression", "payload": {"provider": "bad"}}, token)
             self.assertEqual(status, 400)
+            status, body = post_json(f"{base}/api/companion/command", {
+                "command": "set_ai_memory_summary",
+                "payload": {
+                    "enabled": "true",
+                    "provider": "local_stub",
+                    "timeout_ms": 2000,
+                    "min_events": 8,
+                    "min_interval_seconds": 3600,
+                },
+            }, token)
+            self.assertEqual(status, 200)
+            self.assertEqual(body["payload"], {
+                "enabled": True,
+                "provider": "local_stub",
+                "timeout_ms": 2000,
+                "min_events": 8,
+                "min_interval_seconds": 3600,
+            })
             status, body = post_json(f"{base}/api/companion/command", {"command": "check_ai_health"}, token)
             self.assertEqual(status, 200)
             self.assertEqual(body["command"], "check_ai_health")
+            status, body = post_json(f"{base}/api/companion/command", {"command": "summarize_memory"}, token)
+            self.assertEqual(status, 200)
+            self.assertEqual(body["command"], "summarize_memory")
             status, body = post_json(f"{base}/api/companion/command", {"command": "run_scenario", "payload": {"scenario_id": "busy_guard"}}, token)
             self.assertEqual(status, 200)
             self.assertEqual(body["payload"]["scenario_id"], "busy_guard")

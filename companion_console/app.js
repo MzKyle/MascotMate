@@ -81,12 +81,18 @@ function renderSnapshot(snapshot) {
   $("aiEnabled").checked = Boolean(aiConfig.enabled);
   $("aiProvider").value = aiConfig.provider || "local_stub";
   $("aiTimeout").value = Number(aiConfig.timeout_ms || 800);
+  const summaryConfig = valueAt(snapshot, ["config", "ai_memory_summary"], {});
+  $("summaryEnabled").checked = Boolean(summaryConfig.enabled);
+  $("summaryProvider").value = summaryConfig.provider || "local_stub";
+  $("summaryTimeout").value = Number(summaryConfig.timeout_ms || 1500);
+  $("summaryMinEvents").value = Number(summaryConfig.min_events || 12);
+  $("summaryMinInterval").value = Number(summaryConfig.min_interval_seconds || 86400);
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.classList.toggle("active", button.dataset.mode === valueAt(snapshot, ["runtime", "behavior_mode"], ""));
   });
 
   renderDecision(snapshot.last_decision || {});
-  renderMemory(snapshot.memory || {}, snapshot.profile || {}, snapshot.last_expression || {}, snapshot.ai_expression || {});
+  renderMemory(snapshot.memory || {}, snapshot.profile || {}, snapshot.last_expression || {}, snapshot.ai_expression || {}, snapshot.ai_memory_summary || {});
   renderEvents(snapshot.recent_events || []);
 }
 
@@ -106,7 +112,7 @@ function renderDecision(decision) {
   }
 }
 
-function renderMemory(memory, profile, lastExpression, aiStatus) {
+function renderMemory(memory, profile, lastExpression, aiStatus, summaryStatus) {
   const relationship = memory.relationship || {};
   setText("relationship", `${relationship.level || "-"} / ${relationship.familiarity ?? "-"}`);
   const favorites = valueAt(memory, ["preferences", "favorite_interactions"], []);
@@ -133,17 +139,33 @@ function renderMemory(memory, profile, lastExpression, aiStatus) {
   if (aiStatus && Object.keys(aiStatus).length) {
     const health = aiStatus.health || {};
     const stats = aiStatus.source_stats || {};
+    const cache = aiStatus.cache || {};
     const available = aiStatus.available ? "可用" : "未确认";
     const configured = health.configured === undefined ? "-" : boolText(health.configured);
     const healthText = health.status ? ` / health ${health.status} / configured ${configured}` : "";
-    const statsText = Object.keys(stats).length ? ` / ai ${stats.ai || 0} local ${stats.local || 0} fallback ${stats.fallback || 0}` : "";
+    const statsText = Object.keys(stats).length ? ` / ai ${stats.ai || 0} cache ${stats.ai_cache || 0} local ${stats.local || 0} fallback ${stats.fallback || 0}` : "";
+    const cacheText = Object.keys(cache).length ? ` / cache ${cache.size || 0}/${cache.max_size || 0}` : "";
     const error = aiStatus.last_error ? ` / ${aiStatus.last_error}` : "";
-    setText("aiStatus", `${aiStatus.enabled ? "开启" : "关闭"} / ${aiStatus.provider || "-"} / ${available}${healthText}${statsText}${error}`);
+    setText("aiStatus", `${aiStatus.enabled ? "开启" : "关闭"} / ${aiStatus.provider || "-"} / ${available}${healthText}${statsText}${cacheText}${error}`);
+    const recent = Array.isArray(aiStatus.recent_results) ? aiStatus.recent_results.slice(-5).reverse() : [];
+    setText("aiRecentResults", recent.length ? recent.map((item) => {
+      const cacheHit = item.cache_hit ? " cache" : "";
+      const latency = item.latency_ms === undefined ? "" : ` ${item.latency_ms}ms`;
+      return `${item.key || "-"}:${item.source || "-"}${cacheHit}${latency}`;
+    }).join(" / ") : "-");
     const fallbackReasons = Array.isArray(aiStatus.fallback_reasons) ? aiStatus.fallback_reasons.slice(-5).reverse() : [];
     setText("aiFallbackReasons", fallbackReasons.length ? fallbackReasons.map((item) => `${item.key || "-"}:${item.reason || "-"}`).join(" / ") : "-");
   } else {
     setText("aiStatus", "-");
+    setText("aiRecentResults", "-");
     setText("aiFallbackReasons", "-");
+  }
+  const summary = summaryStatus && Object.keys(summaryStatus).length ? summaryStatus : valueAt(aiStatus, ["memory_summary"], {});
+  if (summary && Object.keys(summary).length) {
+    const reason = summary.last_error ? ` / ${summary.last_error}` : "";
+    setText("aiMemorySummary", `${summary.enabled ? "开启" : "关闭"} / ${summary.provider || "-"} / ${summary.available ? "可用" : "未确认"}${reason}`);
+  } else {
+    setText("aiMemorySummary", "-");
   }
 }
 
@@ -242,6 +264,17 @@ function bindControls() {
     },
   }));
   $("checkAiHealth").addEventListener("click", () => sendCommand({ command: "check_ai_health" }));
+  $("applyAiSummary").addEventListener("click", () => sendCommand({
+    command: "set_ai_memory_summary",
+    payload: {
+      enabled: $("summaryEnabled").checked,
+      provider: $("summaryProvider").value,
+      timeout_ms: Number($("summaryTimeout").value || 1500),
+      min_events: Number($("summaryMinEvents").value || 12),
+      min_interval_seconds: Number($("summaryMinInterval").value || 86400),
+    },
+  }));
+  $("summarizeMemory").addEventListener("click", () => sendCommand({ command: "summarize_memory" }));
   $("rebuildMemory").addEventListener("click", () => sendCommand({ command: "rebuild_memory" }));
   $("scenarioButtons").addEventListener("click", async (event) => {
     const button = event.target.closest("[data-scenario]");

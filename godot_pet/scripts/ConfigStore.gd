@@ -18,6 +18,13 @@ const DEFAULT_CONFIG := {
 			"provider": "local_stub",
 			"timeout_ms": 800,
 		},
+		"ai_memory_summary": {
+			"enabled": false,
+			"provider": "local_stub",
+			"timeout_ms": 1500,
+			"min_events": 12,
+			"min_interval_seconds": 86400,
+		},
 	},
 	"shortcuts": {
 		"screenshot": "F1",
@@ -93,6 +100,8 @@ func set_app_config(values: Dictionary) -> void:
 		config["app"]["behavior_adaptation"] = _merged_behavior_adaptation(values["behavior_adaptation"])
 	if values.has("ai_expression"):
 		config["app"]["ai_expression"] = _merged_ai_expression(values["ai_expression"])
+	if values.has("ai_memory_summary"):
+		config["app"]["ai_memory_summary"] = _merged_ai_memory_summary(values["ai_memory_summary"])
 	save_config()
 
 
@@ -102,6 +111,10 @@ func set_behavior_adaptation_config(values: Dictionary) -> void:
 
 func set_ai_expression_config(values: Dictionary) -> void:
 	set_app_config({"ai_expression": values})
+
+
+func set_ai_memory_summary_config(values: Dictionary) -> void:
+	set_app_config({"ai_memory_summary": values})
 
 
 func set_screenshot_pins_config(values: Dictionary) -> void:
@@ -132,6 +145,8 @@ func _merged_config(source: Dictionary) -> Dictionary:
 			merged["app"]["behavior_adaptation"] = _merged_behavior_adaptation(source["app"]["behavior_adaptation"])
 		if source["app"].has("ai_expression"):
 			merged["app"]["ai_expression"] = _merged_ai_expression(source["app"]["ai_expression"])
+		if source["app"].has("ai_memory_summary"):
+			merged["app"]["ai_memory_summary"] = _merged_ai_memory_summary(source["app"]["ai_memory_summary"])
 
 	if source.has("shortcuts") and typeof(source["shortcuts"]) == TYPE_DICTIONARY:
 		for key in merged["shortcuts"].keys():
@@ -173,6 +188,24 @@ func _merged_ai_expression(source) -> Dictionary:
 		merged["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
 	if source.has("timeout_ms"):
 		merged["timeout_ms"] = clampi(int(source["timeout_ms"]), 100, 5000)
+	return merged
+
+
+func _merged_ai_memory_summary(source) -> Dictionary:
+	var merged = DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true)
+	if typeof(source) != TYPE_DICTIONARY:
+		return merged
+	if source.has("enabled"):
+		merged["enabled"] = bool(source["enabled"])
+	if source.has("provider"):
+		var provider = str(source["provider"])
+		merged["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
+	if source.has("timeout_ms"):
+		merged["timeout_ms"] = clampi(int(source["timeout_ms"]), 100, 5000)
+	if source.has("min_events"):
+		merged["min_events"] = clampi(int(source["min_events"]), 1, 200)
+	if source.has("min_interval_seconds"):
+		merged["min_interval_seconds"] = clampi(int(source["min_interval_seconds"]), 60, 30 * 24 * 60 * 60)
 	return merged
 
 

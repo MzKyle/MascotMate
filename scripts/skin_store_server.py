@@ -28,7 +28,16 @@ from import_shimeji_skin import install_skin_source
 CONFIG_DIR_NAME = "mascotmate-desktop"
 MAX_IMPORT_BYTES = 100 * 1024 * 1024
 INSTALLABLE_SOURCE_TYPES = {"curated_package", "local_package"}
-COMPANION_COMMANDS = {"set_behavior_mode", "set_adaptation", "set_ai_expression", "check_ai_health", "rebuild_memory", "run_scenario"}
+COMPANION_COMMANDS = {
+    "set_behavior_mode",
+    "set_adaptation",
+    "set_ai_expression",
+    "set_ai_memory_summary",
+    "check_ai_health",
+    "summarize_memory",
+    "rebuild_memory",
+    "run_scenario",
+}
 COMPANION_MODES = {"安静", "活泼", "捣乱"}
 COMPANION_STRENGTHS = {"subtle", "visible", "bold"}
 COMPANION_AI_PROVIDERS = {"local_stub", "openai_compatible"}
@@ -404,6 +413,29 @@ class SkinStoreApp:
                 "enabled": _coerce_bool(payload.get("enabled", body.get("enabled", False))),
                 "provider": provider,
                 "timeout_ms": max(100, min(5000, timeout_ms)),
+            }
+        elif command == "set_ai_memory_summary":
+            provider = str(payload.get("provider", body.get("provider", "local_stub"))).strip()
+            if provider not in COMPANION_AI_PROVIDERS:
+                raise ValueError("AI provider 不合法。")
+            try:
+                timeout_ms = int(payload.get("timeout_ms", body.get("timeout_ms", 1500)))
+            except (TypeError, ValueError):
+                timeout_ms = 1500
+            try:
+                min_events = int(payload.get("min_events", body.get("min_events", 12)))
+            except (TypeError, ValueError):
+                min_events = 12
+            try:
+                min_interval_seconds = int(payload.get("min_interval_seconds", body.get("min_interval_seconds", 86400)))
+            except (TypeError, ValueError):
+                min_interval_seconds = 86400
+            payload = {
+                "enabled": _coerce_bool(payload.get("enabled", body.get("enabled", False))),
+                "provider": provider,
+                "timeout_ms": max(100, min(5000, timeout_ms)),
+                "min_events": max(1, min(200, min_events)),
+                "min_interval_seconds": max(60, min(30 * 24 * 60 * 60, min_interval_seconds)),
             }
         elif command == "run_scenario":
             scenario_id = str(payload.get("scenario_id", body.get("scenario_id", "all"))).strip() or "all"

@@ -1,20 +1,62 @@
 extends Node
 
 const DEFAULT_ENDPOINT := "http://127.0.0.1:8765"
+const CACHE_TTL_SECONDS := 600
+const MAX_CACHE_ENTRIES := 48
 const ALLOWED_KEYS := [
 	"pet_head",
+	"poke_body",
+	"grab_start",
+	"release_soft",
+	"throw_fast",
+	"peek_exit",
 	"feed_success",
+	"tease_start",
 	"tease_success",
+	"tease_done",
 	"auto_prompt:hungry",
 	"auto_prompt:play",
 ]
 const ALLOWED_RESPONSE_KEYS := ["text", "seconds", "emotion", "safety"]
+const ALLOWED_SUMMARY_KEYS := [
+	"favorite_interactions",
+	"favorite_mode",
+	"favorite_period",
+	"care_tendency",
+	"play_tendency",
+	"interruption_tolerance",
+	"confidence",
+	"safety",
+]
+const VALID_SUMMARY_INTERACTIONS := [
+	"pet_head",
+	"poke_body",
+	"grab_start",
+	"release_soft",
+	"throw_fast",
+	"peek_enter",
+	"peek_exit",
+	"feed_start",
+	"feed_success",
+	"tease_start",
+	"tease_success",
+]
+const VALID_SUMMARY_MODES := ["", "安静", "活泼", "捣乱"]
+const VALID_SUMMARY_PERIODS := ["", "work", "entertainment", "rest"]
+const VALID_INTERRUPTION_TOLERANCE := ["low", "medium", "high"]
 const RECENT_STATUS_LIMIT := 10
 
 var enabled := false
 var provider := "local_stub"
 var endpoint := DEFAULT_ENDPOINT
 var timeout_ms := 800
+var memory_summary_config := {
+	"enabled": false,
+	"provider": "local_stub",
+	"timeout_ms": 1500,
+	"min_events": 12,
+	"min_interval_seconds": 86400,
+}
 var last_status := {
 	"enabled": false,
 	"provider": "local_stub",
@@ -30,6 +72,17 @@ var health_status := {
 	"configured": false,
 	"status": "not_checked",
 }
+var memory_summary_last_status := {
+	"enabled": false,
+	"provider": "local_stub",
+	"available": false,
+	"last_source": "disabled",
+	"last_error": "disabled",
+	"checked_at": 0,
+	"last_summary_at": 0,
+}
+var expression_cache := {}
+var expression_cache_order := []
 var recent_results := []
 
 
@@ -56,7 +109,22 @@ func configure(values := {}) -> void:
 		"configured": false,
 		"status": "not_checked",
 	}
+	expression_cache = {}
+	expression_cache_order = []
 	recent_results = []
+
+
+func configure_memory_summary(values := {}) -> void:
+	memory_summary_config = _sanitize_memory_summary_config(values)
+	memory_summary_last_status = {
+		"enabled": bool(memory_summary_config.get("enabled", false)),
+		"provider": str(memory_summary_config.get("provider", "local_stub")),
+		"available": false,
+		"last_source": "disabled",
+		"last_error": "disabled" if not bool(memory_summary_config.get("enabled", false)) else "not_checked",
+		"checked_at": 0,
+		"last_summary_at": 0,
+	}
 
 
 func status() -> Dictionary:
@@ -65,6 +133,18 @@ func status() -> Dictionary:
 	result["recent_results"] = recent_results.duplicate(true)
 	result["source_stats"] = _source_stats()
 	result["fallback_reasons"] = _fallback_reasons()
+	result["cache"] = {
+		"ttl_seconds": CACHE_TTL_SECONDS,
+		"size": expression_cache_order.size(),
+		"max_size": MAX_CACHE_ENTRIES,
+	}
+	result["memory_summary"] = memory_summary_status()
+	return result
+
+
+func memory_summary_status() -> Dictionary:
+	var result = memory_summary_last_status.duplicate(true)
+	result["config"] = memory_summary_config.duplicate(true)
 	return result
 
 
@@ -86,6 +166,13 @@ func resolve_expression(key: String, context: Dictionary, local_expression: Dict
 		local_result["fallback_reason"] = "client_not_inside_tree"
 		return local_result
 
+	var cache_key = _cache_key(key, context, local_result)
+	var cached = _cached_result(cache_key)
+	if not cached.is_empty():
+		_update_status("ai_cache", "", true, key, true, true, 0)
+		return cached
+
+	var started_at = Time.get_ticks_msec()
 	var request_node = HTTPRequest.new()
 	request_node.timeout = max(0.05, float(timeout_ms) / 1000.0)
 	add_child(request_node)
@@ -94,7 +181,7 @@ func resolve_expression(key: String, context: Dictionary, local_expression: Dict
 	var err = request_node.request(_expression_url(), headers, HTTPClient.METHOD_POST, JSON.stringify(payload))
 	if err != OK:
 		request_node.queue_free()
-		_update_status(local_result.get("source", "local"), "request_start_failed", false, key)
+		_update_status(local_result.get("source", "local"), "request_start_failed", false, key, true, false, _elapsed_ms(started_at))
 		local_result["fallback_reason"] = "request_start_failed"
 		return local_result
 	var completed = await request_node.request_completed
@@ -103,12 +190,14 @@ func resolve_expression(key: String, context: Dictionary, local_expression: Dict
 	var response_code = int(completed[1])
 	var body: PackedByteArray = completed[3]
 	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
-		_update_status(local_result.get("source", "local"), "http_failed", false, key)
+		_update_status(local_result.get("source", "local"), "http_failed", false, key, true, false, _elapsed_ms(started_at))
 		local_result["fallback_reason"] = "http_failed"
 		return local_result
 	var parsed = JSON.parse_string(body.get_string_from_utf8())
 	var ai_result = _validate_response(parsed, local_result, context)
-	_update_status(str(ai_result.get("source", "local")), str(ai_result.get("fallback_reason", "")), str(ai_result.get("source", "")) == "ai", key)
+	if str(ai_result.get("source", "")) == "ai":
+		_store_cache(cache_key, ai_result)
+	_update_status(str(ai_result.get("source", "local")), str(ai_result.get("fallback_reason", "")), str(ai_result.get("source", "")) == "ai", key, true, false, _elapsed_ms(started_at))
 	return ai_result
 
 
@@ -155,6 +244,39 @@ func check_health():
 	return health_status.duplicate(true)
 
 
+func summarize_memory(payload: Dictionary, force := false):
+	var config = memory_summary_config
+	if not bool(config.get("enabled", false)):
+		return _memory_summary_fallback("disabled")
+	if not is_inside_tree():
+		return _memory_summary_fallback("client_not_inside_tree")
+	var recent_events = payload.get("recent_events", [])
+	if typeof(recent_events) != TYPE_ARRAY:
+		recent_events = []
+	if not force and recent_events.size() < int(config.get("min_events", 12)):
+		return _memory_summary_fallback("not_enough_events")
+	var request_node = HTTPRequest.new()
+	request_node.timeout = max(0.05, float(config.get("timeout_ms", 1500)) / 1000.0)
+	add_child(request_node)
+	var request_payload = payload.duplicate(true)
+	request_payload["provider"] = str(config.get("provider", "local_stub"))
+	var err = request_node.request(_memory_summary_url(), PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, JSON.stringify(request_payload))
+	if err != OK:
+		request_node.queue_free()
+		return _memory_summary_fallback("request_start_failed")
+	var completed = await request_node.request_completed
+	request_node.queue_free()
+	var result = int(completed[0])
+	var response_code = int(completed[1])
+	var body: PackedByteArray = completed[3]
+	if result != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
+		return _memory_summary_fallback("http_failed")
+	var parsed = JSON.parse_string(body.get_string_from_utf8())
+	var summary_result = _validate_memory_summary(parsed)
+	_update_memory_summary_status(summary_result)
+	return summary_result
+
+
 func _validate_response(parsed, local_result: Dictionary, context := {}) -> Dictionary:
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return _fallback(local_result, "bad_json")
@@ -174,6 +296,45 @@ func _validate_response(parsed, local_result: Dictionary, context := {}) -> Dict
 		"source": "ai",
 		"emotion": _clean_text(str(parsed.get("emotion", "neutral"))),
 		"fallback_reason": "",
+		"cache_hit": false,
+	}
+
+
+func _validate_memory_summary(parsed) -> Dictionary:
+	if typeof(parsed) != TYPE_DICTIONARY:
+		return _memory_summary_fallback("bad_json")
+	for key in parsed.keys():
+		if not str(key) in ALLOWED_SUMMARY_KEYS:
+			return _memory_summary_fallback("unknown_field")
+	if str(parsed.get("safety", "fallback")) != "ok":
+		return _memory_summary_fallback("safety_fallback")
+	var confidence = clampi(int(parsed.get("confidence", 0)), 0, 100)
+	var interactions = _clean_allowed_array(parsed.get("favorite_interactions", []), VALID_SUMMARY_INTERACTIONS, 3)
+	var favorite_mode = str(parsed.get("favorite_mode", "")).strip_edges()
+	if not favorite_mode in VALID_SUMMARY_MODES:
+		return _memory_summary_fallback("invalid_mode")
+	var favorite_period = str(parsed.get("favorite_period", "")).strip_edges()
+	if not favorite_period in VALID_SUMMARY_PERIODS:
+		return _memory_summary_fallback("invalid_period")
+	var interruption_tolerance = str(parsed.get("interruption_tolerance", "medium")).strip_edges()
+	if not interruption_tolerance in VALID_INTERRUPTION_TOLERANCE:
+		return _memory_summary_fallback("invalid_interruption_tolerance")
+	if confidence < 60:
+		return _memory_summary_fallback("low_confidence")
+	var summary = {
+		"favorite_interactions": interactions,
+		"favorite_mode": favorite_mode,
+		"favorite_period": favorite_period,
+		"care_tendency": clampi(int(parsed.get("care_tendency", 0)), 0, 100),
+		"play_tendency": clampi(int(parsed.get("play_tendency", 0)), 0, 100),
+		"interruption_tolerance": interruption_tolerance,
+		"confidence": confidence,
+	}
+	return {
+		"source": "ai",
+		"fallback_reason": "",
+		"summary": summary,
+		"at": int(Time.get_unix_time_from_system()),
 	}
 
 
@@ -192,6 +353,30 @@ func _sanitize_config(values) -> Dictionary:
 		result["provider"] = clean_provider if clean_provider in ["local_stub", "openai_compatible"] else "local_stub"
 	if values.has("timeout_ms"):
 		result["timeout_ms"] = clampi(int(values["timeout_ms"]), 100, 5000)
+	return result
+
+
+func _sanitize_memory_summary_config(values) -> Dictionary:
+	var result := {
+		"enabled": false,
+		"provider": "local_stub",
+		"timeout_ms": 1500,
+		"min_events": 12,
+		"min_interval_seconds": 86400,
+	}
+	if typeof(values) != TYPE_DICTIONARY:
+		return result
+	if values.has("enabled"):
+		result["enabled"] = bool(values["enabled"])
+	if values.has("provider"):
+		var clean_provider = str(values["provider"])
+		result["provider"] = clean_provider if clean_provider in ["local_stub", "openai_compatible"] else "local_stub"
+	if values.has("timeout_ms"):
+		result["timeout_ms"] = clampi(int(values["timeout_ms"]), 100, 5000)
+	if values.has("min_events"):
+		result["min_events"] = clampi(int(values["min_events"]), 1, 200)
+	if values.has("min_interval_seconds"):
+		result["min_interval_seconds"] = clampi(int(values["min_interval_seconds"]), 60, 30 * 24 * 60 * 60)
 	return result
 
 
@@ -216,6 +401,10 @@ func _expression_url() -> String:
 
 func _health_url() -> String:
 	return _base_endpoint() + "/health"
+
+
+func _memory_summary_url() -> String:
+	return _base_endpoint() + "/v1/memory-summary"
 
 
 func _base_endpoint() -> String:
@@ -246,7 +435,7 @@ func _fallback(local_result: Dictionary, reason: String) -> Dictionary:
 	return result
 
 
-func _update_status(source: String, error: String, available: bool, key := "", record_result := true) -> void:
+func _update_status(source: String, error: String, available: bool, key := "", record_result := true, cache_hit := false, latency_ms := 0) -> void:
 	last_status = {
 		"enabled": enabled,
 		"provider": provider,
@@ -256,14 +445,16 @@ func _update_status(source: String, error: String, available: bool, key := "", r
 		"last_error": error,
 	}
 	if record_result and key != "":
-		_record_result(key, source, error)
+		_record_result(key, source, error, cache_hit, latency_ms)
 
 
-func _record_result(key: String, source: String, reason: String) -> void:
+func _record_result(key: String, source: String, reason: String, cache_hit := false, latency_ms := 0) -> void:
 	recent_results.append({
 		"key": key,
 		"source": source,
 		"fallback_reason": reason,
+		"cache_hit": cache_hit,
+		"latency_ms": max(0, int(latency_ms)),
 		"at": int(Time.get_unix_time_from_system()),
 	})
 	while recent_results.size() > RECENT_STATUS_LIMIT:
@@ -271,7 +462,7 @@ func _record_result(key: String, source: String, reason: String) -> void:
 
 
 func _source_stats() -> Dictionary:
-	var stats := {"ai": 0, "local": 0, "fallback": 0}
+	var stats := {"ai": 0, "ai_cache": 0, "local": 0, "fallback": 0}
 	for item in recent_results:
 		if typeof(item) != TYPE_DICTIONARY:
 			continue
@@ -294,6 +485,145 @@ func _fallback_reasons() -> Array:
 				"at": int(item.get("at", 0)),
 			})
 	return reasons
+
+
+func _memory_summary_fallback(reason: String) -> Dictionary:
+	var result = {
+		"source": "fallback",
+		"fallback_reason": reason,
+		"summary": {},
+		"at": int(Time.get_unix_time_from_system()),
+	}
+	_update_memory_summary_status(result)
+	return result
+
+
+func _update_memory_summary_status(result: Dictionary) -> void:
+	var source = str(result.get("source", "fallback"))
+	var reason = str(result.get("fallback_reason", ""))
+	var now = int(Time.get_unix_time_from_system())
+	memory_summary_last_status = {
+		"enabled": bool(memory_summary_config.get("enabled", false)),
+		"provider": str(memory_summary_config.get("provider", "local_stub")),
+		"available": source == "ai",
+		"last_source": source,
+		"last_error": reason,
+		"checked_at": now,
+		"last_summary_at": now if source == "ai" else int(memory_summary_last_status.get("last_summary_at", 0)),
+	}
+
+
+func _cached_result(cache_key: String) -> Dictionary:
+	if cache_key == "" or not expression_cache.has(cache_key):
+		return {}
+	var entry = expression_cache.get(cache_key, {})
+	if typeof(entry) != TYPE_DICTIONARY:
+		expression_cache.erase(cache_key)
+		expression_cache_order.erase(cache_key)
+		return {}
+	var now = int(Time.get_unix_time_from_system())
+	if now - int(entry.get("at", 0)) > CACHE_TTL_SECONDS:
+		expression_cache.erase(cache_key)
+		expression_cache_order.erase(cache_key)
+		return {}
+	var result = entry.get("result", {})
+	if typeof(result) != TYPE_DICTIONARY:
+		return {}
+	result = result.duplicate(true)
+	result["source"] = "ai_cache"
+	result["cache_hit"] = true
+	result["fallback_reason"] = ""
+	return result
+
+
+func _store_cache(cache_key: String, result: Dictionary) -> void:
+	if cache_key == "" or str(result.get("source", "")) != "ai":
+		return
+	expression_cache[cache_key] = {
+		"at": int(Time.get_unix_time_from_system()),
+		"result": result.duplicate(true),
+	}
+	expression_cache_order.erase(cache_key)
+	expression_cache_order.append(cache_key)
+	while expression_cache_order.size() > MAX_CACHE_ENTRIES:
+		var oldest = expression_cache_order.pop_front()
+		expression_cache.erase(oldest)
+
+
+func _cache_key(key: String, context: Dictionary, local_result: Dictionary) -> String:
+	var intent = context.get("intent", {}) if typeof(context) == TYPE_DICTIONARY else {}
+	if typeof(intent) != TYPE_DICTIONARY:
+		intent = {}
+	var intent_key = str(intent.get("key", ""))
+	if intent_key == "" and str(intent.get("type", "")) != "" and str(intent.get("name", "")) != "":
+		intent_key = "%s:%s" % [str(intent.get("type", "")), str(intent.get("name", ""))]
+	var state = context.get("state", {}) if typeof(context) == TYPE_DICTIONARY else {}
+	if typeof(state) != TYPE_DICTIONARY:
+		state = {}
+	var recent = context.get("recent_expression_texts", []) if typeof(context) == TYPE_DICTIONARY else []
+	if typeof(recent) != TYPE_ARRAY:
+		recent = []
+	var recent_tail := []
+	var start = max(0, recent.size() - 3)
+	for i in range(start, recent.size()):
+		recent_tail.append(str(recent[i]))
+	return "|".join([
+		key,
+		intent_key,
+		_context_tone(context),
+		_context_relationship_level(context),
+		_state_bucket(state, "mood"),
+		_state_bucket(state, "hunger"),
+		_state_bucket(state, "energy"),
+		_state_bucket(state, "affection"),
+		str(local_result.get("text", "")),
+		" / ".join(recent_tail),
+	])
+
+
+func _state_bucket(state: Dictionary, key: String) -> String:
+	return "%s:%d" % [key, int(floor(float(state.get(key, 0)) / 10.0)) * 10]
+
+
+func _context_tone(context) -> String:
+	if typeof(context) != TYPE_DICTIONARY:
+		return ""
+	var tone = str(context.get("tone", "")).strip_edges()
+	if tone != "":
+		return tone
+	var personality = context.get("personality", {})
+	if typeof(personality) == TYPE_DICTIONARY:
+		return str(personality.get("tone", "")).strip_edges()
+	return ""
+
+
+func _context_relationship_level(context) -> String:
+	if typeof(context) != TYPE_DICTIONARY:
+		return ""
+	var level = str(context.get("relationship_level", "")).strip_edges()
+	if level != "":
+		return level
+	var relationship = context.get("relationship", {})
+	if typeof(relationship) == TYPE_DICTIONARY:
+		return str(relationship.get("level", "")).strip_edges()
+	return ""
+
+
+func _elapsed_ms(started_at: int) -> int:
+	return max(0, int(Time.get_ticks_msec()) - started_at)
+
+
+func _clean_allowed_array(value, allowed: Array, limit: int) -> Array:
+	var result := []
+	if typeof(value) != TYPE_ARRAY:
+		return result
+	for item in value:
+		var text = str(item).strip_edges()
+		if text != "" and text in allowed and not text in result:
+			result.append(text)
+		if result.size() >= limit:
+			break
+	return result
 
 
 func _health_result(ok: bool, configured: bool, status_text: String) -> Dictionary:

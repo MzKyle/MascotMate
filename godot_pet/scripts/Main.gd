@@ -21,6 +21,8 @@ const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
 const CompanionLongTermProfileScript = preload("res://scripts/CompanionLongTermProfile.gd")
 const CompanionExpressionBankScript = preload("res://scripts/CompanionExpressionBank.gd")
 const CompanionAIExpressionClientScript = preload("res://scripts/CompanionAIExpressionClient.gd")
+const CompanionIntentScript = preload("res://scripts/CompanionIntent.gd")
+const CompanionExpressionResolverScript = preload("res://scripts/CompanionExpressionResolver.gd")
 
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
@@ -49,6 +51,7 @@ var companion_memory
 var companion_profile
 var companion_expression_bank
 var companion_ai_expression_client
+var companion_expression_resolver
 var display_scale := 1.0
 var drag_offset := Vector2.ZERO
 var landing_squash := 0.0
@@ -183,9 +186,13 @@ func _create_nodes() -> void:
 	companion_expression_bank = CompanionExpressionBankScript.new()
 	add_child(companion_expression_bank)
 
+	companion_expression_resolver = CompanionExpressionResolverScript.new()
+
 	companion_ai_expression_client = CompanionAIExpressionClientScript.new()
 	add_child(companion_ai_expression_client)
-	companion_ai_expression_client.configure(config_store.app_config().get("ai_expression", {}))
+	var app_config = config_store.app_config()
+	companion_ai_expression_client.configure(app_config.get("ai_expression", {}))
+	companion_ai_expression_client.configure_memory_summary(app_config.get("ai_memory_summary", {}))
 
 	physics = PetPhysicsScript.new()
 	add_child(physics)
@@ -235,10 +242,7 @@ func _create_nodes() -> void:
 	brain.set_context_provider(Callable(self, "_behavior_context"))
 	brain.set_skin_behavior_profile(skin_manager.current_skin.get("behavior_profile", {}))
 	brain.decision_observed.connect(_on_behavior_decision_observed)
-	brain.action_requested.connect(_on_behavior_action)
-	brain.mischief_requested.connect(_on_mischief)
-	brain.prompt_requested.connect(_on_behavior_prompt)
-	brain.effect_requested.connect(_on_behavior_effect)
+	brain.intent_requested.connect(_on_companion_intent_requested)
 	brain.set_mode(behavior_mode)
 
 	screenshot_pins = ScreenshotPinsScript.new()
@@ -278,6 +282,7 @@ func _create_nodes() -> void:
 	companion_debug_timer.timeout.connect(_write_companion_debug_snapshot)
 	companion_debug_timer.start()
 	_write_companion_debug_snapshot()
+	call_deferred("_maybe_summarize_memory", false)
 
 
 func _sync_window_size(keep_position := false) -> void:
@@ -412,14 +417,12 @@ func _on_single_clicked(local_pos: Vector2) -> void:
 		var before = state_store.snapshot()
 		var changes = state_store.pet()
 		_record_interaction("pet", "", {}, ["social", "positive"], before, state_store.snapshot())
-		_show_expression("pet_head", "摸摸头。", 1.8, _format_changes(changes))
-		feedback.spawn_heart()
+		_show_social_response("pet_head", "摸摸头。", 1.8, _format_changes(changes))
 	else:
 		var before = state_store.snapshot()
 		var changes = state_store.poke()
 		_record_interaction("poke", "", {}, ["social"], before, state_store.snapshot())
-		_show_expression("poke_body", "戳到了。", 1.8, _format_changes(changes))
-		_jiggle()
+		_show_social_response("poke_body", "戳到了。", 1.8, _format_changes(changes))
 
 
 func _on_double_clicked() -> void:
@@ -440,7 +443,7 @@ func _on_grab_started(global_pos: Vector2) -> void:
 	drag_offset = get_viewport().get_mouse_position()
 	physics.begin_grab(global_pos - drag_offset)
 	_play_capability("held")
-	_show_expression("grab_start", "抱起来啦。")
+	_show_social_response("grab_start", "抱起来啦。")
 
 
 func _on_grab_moved(global_pos: Vector2) -> void:
@@ -459,12 +462,12 @@ func _on_grab_released(velocity: Vector2, held: bool, global_pos: Vector2) -> vo
 		_record_interaction("throw", "", {"speed": speed}, ["physics"])
 		physics.release(velocity, true)
 		_play_capability("falling")
-		_show_expression("throw_fast", "飞出去啦！")
+		_show_social_response("throw_fast", "飞出去啦！")
 	else:
 		physics.release(velocity, false)
 		if held:
 			_record_interaction("release")
-			_show_expression("release_soft", "轻轻放下。")
+			_show_social_response("release_soft", "轻轻放下。")
 
 
 func _on_landed() -> void:
@@ -527,6 +530,93 @@ func _on_behavior_action(action_name: String) -> void:
 			_show_expression("auto_prompt:play", "要不要玩一会儿？")
 
 
+func _on_companion_intent_requested(intent: Dictionary, decision: Dictionary) -> void:
+	if companion_expression_resolver == null:
+		return
+	var expression = companion_expression_resolver.resolve(intent, decision)
+	_execute_companion_expression(expression)
+
+
+func _execute_companion_expression(expression: Dictionary, suffix := "", context := {}) -> void:
+	var meta = expression.get("meta", {})
+	if typeof(meta) != TYPE_DICTIONARY:
+		meta = {}
+	var action = str(expression.get("action", ""))
+	if action != "":
+		_execute_expression_action(action, meta)
+	var capability = str(expression.get("capability", ""))
+	if capability != "" and action == "":
+		_play_capability(capability)
+		_sync_window_size(true)
+	var state_delta = expression.get("state_delta", {})
+	if typeof(state_delta) == TYPE_DICTIONARY and bool(state_delta.get("sleep_tick", false)):
+		state_store.sleep_tick()
+		_sync_window_size(true)
+	var effect = str(expression.get("effect", ""))
+	if effect != "":
+		_execute_expression_effect(effect)
+	var mischief = str(expression.get("mischief", ""))
+	if mischief != "":
+		_on_mischief(mischief)
+	var bubble = expression.get("bubble", {})
+	if typeof(bubble) == TYPE_DICTIONARY and not bubble.is_empty():
+		var bubble_context = context.duplicate(true) if typeof(context) == TYPE_DICTIONARY else {}
+		bubble_context["intent"] = expression.get("intent", {})
+		_show_expression(
+			str(bubble.get("key", "")),
+			str(bubble.get("fallback_text", "")),
+			float(bubble.get("seconds", 1.8)),
+			suffix,
+			bubble_context
+		)
+
+
+func _execute_expression_action(action_name: String, meta: Dictionary) -> void:
+	if _busy() and action_name != "idle":
+		return
+	match action_name:
+		"walk":
+			_lock_auto_behavior(float(meta.get("lock_seconds", 8.0)))
+			var dir = -1 if rng.randf() < 0.5 else 1
+			physics.start_walk(dir, 95.0)
+			_sync_walk_animation_to_velocity(true)
+		"idle":
+			if bool(meta.get("clear_auto_lock", true)):
+				_clear_auto_behavior_lock()
+			physics.idle()
+			_play_capability("resting")
+		"edge":
+			_lock_auto_behavior(float(meta.get("lock_seconds", 8.0)))
+			var side = -1 if rng.randf() < 0.5 else 1
+			physics.attach_to_wall(side)
+			physics.start_edge_walk(70.0 if rng.randf() < 0.5 else -70.0)
+			_play_wall_walk_action()
+		"sleep":
+			_lock_auto_behavior(float(meta.get("lock_seconds", 24.0)))
+			physics.idle()
+			_play_capability("sleeping")
+			_sync_window_size(true)
+		"companion":
+			_lock_auto_behavior(float(meta.get("lock_seconds", 6.0)))
+			physics.idle()
+			_play_capability("companion")
+			_sync_window_size(true)
+		"invite":
+			_lock_auto_behavior(float(meta.get("lock_seconds", 3.0)))
+
+
+func _execute_expression_effect(effect: String) -> void:
+	match effect:
+		"heart":
+			feedback.spawn_heart()
+		"note":
+			feedback.spawn_note()
+		"footprint":
+			feedback.spawn_footprint()
+		"jiggle":
+			_jiggle()
+
+
 func _on_behavior_prompt(kind: String, message: String) -> void:
 	if kind == "hungry":
 		feedback.spawn_note()
@@ -556,9 +646,7 @@ func _on_feed_success() -> void:
 	var before = state_store.snapshot()
 	var changes = state_store.feed()
 	_record_interaction("feed", "", {"result": "success"}, ["care", "food", "positive"], before, state_store.snapshot())
-	_play_capability("feeding")
-	_sync_window_size(true)
-	_show_expression("feed_success", "吃到啦。", 1.8, _format_changes(changes))
+	_show_social_response("feed_success", "吃到啦。", 1.8, _format_changes(changes))
 
 
 func _on_tease_success(count: int, direction: Vector2) -> void:
@@ -568,9 +656,9 @@ func _on_tease_success(count: int, direction: Vector2) -> void:
 		var before = state_store.snapshot()
 		var changes = state_store.play()
 		_record_interaction("play", "", {"count": count}, ["play", "positive"], before, state_store.snapshot())
-		_show_expression("tease_success", "嘿嘿，别挠啦。", 1.4, _format_changes(changes))
+		_show_social_response("tease_success", "嘿嘿，别挠啦。", 1.4, _format_changes(changes))
 	elif count >= 3:
-		_show_expression("tease_done", "玩够啦。", 1.3)
+		_show_social_response("tease_done", "玩够啦。", 1.3)
 	if count >= 2:
 		feedback.spawn_heart()
 
@@ -592,7 +680,7 @@ func _start_tease_interaction() -> void:
 	tease_nudge = Vector2.ZERO
 	_sync_window_size(true)
 	_update_mouse_passthrough()
-	_show_expression("tease_start", "来逗我呀。", 1.4)
+	_show_social_response("tease_start", "来逗我呀。", 1.4)
 
 
 func _apply_tease_nudge(direction: Vector2, count: int) -> void:
@@ -719,6 +807,17 @@ func _set_ai_expression_config(values: Dictionary, announce := true) -> void:
 	_write_companion_debug_snapshot()
 
 
+func _set_ai_memory_summary_config(values: Dictionary, announce := true) -> void:
+	var next_config = _sanitize_ai_memory_summary(values)
+	if config_store != null and config_store.has_method("set_ai_memory_summary_config"):
+		config_store.set_ai_memory_summary_config(next_config)
+	if companion_ai_expression_client != null and companion_ai_expression_client.has_method("configure_memory_summary"):
+		companion_ai_expression_client.configure_memory_summary(next_config)
+	if announce:
+		show_bubble("AI 记忆总结：%s。" % ("开启" if bool(next_config.get("enabled", false)) else "关闭"), 2.0)
+	_write_companion_debug_snapshot()
+
+
 func _apply_behavior_configuration() -> void:
 	if brain == null:
 		return
@@ -827,6 +926,19 @@ func _on_companion_console_command(command: Dictionary) -> void:
 			if command.has("timeout_ms"):
 				ai_values["timeout_ms"] = command["timeout_ms"]
 			_set_ai_expression_config(ai_values)
+		"set_ai_memory_summary":
+			var summary_values = payload.duplicate(true)
+			if command.has("enabled"):
+				summary_values["enabled"] = command["enabled"]
+			if command.has("provider"):
+				summary_values["provider"] = command["provider"]
+			if command.has("timeout_ms"):
+				summary_values["timeout_ms"] = command["timeout_ms"]
+			if command.has("min_events"):
+				summary_values["min_events"] = command["min_events"]
+			if command.has("min_interval_seconds"):
+				summary_values["min_interval_seconds"] = command["min_interval_seconds"]
+			_set_ai_memory_summary_config(summary_values)
 		"check_ai_health":
 			var health = {}
 			if companion_ai_expression_client != null and companion_ai_expression_client.has_method("check_health"):
@@ -834,6 +946,10 @@ func _on_companion_console_command(command: Dictionary) -> void:
 			var status_text = str(health.get("status", "unknown")) if typeof(health) == TYPE_DICTIONARY else "unknown"
 			show_bubble("AI health：%s。" % status_text, 1.8)
 			_write_companion_debug_snapshot()
+		"summarize_memory":
+			var summary = await _maybe_summarize_memory(true)
+			var reason = str(summary.get("fallback_reason", "")) if typeof(summary) == TYPE_DICTIONARY else "unknown"
+			show_bubble("记忆总结：%s。" % ("完成" if typeof(summary) == TYPE_DICTIONARY and str(summary.get("source", "")) == "ai" else reason), 2.2)
 		"rebuild_memory":
 			if companion_memory != null and companion_memory.has_method("refresh"):
 				companion_memory.refresh()
@@ -966,6 +1082,20 @@ func _play_capability(capability: String, constraints: Dictionary = {}) -> bool:
 func show_bubble(text: String, seconds := 1.8) -> void:
 	if feedback != null:
 		feedback.show_bubble(text, seconds)
+
+
+func _show_social_response(key: String, fallback_text: String, seconds := 1.8, suffix := "", context := {}) -> void:
+	if companion_expression_resolver == null:
+		_show_expression(key, fallback_text, seconds, suffix, context)
+		return
+	var meta := {
+		"expression_key": key,
+		"fallback_text": fallback_text,
+		"seconds": seconds,
+	}
+	var intent = CompanionIntentScript.social_response(key, "user interaction %s" % key, 70, meta)
+	var expression = companion_expression_resolver.resolve(intent, {"type": "interaction", "name": key})
+	_execute_companion_expression(expression, suffix, context)
 
 
 func _show_expression(key: String, fallback_text: String, seconds := 1.8, suffix := "", context := {}) -> void:
@@ -1167,7 +1297,7 @@ func _exit_peek_mode(show_message: bool) -> void:
 	pet_sprite.reset_transform()
 	_update_mouse_passthrough()
 	if show_message:
-		_show_expression("peek_exit", "被发现啦。")
+		_show_social_response("peek_exit", "被发现啦。")
 	_record_interaction("", "peek_exit", {"edge": previous_edge}, ["peek"])
 
 
@@ -1247,6 +1377,8 @@ func _record_companion_event(kind: String, source: String, meta := {}, tags := [
 		companion_memory.refresh()
 	if typeof(event) == TYPE_DICTIONARY and not event.is_empty() and companion_profile != null and companion_profile.has_method("refresh"):
 		companion_profile.refresh()
+	if typeof(event) == TYPE_DICTIONARY and not event.is_empty():
+		_maybe_summarize_memory(false)
 	_write_companion_debug_snapshot()
 
 
@@ -1276,6 +1408,42 @@ func _event_kind_for_interaction(legacy_kind: String) -> String:
 		"play": "tease_success",
 	}
 	return str(mapping.get(legacy_kind, legacy_kind))
+
+
+func _maybe_summarize_memory(force := false):
+	var app_config = config_store.app_config() if config_store != null and config_store.has_method("app_config") else {}
+	var summary_config = _sanitize_ai_memory_summary(app_config.get("ai_memory_summary", {}))
+	if not bool(summary_config.get("enabled", false)):
+		return {"source": "fallback", "fallback_reason": "disabled", "summary": {}}
+	if companion_ai_expression_client == null or not companion_ai_expression_client.has_method("summarize_memory"):
+		return {"source": "fallback", "fallback_reason": "missing_ai_client", "summary": {}}
+	var recent_events = companion_event_store.recent_events(200) if companion_event_store != null and companion_event_store.has_method("recent_events") else []
+	if not force and recent_events.size() < int(summary_config.get("min_events", 12)):
+		return {"source": "fallback", "fallback_reason": "not_enough_events", "summary": {}}
+	var profile_snapshot = companion_profile.snapshot() if companion_profile != null and companion_profile.has_method("snapshot") else {}
+	var ai_summary = profile_snapshot.get("ai_summary", {}) if typeof(profile_snapshot) == TYPE_DICTIONARY else {}
+	var last_summary_at = int(ai_summary.get("updated_at", 0)) if typeof(ai_summary) == TYPE_DICTIONARY else 0
+	var now = int(Time.get_unix_time_from_system())
+	if not force and last_summary_at > 0 and now - last_summary_at < int(summary_config.get("min_interval_seconds", 86400)):
+		return {"source": "fallback", "fallback_reason": "summary_interval", "summary": {}}
+	var result = await companion_ai_expression_client.summarize_memory(_memory_summary_payload(recent_events, profile_snapshot), force)
+	if typeof(result) == TYPE_DICTIONARY and str(result.get("source", "")) == "ai":
+		var summary = result.get("summary", {})
+		if typeof(summary) == TYPE_DICTIONARY and companion_profile != null and companion_profile.has_method("apply_ai_summary"):
+			companion_profile.apply_ai_summary(summary, int(result.get("at", 0)))
+	_write_companion_debug_snapshot()
+	return result
+
+
+func _memory_summary_payload(recent_events: Array, profile_snapshot: Dictionary) -> Dictionary:
+	var memory_snapshot = companion_memory.snapshot() if companion_memory != null and companion_memory.has_method("snapshot") else {}
+	return {
+		"recent_events": recent_events,
+		"memory": memory_snapshot,
+		"profile": profile_snapshot,
+		"personality": _selected_personality(),
+		"local_preferences": profile_snapshot.get("preferences", {}) if typeof(profile_snapshot.get("preferences", {})) == TYPE_DICTIONARY else {},
+	}
 
 
 func _write_companion_debug_snapshot() -> void:
@@ -1315,12 +1483,14 @@ func _companion_debug_snapshot() -> Dictionary:
 		"config": {
 			"behavior_adaptation": _sanitize_behavior_adaptation(app_config.get("behavior_adaptation", {})),
 			"ai_expression": _sanitize_ai_expression(app_config.get("ai_expression", {})),
+			"ai_memory_summary": _sanitize_ai_memory_summary(app_config.get("ai_memory_summary", {})),
 			"gravity_enabled": gravity_enabled,
 			"display_scale": display_scale,
 		},
 		"memory": memory_snapshot,
 		"profile": profile_snapshot,
 		"ai_expression": companion_ai_expression_client.status() if companion_ai_expression_client != null and companion_ai_expression_client.has_method("status") else {},
+		"ai_memory_summary": companion_ai_expression_client.memory_summary_status() if companion_ai_expression_client != null and companion_ai_expression_client.has_method("memory_summary_status") else {},
 		"recent_expressions": memory_snapshot.get("dialogue", {}).get("recent_lines", []) if typeof(memory_snapshot.get("dialogue", {})) == TYPE_DICTIONARY else [],
 		"recent_events": recent_events,
 		"last_decision": last_behavior_decision.duplicate(true),
@@ -1777,6 +1947,30 @@ func _sanitize_ai_expression(value) -> Dictionary:
 		result["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
 	if value.has("timeout_ms"):
 		result["timeout_ms"] = clampi(int(value["timeout_ms"]), 100, 5000)
+	return result
+
+
+func _sanitize_ai_memory_summary(value) -> Dictionary:
+	var result := {
+		"enabled": false,
+		"provider": "local_stub",
+		"timeout_ms": 1500,
+		"min_events": 12,
+		"min_interval_seconds": 86400,
+	}
+	if typeof(value) != TYPE_DICTIONARY:
+		return result
+	if value.has("enabled"):
+		result["enabled"] = bool(value["enabled"])
+	if value.has("provider"):
+		var provider = str(value["provider"])
+		result["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
+	if value.has("timeout_ms"):
+		result["timeout_ms"] = clampi(int(value["timeout_ms"]), 100, 5000)
+	if value.has("min_events"):
+		result["min_events"] = clampi(int(value["min_events"]), 1, 200)
+	if value.has("min_interval_seconds"):
+		result["min_interval_seconds"] = clampi(int(value["min_interval_seconds"]), 60, 30 * 24 * 60 * 60)
 	return result
 
 

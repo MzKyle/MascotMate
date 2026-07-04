@@ -74,6 +74,33 @@
         <button id="applyAiExpression">应用 AI 表达</button>
         <button id="checkAiHealth">检查 AI</button>
       </div>
+      <label class="toggle">
+        <input id="summaryEnabled" type="checkbox">
+        <span>AI 记忆总结</span>
+      </label>
+      <label class="field">
+        <span>Summary Provider</span>
+        <select id="summaryProvider">
+          <option value="local_stub">local_stub</option>
+          <option value="openai_compatible">openai_compatible</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Summary Timeout</span>
+        <input id="summaryTimeout" type="number" min="100" max="5000" step="100">
+      </label>
+      <label class="field">
+        <span>最少事件</span>
+        <input id="summaryMinEvents" type="number" min="1" max="200" step="1">
+      </label>
+      <label class="field">
+        <span>间隔秒</span>
+        <input id="summaryMinInterval" type="number" min="60" max="2592000" step="60">
+      </label>
+      <div class="button-row">
+        <button id="applyAiSummary">应用记忆总结</button>
+        <button id="summarizeMemory">总结记忆</button>
+      </div>
       <p id="commandStatus" class="muted">-</p>
     </section>
 
@@ -96,7 +123,9 @@
         <div><dt>最近表达</dt><dd id="recentExpressions">-</dd></div>
         <div><dt>表达来源</dt><dd id="lastExpression">-</dd></div>
         <div><dt>AI 状态</dt><dd id="aiStatus">-</dd></div>
+        <div><dt>AI 最近</dt><dd id="aiRecentResults">-</dd></div>
         <div><dt>AI 回退</dt><dd id="aiFallbackReasons">-</dd></div>
+        <div><dt>AI 记忆</dt><dd id="aiMemorySummary">-</dd></div>
       </dl>
     </section>
 

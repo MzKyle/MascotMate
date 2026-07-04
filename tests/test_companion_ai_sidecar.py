@@ -73,7 +73,16 @@ class FakeOpenAIHandler(BaseHTTPRequestHandler):
             self._send_openai_content({"text": "走一下", "seconds": 1.0, "emotion": "neutral", "safety": "ok", "command": "walk"})
             return
         if route == "/too-long":
-            self._send_openai_content({"text": "这是一句非常非常非常非常非常长的桌宠气泡文案", "seconds": 1.0, "emotion": "neutral", "safety": "ok"})
+            self._send_openai_content({"text": "这是一句非常非常非常非常非常非常非常非常非常非常长的桌宠气泡文案", "seconds": 1.0, "emotion": "neutral", "safety": "ok"})
+            return
+        if route == "/summary-invalid-schema":
+            self._send_openai_content({"favorite_interactions": ["feed_success"], "favorite_mode": "活泼", "favorite_period": "entertainment", "care_tendency": 80, "play_tendency": 20, "interruption_tolerance": "medium", "confidence": 80, "safety": "ok", "notes": "bad"})
+            return
+        if route == "/summary-low-confidence":
+            self._send_openai_content({"favorite_interactions": ["feed_success"], "favorite_mode": "活泼", "favorite_period": "entertainment", "care_tendency": 80, "play_tendency": 20, "interruption_tolerance": "medium", "confidence": 40, "safety": "ok"})
+            return
+        if route == "/summary-valid":
+            self._send_openai_content({"favorite_interactions": ["feed_success"], "favorite_mode": "活泼", "favorite_period": "entertainment", "care_tendency": 80, "play_tendency": 20, "interruption_tolerance": "medium", "confidence": 80, "safety": "ok"})
             return
         self._send_openai_content({"text": "AI摸摸头。", "seconds": 1.0, "emotion": "happy", "safety": "ok"})
 
@@ -121,6 +130,17 @@ class CompanionAISidecarTests(unittest.TestCase):
             status, bad = post_json(f"{base}/v1/expression", "{broken")
             self.assertEqual(status, 400)
             self.assertEqual(bad["safety"], "fallback")
+            status, summary = post_json(f"{base}/v1/memory-summary", {
+                "recent_events": [
+                    {"kind": "feed_success", "source": "user", "mode": "活泼", "period": "entertainment"},
+                    {"kind": "tease_success", "source": "user", "mode": "活泼", "period": "entertainment"},
+                    {"kind": "feed_success", "source": "user", "mode": "活泼", "period": "entertainment"},
+                ],
+            })
+            self.assertEqual(status, 200)
+            self.assertEqual(set(summary.keys()), {"favorite_interactions", "favorite_mode", "favorite_period", "care_tendency", "play_tendency", "interruption_tolerance", "confidence", "safety"})
+            self.assertEqual(summary["safety"], "ok")
+            self.assertIn("feed_success", summary["favorite_interactions"])
         finally:
             server.shutdown()
             server.server_close()
@@ -143,6 +163,9 @@ class CompanionAISidecarTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(expression["safety"], "fallback")
             self.assertEqual(expression["text"], "摸摸头。")
+            status, summary = post_json(f"{base}/v1/memory-summary", {"recent_events": []})
+            self.assertEqual(status, 200)
+            self.assertEqual(summary["safety"], "fallback")
         finally:
             server.shutdown()
             server.server_close()
@@ -183,6 +206,17 @@ class CompanionAISidecarTests(unittest.TestCase):
                     self.assertEqual(set(expression.keys()), {"text", "seconds", "emotion", "safety"})
                     self.assertEqual(expression["safety"], "fallback")
                     self.assertEqual(expression["text"], "摸摸头。")
+            for route in ["http500", "bad-json", "non-json", "summary-invalid-schema", "summary-low-confidence"]:
+                with self.subTest(summary_route=route):
+                    os.environ["MASCOTMATE_OPENAI_COMPATIBLE_URL"] = f"{upstream_base}/{route}"
+                    status, summary = post_json(f"{sidecar_base}/v1/memory-summary", {"recent_events": payload})
+                    self.assertEqual(status, 200)
+                    self.assertEqual(summary["safety"], "fallback")
+            os.environ["MASCOTMATE_OPENAI_COMPATIBLE_URL"] = f"{upstream_base}/summary-valid"
+            status, summary = post_json(f"{sidecar_base}/v1/memory-summary", {"recent_events": []})
+            self.assertEqual(status, 200)
+            self.assertEqual(summary["safety"], "ok")
+            self.assertEqual(summary["favorite_interactions"], ["feed_success"])
         finally:
             for key, value in previous_env.items():
                 if value is None:

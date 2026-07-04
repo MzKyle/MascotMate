@@ -40,6 +40,7 @@ func refresh(now_unix := 0) -> void:
 	var now = _coerce_now(now_unix)
 	var previous = _sanitize_data(data)
 	var lifetime = previous.get("lifetime", {}).duplicate(true)
+	var ai_summary = _sanitize_ai_summary(previous.get("ai_summary", {}))
 	var processed_ids = _clean_string_array(lifetime.get("processed_event_ids", []))
 	var processed_lookup := {}
 	for event_id in processed_ids:
@@ -65,6 +66,8 @@ func refresh(now_unix := 0) -> void:
 	data["lifetime"] = _sanitize_lifetime(lifetime)
 	data["trends"] = trends
 	data["preferences"] = _derive_preferences(data["lifetime"], trends, memory)
+	data["ai_summary"] = ai_summary
+	data["effective_preferences"] = _derive_effective_preferences(data["preferences"], ai_summary)
 	data["relationship"] = _relationship_from_memory(memory)
 	flush_save()
 
@@ -84,6 +87,18 @@ func expression_context(extra := {}) -> Dictionary:
 		for key in extra.keys():
 			result[key] = extra[key]
 	return result
+
+
+func apply_ai_summary(summary: Dictionary, now_unix := 0) -> bool:
+	var sanitized = _sanitize_ai_summary(summary)
+	if sanitized.is_empty():
+		return false
+	data = _sanitize_data(data)
+	sanitized["updated_at"] = _coerce_now(now_unix)
+	data["ai_summary"] = sanitized
+	data["effective_preferences"] = _derive_effective_preferences(data.get("preferences", {}), sanitized)
+	flush_save()
+	return true
 
 
 func flush_save() -> void:
@@ -148,6 +163,15 @@ func _default_data() -> Dictionary:
 			"play_tendency": 0,
 			"interruption_tolerance": "medium",
 		},
+		"ai_summary": {},
+		"effective_preferences": {
+			"favorite_interactions": [],
+			"favorite_mode": "",
+			"favorite_period": "",
+			"care_tendency": 0,
+			"play_tendency": 0,
+			"interruption_tolerance": "medium",
+		},
 		"relationship": {
 			"level": "new",
 			"familiarity": 1,
@@ -179,6 +203,8 @@ func _sanitize_data(value) -> Dictionary:
 		result["trends"]["7d"] = _sanitize_window(trends.get("7d", {}), 7)
 		result["trends"]["30d"] = _sanitize_window(trends.get("30d", {}), 30)
 	result["preferences"] = _dictionary_or_default(value.get("preferences", {}), result["preferences"])
+	result["ai_summary"] = _sanitize_ai_summary(value.get("ai_summary", {}))
+	result["effective_preferences"] = _derive_effective_preferences(result["preferences"], result["ai_summary"])
 	result["relationship"] = _dictionary_or_default(value.get("relationship", {}), result["relationship"])
 	return result
 
@@ -300,6 +326,66 @@ func _derive_preferences(lifetime: Dictionary, trends: Dictionary, memory: Dicti
 		"play_tendency": clampi(int(round(float(play_score) / float(total) * 100.0)), 0, 100),
 		"interruption_tolerance": _interruption_tolerance(lifetime, trends),
 	}
+
+
+func _derive_effective_preferences(local_preferences: Dictionary, ai_summary: Dictionary) -> Dictionary:
+	var local = _dictionary_or_default(local_preferences, _default_data()["preferences"])
+	var result = local.duplicate(true)
+	if ai_summary.is_empty() or int(ai_summary.get("confidence", 0)) < 60:
+		return _sanitize_preferences(result)
+	var local_favorites = _clean_string_array(local.get("favorite_interactions", []))
+	var ai_favorites = _clean_string_array(ai_summary.get("favorite_interactions", []))
+	for key in ai_favorites:
+		if not key in local_favorites:
+			local_favorites.append(key)
+		if local_favorites.size() >= 3:
+			break
+	result["favorite_interactions"] = local_favorites.slice(0, min(3, local_favorites.size()))
+	if str(result.get("favorite_mode", "")) == "":
+		result["favorite_mode"] = str(ai_summary.get("favorite_mode", ""))
+	if str(result.get("favorite_period", "")) == "":
+		result["favorite_period"] = str(ai_summary.get("favorite_period", ""))
+	result["care_tendency"] = _soft_numeric(int(local.get("care_tendency", 0)), int(ai_summary.get("care_tendency", 0)))
+	result["play_tendency"] = _soft_numeric(int(local.get("play_tendency", 0)), int(ai_summary.get("play_tendency", 0)))
+	var local_interrupt = str(local.get("interruption_tolerance", "medium"))
+	var ai_interrupt = str(ai_summary.get("interruption_tolerance", "medium"))
+	if local_interrupt == "medium" and int(ai_summary.get("confidence", 0)) >= 80:
+		result["interruption_tolerance"] = ai_interrupt
+	return _sanitize_preferences(result)
+
+
+func _sanitize_preferences(value) -> Dictionary:
+	var fallback = _default_data()["preferences"]
+	var result = fallback.duplicate(true)
+	if typeof(value) != TYPE_DICTIONARY:
+		return result
+	result["favorite_interactions"] = _clean_string_array(value.get("favorite_interactions", [])).slice(0, 3)
+	var mode = str(value.get("favorite_mode", "")).strip_edges()
+	result["favorite_mode"] = mode if mode in ["", "安静", "活泼", "捣乱"] else ""
+	var period = str(value.get("favorite_period", "")).strip_edges()
+	result["favorite_period"] = period if period in ["", "work", "entertainment", "rest"] else ""
+	result["care_tendency"] = clampi(int(value.get("care_tendency", 0)), 0, 100)
+	result["play_tendency"] = clampi(int(value.get("play_tendency", 0)), 0, 100)
+	var interruption = str(value.get("interruption_tolerance", "medium")).strip_edges()
+	result["interruption_tolerance"] = interruption if interruption in ["low", "medium", "high"] else "medium"
+	return result
+
+
+func _sanitize_ai_summary(value) -> Dictionary:
+	if typeof(value) != TYPE_DICTIONARY:
+		return {}
+	var confidence = clampi(int(value.get("confidence", 0)), 0, 100)
+	if confidence < 60:
+		return {}
+	var result = _sanitize_preferences(value)
+	result["confidence"] = confidence
+	result["updated_at"] = max(0, int(value.get("updated_at", value.get("at", 0))))
+	return result
+
+
+func _soft_numeric(local_value: int, ai_value: int) -> int:
+	var delta = clampi(ai_value - local_value, -10, 10)
+	return clampi(local_value + delta, 0, 100)
 
 
 func _relationship_from_memory(memory: Dictionary) -> Dictionary:

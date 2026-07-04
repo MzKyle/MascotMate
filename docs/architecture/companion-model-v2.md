@@ -24,7 +24,9 @@ v2 的目标是把当前规则系统升级成“本地优先、可解释、低�
 当前已完成本地陪伴闭环 v1：
 
 - `CompanionEventStore.gd` 持久化最近 200 条用户互动和自动行为事件。
-- `BehaviorBrain.decide()` 在原有 decision 字段外附带 `intent` 元数据。
+- `CompanionIntent.gd` 已提供统一 intent schema，`BehaviorBrain.decide()` 在原有 decision 字段外附带完整 `intent` 元数据。
+- `CompanionBehaviorPolicy.gd` 已承接自动行为规则决策，`BehaviorBrain.gd` 保留调度、冷却记忆、事件记录和 legacy signal 兼容。
+- `CompanionExpressionResolver.gd` 已把用户互动和自动行为 intent 统一解析为 bubble、action、capability、effect、mischief 和 state_delta。
 - 自动 prompt、action、effect 会记录到 `companion_events.json`。
 - `CompanionMemory.gd` 从事件日志聚合今日/近 3 天计数、偏好互动、常用模式/时段和关系熟悉度。
 - `SkinManager.gd` 会为皮肤归一化可选 `personality`，缺失时使用默认人格。
@@ -32,8 +34,9 @@ v2 的目标是把当前规则系统升级成“本地优先、可解释、低�
 - 行为适配 v1 已让记忆和皮肤人格影响主动提示阈值、自动行为权重和非工作时段冷却，并在 decision 中附带 `adaptation` 元数据。
 - 本地陪伴控制台 v1 已提供浏览器观测、行为适配开关/强度调参和固定场景回放；运行时会写入 `companion_debug_snapshot.json` 和 `companion_scenario_result.json` 供排查。
 - `CompanionLongTermProfile.gd` 已持久化长期画像聚合结果，并温和影响主动提示阈值、自动行为权重和非工作时段冷却。
-- AI 表达 sidecar 已完成可选接入和硬化：默认关闭，只生成气泡文案，控制台可查看 health、provider 配置状态、最近表达来源统计和 fallback reason。
-- 更细粒度行为画像、自由聊天入口和 AI 主动陪伴仍是后续阶段。
+- AI 表达 sidecar 已完成可选接入和硬化：默认关闭，只生成气泡文案，支持扩展互动 key、运行期 TTL 缓存、health、provider 配置状态、最近表达来源统计、cache 命中和 fallback reason。
+- AI 结构化记忆总结已作为独立开关接入：默认关闭，只接受受限 JSON 字段；通过本地校验后写入 `ai_summary`，并以 `effective_preferences` 温和影响长期画像。
+- 自由聊天入口和 AI 主动陪伴仍是后续阶段。
 
 ## 设计原则
 
@@ -438,7 +441,9 @@ AI 作为可选表达生成器，不参与动作、状态或行为权重。
 - 是否超出当前 intent 范围。
 - 超时、失败或不合规时回退本地文案。
 
-AI 不返回动作命令。动作仍由本地 expression resolver 决定。当前实现只接受 `text`、`seconds`、`emotion`、`safety` 四个响应字段；未知字段、超长文本、空文本、超时、HTTP 错误、坏 JSON 或 `safety != "ok"` 都回退本地表达。控制台快照会记录 sidecar health、provider configured 状态、最近 10 次表达来源统计和 fallback reason。
+AI 不返回动作命令。动作仍由本地 expression resolver 决定。当前表达实现只接受 `text`、`seconds`、`emotion`、`safety` 四个响应字段；未知字段、超长文本、空文本、超时、HTTP 错误、坏 JSON 或 `safety != "ok"` 都回退本地表达。控制台快照会记录 sidecar health、provider configured 状态、最近 10 次表达来源统计、cache 命中和 fallback reason。
+
+结构化记忆总结使用 `/v1/memory-summary`，只接受 `favorite_interactions`、`favorite_mode`、`favorite_period`、`care_tendency`、`play_tendency`、`interruption_tolerance`、`confidence` 和 `safety`。`confidence < 60`、未知字段、非法枚举或 `safety != "ok"` 都不会写入长期画像。
 
 ## 文件与模块建议
 
@@ -450,9 +455,11 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。当�
 | `CompanionMemory.gd` | 从事件和状态生成短期/长期摘要 |
 | `CompanionLongTermProfile.gd` | 保存长期画像聚合结果 |
 | `CompanionIntent.gd` | intent 常量、校验和工具函数 |
+| `CompanionBehaviorPolicy.gd` | 本地行为规则、适配、冷却和权重决策 |
+| `CompanionExpressionResolver.gd` | intent 到运行时 expression 的解析 |
 | `CompanionExpressionBank.gd` | 本地文案和 expression 选择 |
-| `CompanionAIExpressionClient.gd` | 可选 AI 文案请求、校验和回退 |
-| `BehaviorBrain.gd` | 继续作为决策入口，逐步委托给 v2 模块 |
+| `CompanionAIExpressionClient.gd` | 可选 AI 文案和结构化记忆总结请求、校验、缓存和回退 |
+| `BehaviorBrain.gd` | 行为调度、legacy signal 兼容、自动事件记录 |
 
 持久化路径建议：
 

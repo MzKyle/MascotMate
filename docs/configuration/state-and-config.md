@@ -93,6 +93,11 @@
 | `app.ai_expression.enabled` | 是否启用可选 AI 气泡文案 |
 | `app.ai_expression.provider` | AI 表达 provider：`local_stub`、`openai_compatible` |
 | `app.ai_expression.timeout_ms` | Godot 请求 sidecar 的超时时间，范围 100-5000ms |
+| `app.ai_memory_summary.enabled` | 是否启用可选 AI 结构化记忆总结，默认关闭 |
+| `app.ai_memory_summary.provider` | AI 记忆总结 provider：`local_stub`、`openai_compatible` |
+| `app.ai_memory_summary.timeout_ms` | Godot 请求记忆总结端点的超时时间，范围 100-5000ms |
+| `app.ai_memory_summary.min_events` | 自动总结前需要的最近事件数量，范围 1-200 |
+| `app.ai_memory_summary.min_interval_seconds` | 自动总结最小间隔，范围 60 秒到 30 天 |
 | `shortcuts.screenshot` | 截图快捷键 |
 | `shortcuts.paste_pin` | 贴图快捷键 |
 | `shortcuts.close_pin` | 关闭贴图快捷键 |

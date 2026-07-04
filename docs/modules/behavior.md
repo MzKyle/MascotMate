@@ -25,11 +25,13 @@
 - `interruption_level`：打扰等级
 - `source`：规则、权重选择或强制触发
 
-这些元数据不会改变现有执行信号接口。行为适配 v1 会额外附带可选 `adaptation` 元数据，用于说明本次决策使用的提示阈值、冷却倍率、权重倍率和适配原因。`decision_observed` 是只读观测信号，也会暴露 `none` 决策的原因，例如忙碌、冷却、暂停或安静模式。自动提示、自动动作和自动特效会同步写入 `companion_events.json`，用于 Companion Model v2 后续记忆聚合。
+这些元数据不会改变现有执行信号接口。`BehaviorBrain.gd` 现在把规则决策委托给 `CompanionBehaviorPolicy.gd`，并额外发出 `intent_requested`，供 `Main.gd` 通过 `CompanionExpressionResolver.gd` 统一执行 bubble、action、effect、mischief 和状态变化。行为适配 v1 会额外附带可选 `adaptation` 元数据，用于说明本次决策使用的提示阈值、冷却倍率、权重倍率和适配原因。`decision_observed` 是只读观测信号，也会暴露 `none` 决策的原因，例如忙碌、冷却、暂停或安静模式。自动提示、自动动作和自动特效会同步写入 `companion_events.json`，用于 Companion Model v2 后续记忆聚合。
 
 自动提示气泡会先经过 `CompanionExpressionBank.gd` 解析；如果没有匹配表达，则继续使用 `BehaviorBrain.gd` 信号里的原始 message。表达库只影响气泡文本，不改变决策、动画或状态数值。
 
-启用 `app.ai_expression.enabled` 后，白名单表达 key 会在本地表达解析之后尝试请求 AI sidecar。AI 只允许返回气泡文案、显示秒数、情绪标签和 safety 状态；超时、HTTP 错误、坏 JSON、返回不合规或 sidecar 不可用时继续使用本地表达。AI 不会进入 `BehaviorBrain`，也不会改变行为权重、状态数值或动画。调试快照会记录 sidecar health、provider configured 状态、最近 10 次表达来源统计和 fallback reason。
+启用 `app.ai_expression.enabled` 后，白名单表达 key 会在本地表达解析之后尝试请求 AI sidecar。AI 只允许返回气泡文案、显示秒数、情绪标签和 safety 状态；超时、HTTP 错误、坏 JSON、返回不合规或 sidecar 不可用时继续使用本地表达。通过校验的 AI 文案会进入运行期 TTL 缓存，不持久化。AI 不会进入 `BehaviorBrain`，也不会改变行为权重、状态数值或动画。调试快照会记录 sidecar health、provider configured 状态、最近 10 次表达来源统计、cache 命中和 fallback reason。
+
+启用 `app.ai_memory_summary.enabled` 后，运行时会在启动、事件积累或控制台手动命令时尝试请求 `/v1/memory-summary`。返回值必须是结构化偏好字段；未知字段、非法枚举、低置信度或 `safety != "ok"` 都不会写入长期画像。通过校验的结果保存在 `CompanionLongTermProfile.gd` 的 `ai_summary`，并以 `effective_preferences` 温和合并到本地画像。
 
 `Main.gd` 会把 `CompanionMemory.gd` 的短期记忆快照、`CompanionLongTermProfile.gd` 的长期画像和当前皮肤的 `personality` 放入行为上下文。表达库会用这些上下文选择文案；`BehaviorBrain.gd` 也会用它们调整主动提示阈值、自动行为权重和非工作时段冷却。适配不会改变手动互动行为、核心状态数值、信号接口或忙碌/暂停/休息边界。
 

@@ -17,6 +17,8 @@ const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
 const CompanionLongTermProfileScript = preload("res://scripts/CompanionLongTermProfile.gd")
 const CompanionExpressionBankScript = preload("res://scripts/CompanionExpressionBank.gd")
 const CompanionAIExpressionClientScript = preload("res://scripts/CompanionAIExpressionClient.gd")
+const CompanionIntentScript = preload("res://scripts/CompanionIntent.gd")
+const CompanionExpressionResolverScript = preload("res://scripts/CompanionExpressionResolver.gd")
 
 const FIXED_ENTERTAINMENT_TIME := 1761998400
 const FIXED_WORK_TIME := 1762164000
@@ -124,6 +126,29 @@ func _run() -> void:
 	if typeof(profile_context.get("profile", {})) != TYPE_DICTIONARY or str(profile_context.get("mode", "")) != "活泼":
 		_fail("CompanionLongTermProfile expression context failed: %s" % JSON.stringify(profile_context))
 		return
+	var low_confidence_applied = profile_store.apply_ai_summary({
+		"favorite_interactions": ["feed_success"],
+		"care_tendency": 95,
+		"play_tendency": 5,
+		"interruption_tolerance": "low",
+		"confidence": 40,
+	}, FIXED_ENTERTAINMENT_TIME + 61)
+	if low_confidence_applied:
+		_fail("CompanionLongTermProfile accepted a low-confidence AI summary.")
+		return
+	var high_confidence_applied = profile_store.apply_ai_summary({
+		"favorite_interactions": ["feed_success"],
+		"favorite_mode": "活泼",
+		"favorite_period": "entertainment",
+		"care_tendency": 100,
+		"play_tendency": 0,
+		"interruption_tolerance": "high",
+		"confidence": 85,
+	}, FIXED_ENTERTAINMENT_TIME + 62)
+	var effective_preferences = profile_store.snapshot().get("effective_preferences", {})
+	if not high_confidence_applied or int(effective_preferences.get("care_tendency", 0)) > int(profile_preferences.get("care_tendency", 0)) + 10:
+		_fail("CompanionLongTermProfile did not softly merge AI summary: %s" % JSON.stringify(profile_store.snapshot()))
+		return
 	var corrupt_profile_file = FileAccess.open(config_dir.path_join("companion_profile.json"), FileAccess.WRITE)
 	if corrupt_profile_file == null:
 		_fail("CompanionLongTermProfile file could not be opened for corruption test.")
@@ -181,6 +206,52 @@ func _run() -> void:
 	if str(long_ai.get("source", "")) == "ai" or str(long_ai.get("fallback_reason", "")) != "too_long":
 		_fail("CompanionAIExpressionClient did not reject overlong AI text: %s" % JSON.stringify(long_ai))
 		return
+	ai_client.configure({"enabled": true, "provider": "local_stub", "timeout_ms": 800})
+	var cache_context = {
+		"intent": CompanionIntentScript.social_response("pet_head"),
+		"state": {"mood": 70, "hunger": 60, "energy": 80, "affection": 30},
+		"personality": _adaptive_personality(70, 20, 60, 40),
+		"recent_expression_texts": [],
+	}
+	var cache_key = ai_client._cache_key("pet_head", cache_context, ai_client._local_result(local_expression, "摸摸头。", 1.8, "local"))
+	ai_client._store_cache(cache_key, {
+		"text": "缓存摸摸头。",
+		"seconds": 1.0,
+		"source": "ai",
+		"emotion": "happy",
+		"fallback_reason": "",
+		"cache_hit": false,
+	})
+	var cached_ai = await ai_client.resolve_expression("pet_head", cache_context, local_expression, "摸摸头。", 1.8)
+	if str(cached_ai.get("source", "")) != "ai_cache" or not bool(cached_ai.get("cache_hit", false)):
+		_fail("CompanionAIExpressionClient did not serve a cached expression: %s" % JSON.stringify(cached_ai))
+		return
+	var cached_status = ai_client.status()
+	if int(cached_status.get("source_stats", {}).get("ai_cache", 0)) != 1:
+		_fail("CompanionAIExpressionClient did not record cache diagnostics: %s" % JSON.stringify(cached_status))
+		return
+	ai_client.configure({"enabled": true, "provider": "local_stub", "timeout_ms": 900})
+	if int(ai_client.status().get("cache", {}).get("size", -1)) != 0:
+		_fail("CompanionAIExpressionClient did not clear cache on configure: %s" % JSON.stringify(ai_client.status()))
+		return
+	ai_client.configure_memory_summary({"enabled": false})
+	var disabled_summary = await ai_client.summarize_memory({"recent_events": []}, true)
+	if str(disabled_summary.get("fallback_reason", "")) != "disabled":
+		_fail("CompanionAIExpressionClient disabled memory summary should not request sidecar: %s" % JSON.stringify(disabled_summary))
+		return
+	var low_summary = ai_client._validate_memory_summary({
+		"favorite_interactions": ["feed_success"],
+		"favorite_mode": "活泼",
+		"favorite_period": "entertainment",
+		"care_tendency": 90,
+		"play_tendency": 10,
+		"interruption_tolerance": "medium",
+		"confidence": 40,
+		"safety": "ok",
+	})
+	if str(low_summary.get("fallback_reason", "")) != "low_confidence":
+		_fail("CompanionAIExpressionClient did not reject low-confidence memory summary: %s" % JSON.stringify(low_summary))
+		return
 
 	var expression_bank = CompanionExpressionBankScript.new()
 	root_node.add_child(expression_bank)
@@ -214,6 +285,19 @@ func _run() -> void:
 	})
 	if str(contextual_pet_expression.get("text", "")) != "今天也摸摸头。":
 		_fail("CompanionExpressionBank did not select the contextual pet_head line: %s" % JSON.stringify(contextual_pet_expression))
+		return
+	var social_intent = CompanionIntentScript.social_response("pet_head")
+	if not CompanionIntentScript.is_valid(social_intent) or str(social_intent.get("key", "")) != "social_response:pet_head":
+		_fail("CompanionIntent did not construct a valid social response intent: %s" % JSON.stringify(social_intent))
+		return
+	var expression_resolver = CompanionExpressionResolverScript.new()
+	var social_expression = expression_resolver.resolve(social_intent, {"type": "interaction", "name": "pet_head"})
+	if str(social_expression.get("bubble", {}).get("key", "")) != "pet_head" or str(social_expression.get("effect", "")) != "heart":
+		_fail("CompanionExpressionResolver did not resolve pet_head expression: %s" % JSON.stringify(social_expression))
+		return
+	var sleep_expression = expression_resolver.resolve(CompanionIntentScript.make("rest_request", "sleepy"), {"type": "action", "name": "sleep"})
+	if str(sleep_expression.get("action", "")) != "sleep" or not bool(sleep_expression.get("state_delta", {}).get("sleep_tick", false)):
+		_fail("CompanionExpressionResolver did not resolve sleep expression: %s" % JSON.stringify(sleep_expression))
 		return
 
 	var state_store = StateStoreScript.new()
@@ -262,6 +346,12 @@ func _run() -> void:
 	var hungry_intent = decision.get("intent", {})
 	if typeof(hungry_intent) != TYPE_DICTIONARY or str(hungry_intent.get("type", "")) != "care_request" or str(hungry_intent.get("name", "")) != "hungry" or str(hungry_intent.get("reason", "")) == "":
 		_fail("BehaviorBrain hungry prompt did not include the expected intent: %s" % JSON.stringify(decision))
+		return
+	var emitted_intent := {"intent": {}}
+	brain.intent_requested.connect(func(intent, _decision): emitted_intent["intent"] = intent)
+	brain._emit_decision(decision, {"busy": false, "state": state_store.snapshot(), "state_store": state_store})
+	if str(emitted_intent.get("intent", {}).get("key", "")) != "care_request:hungry":
+		_fail("BehaviorBrain did not emit intent_requested for automatic prompt: %s" % JSON.stringify(emitted_intent))
 		return
 
 	var main_probe = MainScript.new()
@@ -624,6 +714,11 @@ func _run() -> void:
 	if not bool(ai_config.get("enabled", false)) or str(ai_config.get("provider", "")) != "local_stub" or int(ai_config.get("timeout_ms", 0)) != 1200:
 		_fail("ConfigStore did not persist AI expression config: %s" % JSON.stringify(config_store.get_config()))
 		return
+	config_store.set_ai_memory_summary_config({"enabled": true, "provider": "local_stub", "timeout_ms": 1500, "min_events": 5, "min_interval_seconds": 600})
+	var summary_config = config_store.app_config().get("ai_memory_summary", {})
+	if not bool(summary_config.get("enabled", false)) or int(summary_config.get("min_events", 0)) != 5 or int(summary_config.get("min_interval_seconds", 0)) != 600:
+		_fail("ConfigStore did not persist AI memory summary config: %s" % JSON.stringify(config_store.get_config()))
+		return
 
 	var observed_brain = BehaviorBrainScript.new()
 	root_node.add_child(observed_brain)
@@ -672,6 +767,9 @@ func _run() -> void:
 	if typeof(ai_snapshot.get("health", {})) != TYPE_DICTIONARY or typeof(ai_snapshot.get("source_stats", {})) != TYPE_DICTIONARY or typeof(ai_snapshot.get("fallback_reasons", [])) != TYPE_ARRAY:
 		_fail("Main debug snapshot did not include AI diagnostics: %s" % JSON.stringify(debug_snapshot))
 		return
+	if typeof(debug_snapshot.get("ai_memory_summary", {})) != TYPE_DICTIONARY or typeof(debug_snapshot.get("config", {}).get("ai_memory_summary", {})) != TYPE_DICTIONARY:
+		_fail("Main debug snapshot did not include AI memory summary diagnostics: %s" % JSON.stringify(debug_snapshot))
+		return
 	main_debug._on_companion_console_command({
 		"command": "set_adaptation",
 		"payload": {"enabled": true, "strength": "subtle"},
@@ -687,6 +785,14 @@ func _run() -> void:
 	var updated_ai_config = config_store.app_config().get("ai_expression", {})
 	if bool(updated_ai_config.get("enabled", true)) or str(updated_ai_config.get("provider", "")) != "openai_compatible" or int(updated_ai_config.get("timeout_ms", 0)) != 500:
 		_fail("Main console AI expression command did not update config: %s" % JSON.stringify(config_store.get_config()))
+		return
+	main_debug._on_companion_console_command({
+		"command": "set_ai_memory_summary",
+		"payload": {"enabled": true, "provider": "local_stub", "timeout_ms": 1600, "min_events": 6, "min_interval_seconds": 900},
+	})
+	var updated_summary_config = config_store.app_config().get("ai_memory_summary", {})
+	if not bool(updated_summary_config.get("enabled", false)) or int(updated_summary_config.get("min_events", 0)) != 6 or int(updated_summary_config.get("min_interval_seconds", 0)) != 900:
+		_fail("Main console AI memory summary command did not update config: %s" % JSON.stringify(config_store.get_config()))
 		return
 	await main_debug._on_companion_console_command({"command": "check_ai_health"})
 	if str(ai_client.status().get("health", {}).get("status", "")) != "disabled":
