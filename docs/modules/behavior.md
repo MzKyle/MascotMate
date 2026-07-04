@@ -29,6 +29,24 @@
 
 自动提示气泡会先经过 `CompanionExpressionBank.gd` 解析；如果没有匹配表达，则继续使用 `BehaviorBrain.gd` 信号里的原始 message。表达库只影响气泡文本，不改变决策、动画或状态数值。
 
+表达库当前覆盖手动互动和自动提示：
+
+```text
+pet_head / poke_body / grab_start / release_soft / throw_fast / peek_exit
+feed_success / tease_start / tease_success / tease_done / mode_changed
+auto_prompt:hungry / auto_prompt:play
+```
+
+文案语气来自 `config.json` 的 `app.dialogue_tone`，默认 `gentle`。可选值：
+
+| 值 | 菜单显示 | 用途 |
+| --- | --- | --- |
+| `gentle` | 温柔文案 | 默认，鼓励、减压、低打扰 |
+| `short_cute` | 元气文案 | 更短、更活泼 |
+| `calm` | 安静文案 | 更克制、陪伴感更强 |
+
+`Main.gd` 会把这个配置写入表达上下文的 `tone`，并覆盖当前皮肤 `personality.tone`。这样同一皮肤也能切换不同文案性格。
+
 启用 `app.ai_expression.enabled` 后，白名单表达 key 会在本地表达解析之后尝试请求 AI sidecar。AI 只允许返回气泡文案、显示秒数、情绪标签和 safety 状态；超时、HTTP 错误、坏 JSON、返回不合规或 sidecar 不可用时继续使用本地表达。通过校验的 AI 文案会进入运行期 TTL 缓存，不持久化。AI 不会进入 `BehaviorBrain`，也不会改变行为权重、状态数值或动画。调试快照会记录 sidecar health、provider configured 状态、最近 10 次表达来源统计、cache 命中和 fallback reason。
 
 启用 `app.ai_memory_summary.enabled` 后，运行时会在启动、事件积累或控制台手动命令时尝试请求 `/v1/memory-summary`。返回值必须是结构化偏好字段；未知字段、非法枚举、低置信度或 `safety != "ok"` 都不会写入长期画像。通过校验的结果保存在 `CompanionLongTermProfile.gd` 的 `ai_summary`，并以 `effective_preferences` 温和合并到本地画像。
@@ -55,11 +73,11 @@ godot_pet/assets/behavior.json
 
 配置异常时会回退到代码内置默认值，避免桌宠启动失败。
 
-浏览器陪伴控制台可以覆盖 `enabled` 和 `strength`，覆盖值保存到 `config.json` 的 `app.behavior_adaptation`。控制台不会直接改底层权重数组。
+浏览器陪伴控制台可以覆盖 `enabled` 和 `strength`，覆盖值保存到 `config.json` 的 `app.behavior_adaptation`。控制台不会直接改底层权重数组。控制台也可以发送 `set_dialogue_tone`，用于切换 `app.dialogue_tone`。
 
 ## 本地陪伴控制台
 
-右键菜单的“陪伴控制台”会打开本地浏览器页面。控制台读取 `companion_debug_snapshot.json`，展示当前状态、最近 decision、intent、adaptation、记忆摘要和最近事件。
+右键菜单的“陪伴控制台”会打开本地浏览器页面。控制台读取 `companion_debug_snapshot.json`，展示当前状态、文案语气、最近 decision、intent、adaptation、记忆摘要和最近事件。
 
 控制台还展示长期画像、AI 表达状态、AI health、fallback reason 和最近表达来源。固定场景回放会在 Godot 运行时创建临时行为脑执行 dry-run decision，包括工作低打扰、饥饿照料、低心情陪玩、休息边界、忙碌保护、强制捣乱、长期低打扰用户、长期高陪玩用户、长期高照料用户、工作时段长期偏好保护和休息时段保护。回放结果写入 `companion_scenario_result.json`，不会触发真实动画、不会写入事件日志，也不会改变状态数值。
 

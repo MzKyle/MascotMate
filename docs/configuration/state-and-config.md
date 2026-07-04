@@ -72,7 +72,7 @@
 ~/.config/mascotmate-desktop/companion_console_command.json
 ```
 
-浏览器陪伴控制台会读取运行时快照和场景回放结果。快照包含当前状态、行为模式、时段、忙碌状态、透明窗口状态、皮肤人格、短期记忆、长期画像、AI health、最近表达来源统计、最近事件和最近一次 decision。控制台命令通过 `companion_console_command.json` 传给 Godot，处理后会删除该命令文件。
+浏览器陪伴控制台会读取运行时快照和场景回放结果。快照包含当前状态、行为模式、文案语气、时段、忙碌状态、透明窗口状态、皮肤人格、短期记忆、长期画像、AI health、最近表达来源统计、最近事件和最近一次 decision。控制台命令通过 `companion_console_command.json` 传给 Godot，处理后会删除该命令文件。
 
 ## 应用与截图贴图配置
 
@@ -88,6 +88,7 @@
 | `app.display_scale` | 显示大小，范围 1.0-1.5 |
 | `app.gravity_enabled` | 是否开启重力 |
 | `app.skin_id` | 当前启用皮肤 ID |
+| `app.dialogue_tone` | 气泡文案语气：`gentle`、`short_cute`、`calm` |
 | `app.behavior_adaptation.enabled` | 是否启用本地行为适配 |
 | `app.behavior_adaptation.strength` | 适配强度：`subtle`、`visible`、`bold` |
 | `app.ai_expression.enabled` | 是否启用可选 AI 气泡文案 |
@@ -104,7 +105,7 @@
 | `screenshot.backend` | 截图后端，默认 `auto` |
 | `pins.max_count` | 最大贴图数量，范围 1-3 |
 
-右键菜单中的显示大小、重力开关、皮肤选择和“截图贴图设置”会写入这个文件。
+右键菜单中的显示大小、重力开关、皮肤选择、文案语气和“截图贴图设置”会写入这个文件。
 
 截图现在默认使用 Godot 内置截图，Linux 上仅在 Godot 截图不可用时自动兜底到 Spectacle 或 ImageMagick。无效字段会在启动时合并回默认值。
 

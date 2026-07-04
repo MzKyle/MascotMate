@@ -46,6 +46,44 @@ scripts/run_godot_pet.sh
 - 拖到边缘进入偷看
 - 右键菜单项是否仍能点击
 
+## 修改气泡文案或陪伴行为
+
+文案入口：
+
+- 本地候选：`godot_pet/scripts/CompanionExpressionBank.gd`
+- intent fallback：`godot_pet/scripts/CompanionExpressionResolver.gd`
+- 手动路径 fallback：`godot_pet/scripts/Main.gd`
+- 自动 prompt 默认 message：`BehaviorBrain.gd` 和 `CompanionBehaviorPolicy.gd`
+- 可选 AI stub fallback：`scripts/companion_ai_sidecar.py`
+
+如果新增或改名表达 key，要同步：
+
+```bash
+python3 scripts/run_godot_smoke.py
+python3 -m unittest discover tests
+```
+
+如果新增文案语气，要同步 `ConfigStore.gd`、`PetMenuController.gd`、`Main.gd`、`scripts/skin_store_server.py`、`companion_console/` 和配置文档。
+
+## 修改应用图标
+
+需要同时更新：
+
+```text
+godot_pet/assets/app_icon.png
+packaging/icons/mascotmate-desktop.png
+```
+
+然后确认：
+
+```bash
+python3 scripts/run_godot_smoke.py
+scripts/build_godot_linux.sh
+scripts/install_desktop_entry.sh
+```
+
+`install_desktop_entry.sh` 使用 `packaging/icons/mascotmate-desktop.png`，不再从动画帧中抽图。
+
 ## 修改截图贴图
 
 建议在目标桌面系统下测试；Linux 可以先确认当前会话：

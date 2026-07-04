@@ -5,6 +5,8 @@
 | 路径 | 说明 |
 | --- | --- |
 | `resource_hd/` | 运行时动作帧 |
+| `godot_pet/assets/app_icon.png` | Godot 运行时图标，512x512 透明 PNG |
+| `packaging/icons/mascotmate-desktop.png` | Linux desktop launcher 图标，256x256 透明 PNG |
 | `godot_pet/assets/skins/` | 内置皮肤清单 |
 | `skin_catalog/` | 皮肤商店本地 fallback、Cachomon 浏览索引、精选预览、精选 ZIP 和授权 notice |
 | `skin_store/` | 浏览器版皮肤商店静态 HTML/CSS/JS |
@@ -15,6 +17,17 @@
 | `assets/character/mischief/` | 捣乱动作候选素材和来源说明 |
 
 第三方素材来源见对应目录下的 `NOTICE.md`。
+
+## 应用图标
+
+应用图标是独立资产，不再从默认角色动画帧中截取。
+
+| 路径 | 说明 |
+| --- | --- |
+| `godot_pet/assets/app_icon.png` | Godot 项目图标，供运行时窗口和导出读取 |
+| `packaging/icons/mascotmate-desktop.png` | Linux hicolor 图标，供 `install_desktop_entry.sh` 安装 |
+
+两者同源，当前是原创小狐狸头像透明 PNG。修改图标时要同时更新这两个文件，并确认 `godot_pet/project.godot` 仍指向 `res://assets/app_icon.png`。
 
 ## 动作与皮肤清单
 

@@ -48,8 +48,9 @@ python scripts/run_godot_smoke.py
 3. 复制 Godot runtime 为 `GodotPetRuntime`
 4. 复制 `godot_pet/`
 5. 复制 `resource_hd/`、`assets/`、`skin_catalog/` 和 `skin_store/`
-6. 复制 `scripts/pet_helper.py`、`scripts/import_shimeji_skin.py`、`scripts/cachomon_catalog.py`、`scripts/skin_store_server.py`、`scripts/skin_sdk.py` 和可选的 `scripts/pet_helper`
-7. 写入启动脚本 `MascotMateDesktop`
+6. 复制 `companion_console/`
+7. 复制 `scripts/pet_helper.py`、`scripts/companion_ai_sidecar.py`、`scripts/import_shimeji_skin.py`、`scripts/cachomon_catalog.py`、`scripts/skin_store_server.py`、`scripts/skin_sdk.py` 和可选的 `scripts/pet_helper`
+8. 写入启动脚本 `MascotMateDesktop`
 
 启动脚本会设置：
 
@@ -92,7 +93,7 @@ scripts/setup_godot_export_templates.sh
 2. 生成默认皮肤 `godot_pet/assets/skins/classic_shinchan/skin.json`
 3. 用 PyInstaller 构建 `pet_helper`
 4. 调用 Godot export preset 导出 Linux、Windows 或 macOS
-5. 复制 `resource_hd/`、`assets/`、`skin_catalog/`、`skin_store/`、helper、`import_shimeji_skin.py`、`cachomon_catalog.py`、`skin_store_server.py` 和 `skin_sdk.py`
+5. 复制 `resource_hd/`、`assets/`、`skin_catalog/`、`skin_store/`、`companion_console/`、helper、`companion_ai_sidecar.py`、`import_shimeji_skin.py`、`cachomon_catalog.py`、`skin_store_server.py` 和 `skin_sdk.py`
 6. 输出 `dist/MascotMateDesktop-<platform>.zip`
 
 本地私用皮肤只在显式传参时复制，不会进入公开 CI/release：
@@ -114,6 +115,20 @@ packaging/mascotmate-desktop.desktop.in
 ```
 
 渲染为用户级 desktop entry。它不会写系统目录，不需要 root 权限。
+
+图标来源固定为：
+
+```text
+packaging/icons/mascotmate-desktop.png
+```
+
+安装目标为：
+
+```text
+~/.local/share/icons/hicolor/256x256/apps/mascotmate-desktop.png
+```
+
+这个图标与 Godot 项目图标同源，不再使用 `resource_hd/xianzhi` 的第一帧。
 
 ## 常见打包问题
 

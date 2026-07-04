@@ -9,6 +9,8 @@
 - 每帧更新动画、物理和窗口位置
 - 处理右键菜单命令
 - 控制偷看、捣乱、轻互动和状态气泡
+- 把行为 intent 执行为气泡、动作、特效或状态变化
+- 把当前文案语气、皮肤人格、记忆和画像合并为表达上下文
 - 更新鼠标穿透多边形
 
 `_input()` 的处理顺序很重要。截图贴图、捣乱停按钮、轻互动和普通交互都有自己的输入优先级。
@@ -57,6 +59,31 @@
 - 通过 UDP 接收全局快捷键命令
 
 这个模块会创建 `PinImageWindow.gd` 和 `ScreenshotSettingsWindow.gd`，并通过 `notify` 信号让主窗口显示气泡提示。
+
+## 陪伴与表达脚本
+
+| 脚本 | 职责 |
+| --- | --- |
+| `BehaviorBrain.gd` | 定时调度行为，发出 action/prompt/effect/mischief/intent 信号 |
+| `CompanionBehaviorPolicy.gd` | 根据状态、时段、记忆、画像和适配强度做规则决策 |
+| `CompanionExpressionResolver.gd` | 把 intent 转成 bubble、capability、effect、mini_game 或 mischief |
+| `CompanionExpressionBank.gd` | 本地文案库，按 key、tone、关系等级、偏好和最近文案选择气泡 |
+| `CompanionAIExpressionClient.gd` | 可选 AI sidecar 客户端、缓存、校验和 fallback 统计 |
+| `CompanionEventStore.gd` | 最近 200 条结构化陪伴事件 |
+| `CompanionMemory.gd` | 从事件日志聚合短期偏好和最近表达 |
+| `CompanionLongTermProfile.gd` | 长期画像、AI 结构化记忆总结和有效偏好 |
+
+表达系统的边界是：本地文案和可选 AI 只影响气泡内容；行为、动画和状态仍由本地规则控制。
+
+## 皮肤与外部 UI
+
+| 脚本 | 职责 |
+| --- | --- |
+| `SkinManager.gd` | 加载内置/用户皮肤，归一化皮肤能力和 personality |
+| `SkinStoreBridge.gd` | 启动浏览器皮肤商店，轮询皮肤选择命令 |
+| `CompanionConsoleBridge.gd` | 启动浏览器陪伴控制台，轮询控制台命令 |
+
+浏览器页面本身在 `skin_store/` 和 `companion_console/`，HTTP 服务由 `scripts/skin_store_server.py` 提供。
 
 ## GDScript 修改建议
 

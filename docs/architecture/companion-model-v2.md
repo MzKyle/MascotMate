@@ -209,7 +209,7 @@ flowchart TB
   "reason": "hunger >= 80 and last_feed_at older than 2h",
   "cooldown_key": "prompt:hungry",
   "interruption_level": "low",
-  "suggested_expression": "hungry_soft",
+  "suggested_expression": "auto_prompt:hungry",
   "state_delta": {},
   "constraints": {
     "allow_bubble": true,
@@ -239,7 +239,7 @@ flowchart TB
 
 表达是 intent 到运行时动作的翻译结果。
 
-Expression Bank v1 已覆盖用户互动和自动提示气泡。它不读取外部 JSON，也不改变动作、状态数值或行为权重；没有匹配表达时会使用调用方传入的原始文案作为 fallback。当前实现会读取 `CompanionMemory` 的关系熟悉度、偏好互动、最近表达，以及皮肤 `personality.tone`，用于选择上下文候选文案。
+Expression Bank v1 已覆盖用户互动和自动提示气泡。它不读取外部 JSON，也不改变动作、状态数值或行为权重；没有匹配表达时会使用调用方传入的原始文案作为 fallback。当前实现会读取 `CompanionMemory` 的关系熟悉度、偏好互动、最近表达，以及运行时 `app.dialogue_tone` 覆盖后的 `tone`，用于选择上下文候选文案。
 
 示例：
 
@@ -247,8 +247,8 @@ Expression Bank v1 已覆盖用户互动和自动提示气泡。它不读取外�
 {
   "intent": "care_request:hungry",
   "bubble": {
-    "key": "hungry_soft",
-    "text": "有点饿了。",
+    "key": "auto_prompt:hungry",
+    "text": "我有点饿了，要不要补点能量？",
     "seconds": 2.4
   },
   "action": "",
@@ -355,29 +355,29 @@ v1 用 `work`、`entertainment`、`rest` 三段即可继续保留。v2 应把时
 {
   "version": 1,
   "lines": {
-    "hungry_soft": [
+    "auto_prompt:hungry": [
       {
-        "text": "有点饿了。",
+        "text": "我有点饿了，要不要补点能量？",
         "conditions": {
           "hunger_min": 80
         },
         "weight": 1.0
       },
       {
-        "text": "饭团还在吗？",
+        "text": "想吃一点，谢谢你记得我。",
         "conditions": {
           "affection_min": 45
         },
         "weight": 0.8
       }
     ],
-    "pet_head_response": [
+    "pet_head": [
       {
-        "text": "摸摸头。",
+        "text": "摸摸头，辛苦啦。",
         "weight": 1.0
       },
       {
-        "text": "再摸一下也可以。",
+        "text": "多摸一会儿也可以。",
         "conditions": {
           "affection_min": 60
         },

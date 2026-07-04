@@ -1,7 +1,7 @@
-- **首页**
-  - [项目简介](/)
+- **文档入口**
+  - [开发者文档](/)
 
-- **快速入门**
+- **开发入门**
   - [环境依赖](guide/prerequisites.md)
   - [开发运行](guide/run-app.md)
   - [安装与打包](guide/package-install.md)
@@ -13,7 +13,7 @@
   - [状态模型](architecture/state-model.md)
   - [陪伴模型 v2](architecture/companion-model-v2.md)
 
-- **模块详解**
+- **运行时模块**
   - [总览](modules/README.md)
   - [窗口与物理](modules/window-and-physics.md)
   - [交互控制](modules/interaction.md)
@@ -35,9 +35,9 @@
   - [运行环境变量](configuration/runtime-env.md)
   - [状态与配置文件](configuration/state-and-config.md)
 
-- **工作流程**
+- **开发工作流**
   - [开发流程](workflow/development.md)
   - [发布流程](workflow/release.md)
 
-- **日志与诊断**
+- **故障诊断**
   - [故障排查 FAQ](faq/troubleshooting.md)
