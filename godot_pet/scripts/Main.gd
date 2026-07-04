@@ -58,6 +58,7 @@ var configured_skin_id := "classic_shinchan"
 var feedback_window_until := 0.0
 var tease_reward_recorded := false
 var tease_nudge := Vector2.ZERO
+var auto_behavior_lock_until := 0.0
 
 
 func _ready() -> void:
@@ -455,27 +456,33 @@ func _on_behavior_action(action_name: String) -> void:
 		return
 	match action_name:
 		"walk":
+			_lock_auto_behavior(8.0)
 			var dir = -1 if rng.randf() < 0.5 else 1
 			physics.start_walk(dir, 95.0)
 			_sync_walk_animation_to_velocity(true)
 		"idle":
+			_clear_auto_behavior_lock()
 			physics.idle()
 			_play_capability("resting")
 		"edge":
+			_lock_auto_behavior(8.0)
 			var side = -1 if rng.randf() < 0.5 else 1
 			physics.attach_to_wall(side)
 			physics.start_edge_walk(70.0 if rng.randf() < 0.5 else -70.0)
 			_play_wall_walk_action()
 		"sleep":
+			_lock_auto_behavior(24.0)
 			physics.idle()
 			_play_capability("sleeping")
 			state_store.sleep_tick()
 			_sync_window_size(true)
 		"companion":
+			_lock_auto_behavior(6.0)
 			physics.idle()
 			_play_capability("companion")
 			_sync_window_size(true)
 		"invite":
+			_lock_auto_behavior(3.0)
 			_show_expression("auto_prompt:play", "要不要玩一会儿？")
 
 
@@ -629,6 +636,7 @@ func _set_behavior_mode(value: String, announce := true) -> void:
 	var next_mode = value if value in ["安静", "活泼", "捣乱"] else "安静"
 	var previous_mode = behavior_mode
 	behavior_mode = next_mode
+	_clear_auto_behavior_lock()
 	if brain != null:
 		brain.set_mode(next_mode)
 		if next_mode == "捣乱":
@@ -989,7 +997,20 @@ func _jiggle() -> void:
 
 
 func _busy() -> bool:
-	return mischief_grab_active or physics.state in ["Grabbed", "Flinging", "Falling", "Landing", "Peeking"] or mini_games.active != ""
+	return _auto_behavior_locked() or mischief_grab_active or physics.state in ["Grabbed", "Flinging", "Falling", "Landing", "Peeking"] or mini_games.active != ""
+
+
+func _lock_auto_behavior(seconds: float) -> void:
+	var now = float(Time.get_ticks_msec()) / 1000.0
+	auto_behavior_lock_until = max(auto_behavior_lock_until, now + max(0.0, seconds))
+
+
+func _clear_auto_behavior_lock() -> void:
+	auto_behavior_lock_until = 0.0
+
+
+func _auto_behavior_locked() -> bool:
+	return auto_behavior_lock_until > float(Time.get_ticks_msec()) / 1000.0
 
 
 func _behavior_context() -> Dictionary:

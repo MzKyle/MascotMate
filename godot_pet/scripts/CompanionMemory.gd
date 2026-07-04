@@ -317,8 +317,14 @@ func _recent_expression_texts() -> Array:
 
 
 func _date_for_unix(unix: int) -> String:
-	var time = Time.get_datetime_dict_from_unix_time(unix)
+	var time = _local_datetime_from_unix(unix)
 	return "%04d-%02d-%02d" % [int(time.get("year", 1970)), int(time.get("month", 1)), int(time.get("day", 1))]
+
+
+func _local_datetime_from_unix(unix_time: int) -> Dictionary:
+	var time_zone = Time.get_time_zone_from_system()
+	var bias_minutes = int(time_zone.get("bias", 0)) if typeof(time_zone) == TYPE_DICTIONARY else 0
+	return Time.get_datetime_dict_from_unix_time(unix_time + bias_minutes * 60)
 
 
 func _coerce_now(now_unix: int) -> int:

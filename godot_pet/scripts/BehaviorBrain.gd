@@ -687,7 +687,7 @@ func _intent_key(intent: Dictionary) -> String:
 
 
 func _period_for(now: int) -> String:
-	var time = Time.get_datetime_dict_from_unix_time(now)
+	var time = _local_datetime_from_unix(now)
 	var hour = int(time.get("hour", 12))
 	var weekday = int(time.get("weekday", 1))
 	var workday = weekday >= 1 and weekday <= 5
@@ -696,6 +696,12 @@ func _period_for(now: int) -> String:
 	if workday and hour >= 9 and hour < 18:
 		return "work"
 	return "entertainment"
+
+
+func _local_datetime_from_unix(unix_time: int) -> Dictionary:
+	var time_zone = Time.get_time_zone_from_system()
+	var bias_minutes = int(time_zone.get("bias", 0)) if typeof(time_zone) == TYPE_DICTIONARY else 0
+	return Time.get_datetime_dict_from_unix_time(unix_time + bias_minutes * 60)
 
 
 func _interval_for_mode(target_mode: String) -> Vector2:

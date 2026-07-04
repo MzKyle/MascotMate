@@ -4,6 +4,7 @@ const StateStoreScript = preload("res://scripts/StateStore.gd")
 const BehaviorBrainScript = preload("res://scripts/BehaviorBrain.gd")
 const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const PetSpriteScript = preload("res://scripts/PetSprite.gd")
+const PetPhysicsScript = preload("res://scripts/PetPhysics.gd")
 const MainScript = preload("res://scripts/Main.gd")
 const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
 const MiniGamesScript = preload("res://scripts/MiniGames.gd")
@@ -162,6 +163,14 @@ func _run() -> void:
 			return
 	brain.configure(behavior_config)
 	brain.set_mode("活泼")
+	var local_work_time = _unix_for_local_datetime(2025, 11, 3, 11)
+	var local_rest_time = _unix_for_local_datetime(2025, 11, 3, 2)
+	if str(brain._period_for(local_work_time)) != "work":
+		_fail("BehaviorBrain period calculation must use local work time: %s" % str(brain._period_for(local_work_time)))
+		return
+	if str(brain._period_for(local_rest_time)) != "rest":
+		_fail("BehaviorBrain period calculation must use local rest time: %s" % str(brain._period_for(local_rest_time)))
+		return
 	var decision = brain.decide({
 		"busy": false,
 		"state": state_store.snapshot(),
@@ -174,6 +183,24 @@ func _run() -> void:
 	if typeof(hungry_intent) != TYPE_DICTIONARY or str(hungry_intent.get("type", "")) != "care_request" or str(hungry_intent.get("name", "")) != "hungry" or str(hungry_intent.get("reason", "")) == "":
 		_fail("BehaviorBrain hungry prompt did not include the expected intent: %s" % JSON.stringify(decision))
 		return
+
+	var main_probe = MainScript.new()
+	main_probe.physics = PetPhysicsScript.new()
+	main_probe.mini_games = MiniGamesScript.new()
+	if main_probe._busy():
+		_fail("Main probe should not start busy.")
+		return
+	main_probe._lock_auto_behavior(1.0)
+	if not main_probe._busy():
+		_fail("Main auto behavior lock did not mark runtime busy.")
+		return
+	main_probe._clear_auto_behavior_lock()
+	if main_probe._busy():
+		_fail("Main auto behavior lock did not clear.")
+		return
+	main_probe.physics.free()
+	main_probe.mini_games.free()
+	main_probe.free()
 
 	var adaptive_brain = BehaviorBrainScript.new()
 	root_node.add_child(adaptive_brain)
@@ -207,14 +234,14 @@ func _run() -> void:
 	if typeof(adaptive_intent) != TYPE_DICTIONARY or str(adaptive_intent.get("reason", "")).find("adaptation") < 0:
 		_fail("BehaviorBrain adaptive invite intent did not explain adaptation: %s" % JSON.stringify(adaptive_decision))
 		return
-	var work_state = _calm_state(FIXED_WORK_TIME)
-	work_state["memory"]["last_action_at"] = FIXED_WORK_TIME - 80
+	var work_state = _calm_state(local_work_time)
+	work_state["memory"]["last_action_at"] = local_work_time - 80
 	var work_decision = adaptive_brain.decide({
 		"busy": false,
 		"state": work_state,
 		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
 		"personality": _adaptive_personality(95, 25, 20, 90),
-	}, FIXED_WORK_TIME)
+	}, local_work_time)
 	if str(work_decision.get("type", "")) != "none":
 		_fail("BehaviorBrain adaptation bypassed work cooldown: %s" % JSON.stringify(work_decision))
 		return
@@ -300,10 +327,10 @@ func _run() -> void:
 	adaptive_brain.set_paused(false)
 	var rest_decision = adaptive_brain.decide({
 		"busy": false,
-		"state": _calm_state(FIXED_REST_TIME),
+		"state": _calm_state(local_rest_time),
 		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
 		"personality": _adaptive_personality(95, 25, 20, 90),
-	}, FIXED_REST_TIME)
+	}, local_rest_time)
 	if str(rest_decision.get("type", "")) != "action" or str(rest_decision.get("name", "")) != "sleep":
 		_fail("BehaviorBrain adaptation should preserve rest behavior: %s" % JSON.stringify(rest_decision))
 		return
@@ -592,6 +619,20 @@ func _adaptive_personality(playfulness: int, mischief: int, patience: int, cling
 			"avoid_repeating_recent": true,
 		},
 	}
+
+
+func _unix_for_local_datetime(year: int, month: int, day: int, hour: int) -> int:
+	var utc_unix = int(Time.get_unix_time_from_datetime_dict({
+		"year": year,
+		"month": month,
+		"day": day,
+		"hour": hour,
+		"minute": 0,
+		"second": 0,
+	}))
+	var time_zone = Time.get_time_zone_from_system()
+	var bias_minutes = int(time_zone.get("bias", 0)) if typeof(time_zone) == TYPE_DICTIONARY else 0
+	return utc_unix - bias_minutes * 60
 
 
 func _load_json(path: String) -> Dictionary:
