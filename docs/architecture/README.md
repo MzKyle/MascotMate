@@ -40,6 +40,8 @@ flowchart TB
 - 运行时动作帧统一放在 `resource_hd/`，避免维护两份同名资源。
 - Linux 打包先保证 portable bundle 可用，再提供 Godot export 的可选路径。
 
+陪伴系统的后续演进见 [Companion Model v2](companion-model-v2.md)。这份设计把现有行为脑升级为事件、记忆、意图和表达分层，但保持本地规则主控和旧状态兼容。
+
 ## 关键约束
 
 透明窗口、鼠标穿透和全局快捷键不是纯应用层能力。不同桌面环境会影响最终表现：

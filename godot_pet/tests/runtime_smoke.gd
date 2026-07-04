@@ -44,7 +44,13 @@ func _run() -> void:
 
 	var brain = BehaviorBrainScript.new()
 	root_node.add_child(brain)
-	brain.configure(_load_json("res://assets/behavior.json"))
+	var behavior_config = _load_json("res://assets/behavior.json")
+	var active_actions = behavior_config.get("modes", {}).get("活泼", {}).get("actions", [])
+	for action in active_actions:
+		if typeof(action) == TYPE_DICTIONARY and str(action.get("type", "")) == "mischief":
+			_fail("Active mode must not contain mischief actions: %s" % JSON.stringify(action))
+			return
+	brain.configure(behavior_config)
 	brain.set_mode("活泼")
 	var decision = brain.decide({
 		"busy": false,
@@ -53,6 +59,55 @@ func _run() -> void:
 	}, FIXED_ENTERTAINMENT_TIME)
 	if str(decision.get("type", "")) != "prompt" or str(decision.get("name", "")) != "hungry":
 		_fail("BehaviorBrain did not produce the expected hungry prompt: %s" % JSON.stringify(decision))
+		return
+
+	var effect_brain = BehaviorBrainScript.new()
+	root_node.add_child(effect_brain)
+	await process_frame
+	effect_brain.configure({
+		"modes": {
+			"活泼": {
+				"interval": [1.0, 1.0],
+				"actions": [{"type": "effect", "name": "footprint", "weight": 1.0}],
+			},
+		},
+	})
+	effect_brain.set_mode("活泼")
+	var effect_events := {"effect": "", "mischief": ""}
+	effect_brain.effect_requested.connect(func(kind): effect_events["effect"] = str(kind))
+	effect_brain.mischief_requested.connect(func(kind): effect_events["mischief"] = str(kind))
+	var calm_state = _calm_state(FIXED_ENTERTAINMENT_TIME)
+	var effect_decision = effect_brain.decide({"busy": false, "state": calm_state}, FIXED_ENTERTAINMENT_TIME)
+	if str(effect_decision.get("type", "")) != "effect" or str(effect_decision.get("name", "")) != "footprint":
+		_fail("BehaviorBrain did not produce active footprint as an effect: %s" % JSON.stringify(effect_decision))
+		return
+	effect_brain._emit_decision(effect_decision, {"state": calm_state})
+	if str(effect_events["effect"]) != "footprint" or str(effect_events["mischief"]) != "":
+		_fail("BehaviorBrain effect signal routing was wrong: %s" % JSON.stringify(effect_events))
+		return
+
+	var forced_brain = BehaviorBrainScript.new()
+	root_node.add_child(forced_brain)
+	await process_frame
+	forced_brain.configure(behavior_config)
+	forced_brain.set_mode("捣乱")
+	var forced_now = FIXED_ENTERTAINMENT_TIME + 3600
+	var recent_state = _calm_state(forced_now)
+	recent_state["memory"]["last_interaction_at"] = forced_now
+	forced_brain.request_forced_mischief("grab", 0.0, 6.0, forced_now)
+	var busy_forced = forced_brain.decide({"busy": true, "state": recent_state}, forced_now)
+	if str(busy_forced.get("type", "")) != "none":
+		_fail("Forced mischief must respect busy state: %s" % JSON.stringify(busy_forced))
+		return
+	forced_brain.set_paused(true)
+	var paused_forced = forced_brain.decide({"busy": false, "state": recent_state}, forced_now + 1)
+	if str(paused_forced.get("type", "")) != "none":
+		_fail("Forced mischief must respect paused state: %s" % JSON.stringify(paused_forced))
+		return
+	forced_brain.set_paused(false)
+	var forced_decision = forced_brain.decide({"busy": false, "state": recent_state}, forced_now + 2)
+	if str(forced_decision.get("type", "")) != "mischief" or str(forced_decision.get("name", "")) != "grab":
+		_fail("Forced mischief did not bypass recent interaction cooldown: %s" % JSON.stringify(forced_decision))
 		return
 
 	var skin_manager = SkinManagerScript.new()
@@ -209,6 +264,26 @@ func _run() -> void:
 	state_store.flush_save()
 	print("Godot runtime smoke passed.")
 	quit(0)
+
+
+func _calm_state(now_unix: int) -> Dictionary:
+	return {
+		"version": 2,
+		"mood": 70,
+		"hunger": 60,
+		"energy": 80,
+		"affection": 30,
+		"last_decay_at": now_unix,
+		"memory": {
+			"last_interaction_at": 0,
+			"last_interaction_kind": "",
+			"last_feed_at": 0,
+			"last_play_at": 0,
+			"last_prompt_at": 0,
+			"last_action_at": 0,
+			"interaction_counts": {},
+		},
+	}
 
 
 func _load_json(path: String) -> Dictionary:

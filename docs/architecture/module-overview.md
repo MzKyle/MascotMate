@@ -50,7 +50,7 @@ Godot 运行层主要通过信号通信：
 
 - `InteractionController.gd` 发出 `single_clicked`、`double_clicked`、`grab_started`、`grab_released`
 - `PetPhysics.gd` 发出 `landed`、`bounced`、`attached_to_wall`
-- `BehaviorBrain.gd` 发出 `action_requested`、`mischief_requested`
+- `BehaviorBrain.gd` 发出 `action_requested`、`effect_requested`、`mischief_requested`
 - `MiniGames.gd` 发出 `feed_success`、`tease_success`、`game_finished`
 - `ScreenshotPins.gd` 发出 `notify`
 

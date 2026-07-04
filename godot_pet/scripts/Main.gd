@@ -188,6 +188,7 @@ func _create_nodes() -> void:
 	brain.action_requested.connect(_on_behavior_action)
 	brain.mischief_requested.connect(_on_mischief)
 	brain.prompt_requested.connect(_on_behavior_prompt)
+	brain.effect_requested.connect(_on_behavior_effect)
 	brain.set_mode(behavior_mode)
 
 	screenshot_pins = ScreenshotPinsScript.new()
@@ -461,10 +462,19 @@ func _on_behavior_prompt(kind: String, message: String) -> void:
 	show_bubble(message, 2.4)
 
 
+func _on_behavior_effect(kind: String) -> void:
+	if kind == "note":
+		feedback.spawn_note()
+	elif kind == "footprint":
+		feedback.spawn_footprint()
+
+
 func _on_mischief(kind: String) -> void:
+	if behavior_mode != "捣乱":
+		return
 	if kind == "grab":
 		if not _start_mischief_grab():
-			brain.schedule_soon(2.0)
+			brain.request_forced_mischief("grab", 1.0, 4.0)
 	elif kind == "note":
 		feedback.spawn_note()
 	else:
@@ -594,6 +604,8 @@ func _set_behavior_mode(value: String, announce := true) -> void:
 	behavior_mode = next_mode
 	if brain != null:
 		brain.set_mode(next_mode)
+		if next_mode == "捣乱":
+			brain.request_forced_mischief("grab", 0.8, 6.0)
 	if next_mode != "捣乱":
 		_stop_mischief_grab(false)
 	if announce:

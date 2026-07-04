@@ -3,6 +3,7 @@ extends Node
 signal action_requested(action_name)
 signal mischief_requested(kind)
 signal prompt_requested(kind, message)
+signal effect_requested(kind)
 
 const VALID_MODES := ["安静", "活泼", "捣乱"]
 const DEFAULT_BEHAVIOR := {
@@ -18,7 +19,7 @@ const DEFAULT_BEHAVIOR := {
 				{"type": "action", "name": "idle", "weight": 18.0},
 				{"type": "action", "name": "edge", "weight": 14.0},
 				{"type": "action", "name": "invite", "weight": 14.0},
-				{"type": "mischief", "name": "footprint", "weight": 20.0},
+				{"type": "effect", "name": "footprint", "weight": 20.0},
 			],
 		},
 		"捣乱": {
@@ -54,6 +55,9 @@ var local_memory := {
 	"last_prompt_at": 0,
 	"last_action_at": 0,
 }
+var forced_mischief_kind := ""
+var forced_mischief_ready_at := 0.0
+var forced_mischief_expires_at := 0.0
 
 
 func _ready() -> void:
@@ -87,6 +91,8 @@ func set_skin_behavior_profile(profile: Dictionary) -> void:
 func set_mode(value: String) -> void:
 	var previous_mode = mode
 	mode = value if value in VALID_MODES else "安静"
+	if mode != "捣乱":
+		clear_forced_mischief()
 	if timer != null:
 		var initial_delay = _initial_delay_for_mode(mode)
 		if initial_delay > 0.0 and previous_mode != mode:
@@ -101,6 +107,24 @@ func set_paused(value: bool) -> void:
 
 func record_interaction(_kind: String, now_unix := 0) -> void:
 	local_memory["last_interaction_at"] = _coerce_now(now_unix)
+
+
+func request_forced_mischief(kind: String, delay_seconds := 0.8, ttl_seconds := 6.0, now_unix := 0) -> void:
+	var clean_kind = kind.strip_edges()
+	if clean_kind == "":
+		clear_forced_mischief()
+		return
+	var now = _coerce_now_float(now_unix)
+	forced_mischief_kind = clean_kind
+	forced_mischief_ready_at = now + max(0.0, delay_seconds)
+	forced_mischief_expires_at = forced_mischief_ready_at + max(0.1, ttl_seconds)
+	schedule_soon(delay_seconds)
+
+
+func clear_forced_mischief() -> void:
+	forced_mischief_kind = ""
+	forced_mischief_ready_at = 0.0
+	forced_mischief_expires_at = 0.0
 
 
 func schedule_next() -> void:
@@ -126,6 +150,10 @@ func decide(context: Dictionary, now_unix := 0) -> Dictionary:
 	var local_last_interaction = int(local_memory.get("last_interaction_at", 0))
 	if local_last_interaction > int(memory.get("last_interaction_at", 0)):
 		memory["last_interaction_at"] = local_last_interaction
+
+	var forced_decision = _forced_mischief_decision(float(now), paused or bool(context.get("busy", false)), period)
+	if not forced_decision.is_empty():
+		return forced_decision
 
 	if paused or bool(context.get("busy", false)):
 		return {"type": "none", "retry_after": 2.0}
@@ -164,9 +192,13 @@ func _emit_decision(decision: Dictionary, context: Dictionary) -> void:
 	var decision_type = str(decision.get("type", "none"))
 	if decision_type == "none":
 		return
+	if bool(decision.get("forced_mischief", false)):
+		clear_forced_mischief()
 	_remember_decision(decision, context)
 	if decision_type == "mischief":
 		emit_signal("mischief_requested", str(decision.get("name", "")))
+	elif decision_type == "effect":
+		emit_signal("effect_requested", str(decision.get("name", "")))
 	elif decision_type == "prompt":
 		emit_signal("prompt_requested", str(decision.get("name", "")), str(decision.get("message", "")))
 	else:
@@ -222,9 +254,9 @@ func _pick_contextual_action(target_mode: String, status: Dictionary, period: St
 		var weight = max(0.0, float(action.get("weight", 0.0)))
 		if action_type == "" or action_name == "" or weight <= 0.0:
 			continue
-		if period == "rest" and action_type == "mischief":
+		if period == "rest" and action_type in ["mischief", "effect"]:
 			continue
-		if period == "work" and action_type == "mischief":
+		if period == "work" and action_type in ["mischief", "effect"]:
 			weight *= 0.15
 		if action_name in ["walk", "edge"]:
 			if energy < 30:
@@ -274,6 +306,30 @@ func _attention_cooldown_remaining(memory: Dictionary, period: String, now: int)
 	return max(0.0, _cooldown_seconds(period) - float(now - last_attention))
 
 
+func _forced_mischief_decision(now: float, blocked: bool, period: String) -> Dictionary:
+	if forced_mischief_kind == "":
+		return {}
+	if now > forced_mischief_expires_at:
+		clear_forced_mischief()
+		return {}
+	if blocked:
+		return {"type": "none", "retry_after": _forced_retry_after(now)}
+	if now < forced_mischief_ready_at:
+		return {"type": "none", "retry_after": max(0.1, min(1.0, forced_mischief_ready_at - now))}
+	return {
+		"type": "mischief",
+		"name": forced_mischief_kind,
+		"forced_mischief": true,
+		"retry_after": _cooldown_seconds(period),
+	}
+
+
+func _forced_retry_after(now: float) -> float:
+	if forced_mischief_expires_at <= now:
+		return 0.1
+	return max(0.1, min(1.0, forced_mischief_expires_at - now))
+
+
 func _cooldown_seconds(period: String) -> float:
 	var cooldowns = companion_config.get("cooldowns", {})
 	var seconds = 600.0
@@ -291,14 +347,14 @@ func _remember_decision(decision: Dictionary, context: Dictionary) -> void:
 	var decision_type = str(decision.get("type", ""))
 	if decision_type == "prompt":
 		local_memory["last_prompt_at"] = now
-	elif decision_type in ["action", "mischief"]:
+	elif decision_type in ["action", "mischief", "effect"]:
 		local_memory["last_action_at"] = now
 	var store = context.get("state_store", null)
 	if store == null:
 		return
 	if decision_type == "prompt" and store.has_method("record_prompt"):
 		store.record_prompt(str(decision.get("name", "")), now)
-	elif decision_type in ["action", "mischief"] and store.has_method("record_action"):
+	elif decision_type in ["action", "mischief", "effect"] and store.has_method("record_action"):
 		store.record_action("%s:%s" % [decision_type, str(decision.get("name", ""))], now)
 
 
@@ -373,7 +429,7 @@ func _merged_behavior_config(source: Dictionary) -> Dictionary:
 					var action_type = str(action.get("type", ""))
 					var action_name = str(action.get("name", ""))
 					var weight = max(0.0, float(action.get("weight", 0.0)))
-					if action_type in ["action", "mischief"] and action_name != "" and weight > 0.0:
+					if _is_behavior_action_type(action_type) and action_name != "" and weight > 0.0:
 						actions.append({"type": action_type, "name": action_name, "weight": weight})
 				merged["modes"][mode_name]["actions"] = actions
 	return merged
@@ -425,12 +481,20 @@ func _merge_skin_behavior_profile(base: Dictionary, profile: Dictionary) -> Dict
 				var action_type = str(action.get("type", ""))
 				var action_name = str(action.get("name", ""))
 				var weight = max(0.0, float(action.get("weight", 0.0)))
-				if action_type in ["action", "mischief"] and action_name != "" and weight > 0.0:
+				if _is_behavior_action_type(action_type) and action_name != "" and weight > 0.0:
 					actions.append({"type": action_type, "name": action_name, "weight": weight})
 			if not actions.is_empty():
 				merged["modes"][mode_name]["actions"] = actions
 	return merged
 
 
+func _is_behavior_action_type(value: String) -> bool:
+	return value in ["action", "mischief", "effect"]
+
+
 func _coerce_now(now_unix: int) -> int:
 	return now_unix if now_unix > 0 else int(Time.get_unix_time_from_system())
+
+
+func _coerce_now_float(now_unix: int) -> float:
+	return float(now_unix) if now_unix > 0 else Time.get_unix_time_from_system()

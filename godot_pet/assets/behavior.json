@@ -12,7 +12,7 @@
         { "type": "action", "name": "idle", "weight": 18 },
         { "type": "action", "name": "edge", "weight": 14 },
         { "type": "action", "name": "invite", "weight": 14 },
-        { "type": "mischief", "name": "footprint", "weight": 20 }
+        { "type": "effect", "name": "footprint", "weight": 20 }
       ]
     },
     "捣乱": {

@@ -11,6 +11,7 @@
   - [模块全景](architecture/module-overview.md)
   - [数据流](architecture/data-flow.md)
   - [状态模型](architecture/state-model.md)
+  - [陪伴模型 v2](architecture/companion-model-v2.md)
 
 - **模块详解**
   - [总览](modules/README.md)

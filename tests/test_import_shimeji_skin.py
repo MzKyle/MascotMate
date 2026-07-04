@@ -103,6 +103,9 @@ class ImportShimejiSkinTests(unittest.TestCase):
         self.assertEqual(skin["source"]["behaviors_xml"].endswith("behaviors.xml"), True)
         self.assertIn("behavior_profile", skin)
         self.assertIn("活泼", skin["behavior_profile"]["modes"])
+        active_actions = skin["behavior_profile"]["modes"]["活泼"]["actions"]
+        self.assertTrue(any(action["type"] == "effect" and action["name"] == "footprint" for action in active_actions))
+        self.assertFalse(any(action["type"] == "mischief" and action["name"] == "footprint" for action in active_actions))
         self.assertEqual(report["skin_id"], "buddy")
         self.assertGreaterEqual(report["compatibility_score"], 1)
         self.assertTrue(any("Ignored Shimeji condition" in item for item in report["warnings"]))

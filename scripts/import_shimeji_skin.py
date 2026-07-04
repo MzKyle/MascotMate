@@ -353,7 +353,7 @@ def build_behavior_profile(behaviors: list[dict[str, Any]]) -> tuple[dict[str, A
     if buckets["edge"] > 0:
         active_actions.append({"type": "action", "name": "edge", "weight": round(buckets["edge"], 2)})
     if buckets["mischief"] > 0:
-        active_actions.append({"type": "mischief", "name": "footprint", "weight": round(buckets["mischief"], 2)})
+        active_actions.append({"type": "effect", "name": "footprint", "weight": round(buckets["mischief"], 2)})
     profile: dict[str, Any] = {
         "version": 1,
         "modes": {},
