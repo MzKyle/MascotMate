@@ -88,10 +88,10 @@ func _run() -> void:
 	if typeof(relationship) != TYPE_DICTIONARY or str(relationship.get("level", "")) != "familiar" or int(relationship.get("familiarity", 0)) < 25:
 		_fail("CompanionMemory did not derive the expected relationship level: %s" % JSON.stringify(memory_snapshot))
 		return
-	memory_store.record_expression("pet_head", "今天也摸摸头。", FIXED_ENTERTAINMENT_TIME + 41)
+	memory_store.record_expression("pet_head", "今天也很棒。", FIXED_ENTERTAINMENT_TIME + 41)
 	var memory_context = memory_store.expression_context({"mode": "活泼"})
 	var recent_expression_texts = memory_context.get("recent_expression_texts", [])
-	if typeof(recent_expression_texts) != TYPE_ARRAY or not recent_expression_texts.has("今天也摸摸头。"):
+	if typeof(recent_expression_texts) != TYPE_ARRAY or not recent_expression_texts.has("今天也很棒。"):
 		_fail("CompanionMemory did not expose recent expression text: %s" % JSON.stringify(memory_context))
 		return
 	var corrupt_memory_file = FileAccess.open(config_dir.path_join("companion_memory.json"), FileAccess.WRITE)
@@ -165,9 +165,9 @@ func _run() -> void:
 	var ai_client = CompanionAIExpressionClientScript.new()
 	root_node.add_child(ai_client)
 	ai_client.configure({"enabled": false, "provider": "local_stub", "timeout_ms": 800})
-	var local_expression = {"found": true, "text": "摸摸头。", "seconds": 1.8}
-	var disabled_ai = await ai_client.resolve_expression("pet_head", {"personality": _adaptive_personality(70, 20, 60, 40)}, local_expression, "摸摸头。", 1.8)
-	if str(disabled_ai.get("source", "")) != "local" or str(disabled_ai.get("text", "")) != "摸摸头。":
+	var local_expression = {"found": true, "text": "摸摸头，辛苦啦。", "seconds": 1.8}
+	var disabled_ai = await ai_client.resolve_expression("pet_head", {"personality": _adaptive_personality(70, 20, 60, 40)}, local_expression, "摸摸头，辛苦啦。", 1.8)
+	if str(disabled_ai.get("source", "")) != "local" or str(disabled_ai.get("text", "")) != "摸摸头，辛苦啦。":
 		_fail("CompanionAIExpressionClient disabled path should use local expression: %s" % JSON.stringify(disabled_ai))
 		return
 	var disabled_ai_status = ai_client.status()
@@ -179,12 +179,12 @@ func _run() -> void:
 		_fail("CompanionAIExpressionClient disabled health should be explicit: %s" % JSON.stringify(disabled_health))
 		return
 	var valid_ai = ai_client._validate_response({
-		"text": "AI摸摸头。",
+		"text": "AI说辛苦啦。",
 		"seconds": 1.2,
 		"emotion": "happy",
 		"safety": "ok",
 	}, disabled_ai, {"personality": _adaptive_personality(70, 20, 60, 40)})
-	if str(valid_ai.get("source", "")) != "ai" or str(valid_ai.get("text", "")) != "AI摸摸头。":
+	if str(valid_ai.get("source", "")) != "ai" or str(valid_ai.get("text", "")) != "AI说辛苦啦。":
 		_fail("CompanionAIExpressionClient did not accept a valid AI response: %s" % JSON.stringify(valid_ai))
 		return
 	var invalid_ai = ai_client._validate_response({
@@ -213,7 +213,7 @@ func _run() -> void:
 		"personality": _adaptive_personality(70, 20, 60, 40),
 		"recent_expression_texts": [],
 	}
-	var cache_key = ai_client._cache_key("pet_head", cache_context, ai_client._local_result(local_expression, "摸摸头。", 1.8, "local"))
+	var cache_key = ai_client._cache_key("pet_head", cache_context, ai_client._local_result(local_expression, "摸摸头，辛苦啦。", 1.8, "local"))
 	ai_client._store_cache(cache_key, {
 		"text": "缓存摸摸头。",
 		"seconds": 1.0,
@@ -222,7 +222,7 @@ func _run() -> void:
 		"fallback_reason": "",
 		"cache_hit": false,
 	})
-	var cached_ai = await ai_client.resolve_expression("pet_head", cache_context, local_expression, "摸摸头。", 1.8)
+	var cached_ai = await ai_client.resolve_expression("pet_head", cache_context, local_expression, "摸摸头，辛苦啦。", 1.8)
 	if str(cached_ai.get("source", "")) != "ai_cache" or not bool(cached_ai.get("cache_hit", false)):
 		_fail("CompanionAIExpressionClient did not serve a cached expression: %s" % JSON.stringify(cached_ai))
 		return
@@ -256,7 +256,7 @@ func _run() -> void:
 	var expression_bank = CompanionExpressionBankScript.new()
 	root_node.add_child(expression_bank)
 	var pet_expression = expression_bank.resolve("pet_head")
-	if not bool(pet_expression.get("found", false)) or str(pet_expression.get("text", "")) != "摸摸头。":
+	if not bool(pet_expression.get("found", false)) or str(pet_expression.get("text", "")) != "摸摸头，辛苦啦。":
 		_fail("CompanionExpressionBank did not return the default pet_head line: %s" % JSON.stringify(pet_expression))
 		return
 	var repeated_pet_expression = expression_bank.resolve("pet_head")
@@ -268,7 +268,7 @@ func _run() -> void:
 		_fail("CompanionExpressionBank missing key fallback failed: %s" % JSON.stringify(fallback_expression))
 		return
 	var mode_expression = expression_bank.resolve("mode_changed", {"mode": "活泼"})
-	if str(mode_expression.get("text", "")) != "活泼模式。":
+	if str(mode_expression.get("text", "")) != "已切到活泼模式，我会配合你。":
 		_fail("CompanionExpressionBank template replacement failed: %s" % JSON.stringify(mode_expression))
 		return
 	var hungry_expression = expression_bank.resolve("auto_prompt:hungry")
@@ -281,9 +281,9 @@ func _run() -> void:
 		"tone": "short_cute",
 		"relationship_level": "familiar",
 		"favorite_interactions": ["pet_head"],
-		"recent_expression_texts": ["摸摸头。", "再摸一下也可以。"],
+		"recent_expression_texts": ["今天也很棒。", "摸摸头，辛苦啦。"],
 	})
-	if str(contextual_pet_expression.get("text", "")) != "今天也摸摸头。":
+	if str(contextual_pet_expression.get("text", "")) != "你一摸头，我就充满电。":
 		_fail("CompanionExpressionBank did not select the contextual pet_head line: %s" % JSON.stringify(contextual_pet_expression))
 		return
 	var social_intent = CompanionIntentScript.social_response("pet_head")
@@ -709,6 +709,10 @@ func _run() -> void:
 	if bool(adaptation_config.get("enabled", true)) or str(adaptation_config.get("strength", "")) != "bold":
 		_fail("ConfigStore did not persist behavior adaptation config: %s" % JSON.stringify(config_store.get_config()))
 		return
+	config_store.set_dialogue_tone("calm")
+	if str(config_store.app_config().get("dialogue_tone", "")) != "calm":
+		_fail("ConfigStore did not persist dialogue tone config: %s" % JSON.stringify(config_store.get_config()))
+		return
 	config_store.set_ai_expression_config({"enabled": true, "provider": "local_stub", "timeout_ms": 1200})
 	var ai_config = config_store.app_config().get("ai_expression", {})
 	if not bool(ai_config.get("enabled", false)) or str(ai_config.get("provider", "")) != "local_stub" or int(ai_config.get("timeout_ms", 0)) != 1200:
@@ -751,7 +755,8 @@ func _run() -> void:
 	main_debug.companion_scenario_result_path = config_dir.path_join("companion_scenario_result.json")
 	main_debug.last_behavior_decision = {"type": "none", "reason": "busy", "retry_after": 2.0}
 	main_debug.last_behavior_context = {"mode": "活泼", "busy": true}
-	main_debug.last_expression = {"key": "pet_head", "text": "AI摸摸头。", "source": "ai", "at": FIXED_ENTERTAINMENT_TIME}
+	main_debug.dialogue_tone = "calm"
+	main_debug.last_expression = {"key": "pet_head", "text": "AI说辛苦啦。", "source": "ai", "at": FIXED_ENTERTAINMENT_TIME}
 	main_debug._write_companion_debug_snapshot()
 	var debug_snapshot = _load_json(main_debug.companion_debug_snapshot_path)
 	if str(debug_snapshot.get("runtime", {}).get("behavior_mode", "")) != "活泼" or typeof(debug_snapshot.get("memory", {})) != TYPE_DICTIONARY or typeof(debug_snapshot.get("profile", {})) != TYPE_DICTIONARY or typeof(debug_snapshot.get("recent_events", [])) != TYPE_ARRAY:
@@ -762,6 +767,9 @@ func _run() -> void:
 		return
 	if str(debug_snapshot.get("last_expression", {}).get("source", "")) != "ai" or typeof(debug_snapshot.get("ai_expression", {})) != TYPE_DICTIONARY:
 		_fail("Main debug snapshot did not include AI expression state: %s" % JSON.stringify(debug_snapshot))
+		return
+	if str(debug_snapshot.get("config", {}).get("dialogue_tone", "")) != "calm":
+		_fail("Main debug snapshot did not include dialogue tone: %s" % JSON.stringify(debug_snapshot))
 		return
 	var ai_snapshot = debug_snapshot.get("ai_expression", {})
 	if typeof(ai_snapshot.get("health", {})) != TYPE_DICTIONARY or typeof(ai_snapshot.get("source_stats", {})) != TYPE_DICTIONARY or typeof(ai_snapshot.get("fallback_reasons", [])) != TYPE_ARRAY:
@@ -801,6 +809,10 @@ func _run() -> void:
 	main_debug._on_companion_console_command({"command": "set_behavior_mode", "payload": {"mode": "捣乱"}})
 	if main_debug.behavior_mode != "捣乱":
 		_fail("Main console mode command did not change behavior mode.")
+		return
+	main_debug._on_companion_console_command({"command": "set_dialogue_tone", "payload": {"tone": "short_cute"}})
+	if main_debug.dialogue_tone != "short_cute" or str(config_store.app_config().get("dialogue_tone", "")) != "short_cute":
+		_fail("Main console dialogue tone command did not update config: %s" % JSON.stringify(config_store.get_config()))
 		return
 	main_debug._on_companion_console_command({
 		"command": "set_adaptation",

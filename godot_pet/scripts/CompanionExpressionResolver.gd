@@ -53,14 +53,14 @@ func _apply_social_response(result: Dictionary, intent: Dictionary) -> void:
 func _apply_care_request(result: Dictionary, intent: Dictionary, decision: Dictionary) -> void:
 	var name = str(intent.get("name", ""))
 	if name == "hungry":
-		_set_bubble(result, "auto_prompt:hungry", str(decision.get("message", "有点饿了。")), 2.4)
+		_set_bubble(result, "auto_prompt:hungry", str(decision.get("message", "我有点饿了，要不要补点能量？")), 2.4)
 		result["effect"] = "note"
 
 
 func _apply_play_request(result: Dictionary, intent: Dictionary, decision: Dictionary) -> void:
 	var name = str(intent.get("name", ""))
 	if name in ["low_mood", "invite"]:
-		_set_bubble(result, "auto_prompt:play", str(decision.get("message", "要不要玩一会儿？")), 1.8)
+		_set_bubble(result, "auto_prompt:play", str(decision.get("message", "要不要放松一下？")), 1.8)
 		if str(decision.get("type", "")) == "action":
 			result["action"] = "invite"
 			result["meta"]["lock_seconds"] = 3.0
@@ -119,17 +119,17 @@ func _set_bubble(result: Dictionary, key: String, fallback_text: String, seconds
 
 func _default_social_text(name: String) -> String:
 	var values = {
-		"pet_head": "摸摸头。",
-		"poke_body": "戳到了。",
-		"grab_start": "抱起来啦。",
-		"release_soft": "轻轻放下。",
-		"throw_fast": "飞出去啦！",
-		"peek_exit": "被发现啦。",
-		"feed_success": "吃到啦。",
-		"tease_start": "来逗我呀。",
-		"tease_success": "嘿嘿，别挠啦。",
-		"tease_done": "玩够啦。",
-		"mode_changed": "{mode}模式。",
+		"pet_head": "摸摸头，辛苦啦。",
+		"poke_body": "轻轻戳一下就好。",
+		"grab_start": "抱起来啦，慢慢来。",
+		"release_soft": "放得很稳，谢谢你。",
+		"throw_fast": "有点快，慢一点也可以。",
+		"peek_exit": "我在这儿，陪你一下。",
+		"feed_success": "吃到啦，谢谢你。",
+		"tease_start": "要不要放松一下？",
+		"tease_success": "笑一下，放松啦。",
+		"tease_done": "休息一下，辛苦啦。",
+		"mode_changed": "已切到{mode}模式，我会配合你。",
 	}
 	return str(values.get(name, ""))
 

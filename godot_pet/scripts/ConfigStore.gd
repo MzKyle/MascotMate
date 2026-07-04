@@ -9,6 +9,7 @@ const DEFAULT_CONFIG := {
 		"display_scale": 1.0,
 		"gravity_enabled": true,
 		"skin_id": "classic_shinchan",
+		"dialogue_tone": "gentle",
 		"behavior_adaptation": {
 			"enabled": true,
 			"strength": "visible",
@@ -96,6 +97,8 @@ func set_app_config(values: Dictionary) -> void:
 	if values.has("skin_id"):
 		var skin_id = str(values["skin_id"]).strip_edges()
 		config["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
+	if values.has("dialogue_tone"):
+		config["app"]["dialogue_tone"] = _sanitize_dialogue_tone(values["dialogue_tone"])
 	if values.has("behavior_adaptation"):
 		config["app"]["behavior_adaptation"] = _merged_behavior_adaptation(values["behavior_adaptation"])
 	if values.has("ai_expression"):
@@ -115,6 +118,10 @@ func set_ai_expression_config(values: Dictionary) -> void:
 
 func set_ai_memory_summary_config(values: Dictionary) -> void:
 	set_app_config({"ai_memory_summary": values})
+
+
+func set_dialogue_tone(value: String) -> void:
+	set_app_config({"dialogue_tone": value})
 
 
 func set_screenshot_pins_config(values: Dictionary) -> void:
@@ -141,6 +148,8 @@ func _merged_config(source: Dictionary) -> Dictionary:
 		if source["app"].has("skin_id"):
 			var skin_id = str(source["app"]["skin_id"]).strip_edges()
 			merged["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
+		if source["app"].has("dialogue_tone"):
+			merged["app"]["dialogue_tone"] = _sanitize_dialogue_tone(source["app"]["dialogue_tone"])
 		if source["app"].has("behavior_adaptation"):
 			merged["app"]["behavior_adaptation"] = _merged_behavior_adaptation(source["app"]["behavior_adaptation"])
 		if source["app"].has("ai_expression"):
@@ -163,6 +172,11 @@ func _merged_config(source: Dictionary) -> Dictionary:
 			merged["pins"]["max_count"] = clampi(int(source["pins"]["max_count"]), 1, 3)
 
 	return merged
+
+
+func _sanitize_dialogue_tone(value) -> String:
+	var tone = str(value).strip_edges()
+	return tone if tone in ["gentle", "short_cute", "calm"] else "gentle"
 
 
 func _merged_behavior_adaptation(source) -> Dictionary:

@@ -180,16 +180,35 @@ class CompanionAIApp:
         personality = payload.get("personality", {})
         if isinstance(personality, dict):
             tone = str(personality.get("tone", ""))
-        if key == "auto_prompt:hungry":
-            text = "有点饿了，陪我吃点吧。"
-        elif key == "auto_prompt:play":
-            text = "要不要陪我玩一下？"
-        elif key == "feed_success":
-            text = "吃到啦，开心。"
-        elif key == "tease_success":
-            text = "嘿嘿，再来一下。"
-        elif key == "pet_head":
-            text = "摸摸头，舒服。"
+        lines = {
+            "auto_prompt:hungry": {
+                "gentle": "我有点饿了，要不要补点能量？",
+                "short_cute": "要不要吃点东西？",
+                "calm": "有点饿，方便时再照顾我就好。",
+            },
+            "auto_prompt:play": {
+                "gentle": "要不要放松一下？",
+                "short_cute": "要不要玩一小会儿？",
+                "calm": "休息一下也可以。",
+            },
+            "feed_success": {
+                "gentle": "吃到啦，谢谢你。",
+                "short_cute": "补充能量，开心。",
+                "calm": "暖暖的，刚刚好。",
+            },
+            "tease_success": {
+                "gentle": "笑一下，放松啦。",
+                "short_cute": "今天也很棒，再来一下。",
+                "calm": "刚刚好，轻松一点。",
+            },
+            "pet_head": {
+                "gentle": "摸摸头，辛苦啦。",
+                "short_cute": "今天也很棒。",
+                "calm": "我在这儿，不着急。",
+            },
+        }
+        if key in lines:
+            text = lines[key].get(tone, lines[key]["gentle"])
         else:
             text = fallback_text
         if tone == "short_cute" and len(text) > max_chars_from_request(payload):

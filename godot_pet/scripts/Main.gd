@@ -62,6 +62,7 @@ var gravity_enabled := true
 var peek_mode := false
 var peek_edge := ""
 var behavior_mode := "安静"
+var dialogue_tone := "gentle"
 var mischief_grab_active := false
 var configured_skin_id := "classic_shinchan"
 var feedback_window_until := 0.0
@@ -91,6 +92,7 @@ func _ready() -> void:
 	display_scale = clamp(float(app_config.get("display_scale", 1.0)), 1.0, 1.5)
 	gravity_enabled = bool(app_config.get("gravity_enabled", true))
 	configured_skin_id = str(app_config.get("skin_id", "classic_shinchan"))
+	dialogue_tone = _sanitize_dialogue_tone(app_config.get("dialogue_tone", "gentle"))
 
 	_configure_window()
 	_create_nodes()
@@ -417,12 +419,12 @@ func _on_single_clicked(local_pos: Vector2) -> void:
 		var before = state_store.snapshot()
 		var changes = state_store.pet()
 		_record_interaction("pet", "", {}, ["social", "positive"], before, state_store.snapshot())
-		_show_social_response("pet_head", "摸摸头。", 1.8, _format_changes(changes))
+		_show_social_response("pet_head", "摸摸头，辛苦啦。", 1.8, _format_changes(changes))
 	else:
 		var before = state_store.snapshot()
 		var changes = state_store.poke()
 		_record_interaction("poke", "", {}, ["social"], before, state_store.snapshot())
-		_show_social_response("poke_body", "戳到了。", 1.8, _format_changes(changes))
+		_show_social_response("poke_body", "轻轻戳一下就好。", 1.8, _format_changes(changes))
 
 
 func _on_double_clicked() -> void:
@@ -443,7 +445,7 @@ func _on_grab_started(global_pos: Vector2) -> void:
 	drag_offset = get_viewport().get_mouse_position()
 	physics.begin_grab(global_pos - drag_offset)
 	_play_capability("held")
-	_show_social_response("grab_start", "抱起来啦。")
+	_show_social_response("grab_start", "抱起来啦，慢慢来。")
 
 
 func _on_grab_moved(global_pos: Vector2) -> void:
@@ -462,17 +464,17 @@ func _on_grab_released(velocity: Vector2, held: bool, global_pos: Vector2) -> vo
 		_record_interaction("throw", "", {"speed": speed}, ["physics"])
 		physics.release(velocity, true)
 		_play_capability("falling")
-		_show_social_response("throw_fast", "飞出去啦！")
+		_show_social_response("throw_fast", "有点快，慢一点也可以。")
 	else:
 		physics.release(velocity, false)
 		if held:
 			_record_interaction("release")
-			_show_social_response("release_soft", "轻轻放下。")
+			_show_social_response("release_soft", "放得很稳，谢谢你。")
 
 
 func _on_landed() -> void:
 	landing_squash = 0.25
-	show_bubble("落地。")
+	show_bubble("稳稳落地。")
 	await get_tree().create_timer(0.45).timeout
 	physics.idle()
 	_play_capability("resting")
@@ -485,7 +487,7 @@ func _on_bounced() -> void:
 
 func _on_attached_to_wall(_side: int) -> void:
 	_play_wall_walk_action()
-	show_bubble("贴到边边了。")
+	show_bubble("贴到边边了，慢慢走。")
 
 
 func _on_action_finished(next_action: String) -> void:
@@ -527,7 +529,7 @@ func _on_behavior_action(action_name: String) -> void:
 			_sync_window_size(true)
 		"invite":
 			_lock_auto_behavior(3.0)
-			_show_expression("auto_prompt:play", "要不要玩一会儿？")
+			_show_expression("auto_prompt:play", "要不要放松一下？")
 
 
 func _on_companion_intent_requested(intent: Dictionary, decision: Dictionary) -> void:
@@ -646,7 +648,7 @@ func _on_feed_success() -> void:
 	var before = state_store.snapshot()
 	var changes = state_store.feed()
 	_record_interaction("feed", "", {"result": "success"}, ["care", "food", "positive"], before, state_store.snapshot())
-	_show_social_response("feed_success", "吃到啦。", 1.8, _format_changes(changes))
+	_show_social_response("feed_success", "吃到啦，谢谢你。", 1.8, _format_changes(changes))
 
 
 func _on_tease_success(count: int, direction: Vector2) -> void:
@@ -656,9 +658,9 @@ func _on_tease_success(count: int, direction: Vector2) -> void:
 		var before = state_store.snapshot()
 		var changes = state_store.play()
 		_record_interaction("play", "", {"count": count}, ["play", "positive"], before, state_store.snapshot())
-		_show_social_response("tease_success", "嘿嘿，别挠啦。", 1.4, _format_changes(changes))
+		_show_social_response("tease_success", "笑一下，放松啦。", 1.4, _format_changes(changes))
 	elif count >= 3:
-		_show_social_response("tease_done", "玩够啦。", 1.3)
+		_show_social_response("tease_done", "休息一下，辛苦啦。", 1.3)
 	if count >= 2:
 		feedback.spawn_heart()
 
@@ -680,7 +682,7 @@ func _start_tease_interaction() -> void:
 	tease_nudge = Vector2.ZERO
 	_sync_window_size(true)
 	_update_mouse_passthrough()
-	_show_social_response("tease_start", "来逗我呀。", 1.4)
+	_show_social_response("tease_start", "要不要放松一下？", 1.4)
 
 
 func _apply_tease_nudge(direction: Vector2, count: int) -> void:
@@ -710,7 +712,7 @@ func _on_screenshot_pins_notify(text: String) -> void:
 
 
 func _show_menu() -> void:
-	menu_controller.show_menu(gravity_enabled, peek_mode, behavior_mode)
+	menu_controller.show_menu(gravity_enabled, peek_mode, behavior_mode, dialogue_tone)
 
 
 func _on_menu_command(command: String) -> void:
@@ -757,6 +759,12 @@ func _on_menu_command(command: String) -> void:
 			_set_behavior_mode("活泼")
 		"mode_mischief":
 			_set_behavior_mode("捣乱")
+		"tone_gentle":
+			_set_dialogue_tone("gentle")
+		"tone_short_cute":
+			_set_dialogue_tone("short_cute")
+		"tone_calm":
+			_set_dialogue_tone("calm")
 		"clear_mischief":
 			feedback.clear_mischief()
 		"exit":
@@ -775,9 +783,18 @@ func _set_behavior_mode(value: String, announce := true) -> void:
 	if next_mode != "捣乱":
 		_stop_mischief_grab(false)
 	if announce:
-		_show_expression("mode_changed", "%s模式。" % next_mode, 1.8, "", {"mode": next_mode})
+		_show_expression("mode_changed", "已切到%s模式，我会配合你。" % next_mode, 1.8, "", {"mode": next_mode})
 	if next_mode != previous_mode:
 		_record_interaction("", "mode_changed", {"from": previous_mode, "to": next_mode}, ["mode"])
+	_write_companion_debug_snapshot()
+
+
+func _set_dialogue_tone(value: String, announce := true) -> void:
+	dialogue_tone = _sanitize_dialogue_tone(value)
+	if config_store != null and config_store.has_method("set_dialogue_tone"):
+		config_store.set_dialogue_tone(dialogue_tone)
+	if announce:
+		show_bubble("文案语气：%s。" % _dialogue_tone_label(dialogue_tone), 1.8)
 	_write_companion_debug_snapshot()
 
 
@@ -910,6 +927,9 @@ func _on_companion_console_command(command: Dictionary) -> void:
 		"set_behavior_mode":
 			var mode = str(payload.get("mode", command.get("mode", ""))).strip_edges()
 			_set_behavior_mode(mode)
+		"set_dialogue_tone":
+			var tone = str(payload.get("tone", command.get("tone", ""))).strip_edges()
+			_set_dialogue_tone(tone)
 		"set_adaptation":
 			var values = payload.duplicate(true)
 			if command.has("enabled"):
@@ -1149,7 +1169,7 @@ func _expression_context(context := {}) -> Dictionary:
 	result["state"] = state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {}
 	var personality = _selected_personality()
 	result["personality"] = personality
-	result["tone"] = str(personality.get("tone", "short_cute"))
+	result["tone"] = str(personality.get("tone", dialogue_tone))
 	return result
 
 
@@ -1171,9 +1191,14 @@ func _remember_expression(key: String, text: String, seconds: float, source: Str
 
 
 func _selected_personality() -> Dictionary:
+	var result := {}
 	if skin_manager != null and skin_manager.has_method("selected_personality"):
-		return skin_manager.selected_personality()
-	return {}
+		result = skin_manager.selected_personality()
+	if typeof(result) != TYPE_DICTIONARY:
+		result = {}
+	result = result.duplicate(true)
+	result["tone"] = _sanitize_dialogue_tone(dialogue_tone)
+	return result
 
 
 func _on_feedback_window_requested(seconds: float) -> void:
@@ -1297,7 +1322,7 @@ func _exit_peek_mode(show_message: bool) -> void:
 	pet_sprite.reset_transform()
 	_update_mouse_passthrough()
 	if show_message:
-		_show_social_response("peek_exit", "被发现啦。")
+		_show_social_response("peek_exit", "我在这儿，陪你一下。")
 	_record_interaction("", "peek_exit", {"edge": previous_edge}, ["peek"])
 
 
@@ -1481,6 +1506,7 @@ func _companion_debug_snapshot() -> Dictionary:
 			"personality": _selected_personality(),
 		},
 		"config": {
+			"dialogue_tone": dialogue_tone,
 			"behavior_adaptation": _sanitize_behavior_adaptation(app_config.get("behavior_adaptation", {})),
 			"ai_expression": _sanitize_ai_expression(app_config.get("ai_expression", {})),
 			"ai_memory_summary": _sanitize_ai_memory_summary(app_config.get("ai_memory_summary", {})),
@@ -1915,6 +1941,20 @@ func _behavior_config_with_app_overrides() -> Dictionary:
 	companion["adaptation"] = adaptation
 	result["companion"] = companion
 	return result
+
+
+func _sanitize_dialogue_tone(value) -> String:
+	var tone = str(value).strip_edges()
+	return tone if tone in ["gentle", "short_cute", "calm"] else "gentle"
+
+
+func _dialogue_tone_label(value: String) -> String:
+	var labels = {
+		"gentle": "温柔",
+		"short_cute": "元气",
+		"calm": "安静",
+	}
+	return str(labels.get(_sanitize_dialogue_tone(value), "温柔"))
 
 
 func _sanitize_behavior_adaptation(value) -> Dictionary:

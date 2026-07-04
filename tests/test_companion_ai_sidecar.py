@@ -84,7 +84,7 @@ class FakeOpenAIHandler(BaseHTTPRequestHandler):
         if route == "/summary-valid":
             self._send_openai_content({"favorite_interactions": ["feed_success"], "favorite_mode": "活泼", "favorite_period": "entertainment", "care_tendency": 80, "play_tendency": 20, "interruption_tolerance": "medium", "confidence": 80, "safety": "ok"})
             return
-        self._send_openai_content({"text": "AI摸摸头。", "seconds": 1.0, "emotion": "happy", "safety": "ok"})
+        self._send_openai_content({"text": "AI说辛苦啦。", "seconds": 1.0, "emotion": "happy", "safety": "ok"})
 
     def _send_openai_content(self, content: dict) -> None:
         payload = {"choices": [{"message": {"content": json.dumps(content, ensure_ascii=False)}}]}
@@ -119,7 +119,7 @@ class CompanionAISidecarTests(unittest.TestCase):
             self.assertEqual(health["provider"], "local_stub")
             status, expression = post_json(f"{base}/v1/expression", {
                 "key": "pet_head",
-                "fallback_text": "摸摸头。",
+                "fallback_text": "摸摸头，辛苦啦。",
                 "default_seconds": 1.8,
                 "personality": {"tone": "short_cute", "dialogue_style": {"max_chars": 28}},
             })
@@ -157,12 +157,12 @@ class CompanionAISidecarTests(unittest.TestCase):
             self.assertEqual(health["status"], "missing_config")
             status, expression = post_json(f"{base}/v1/expression", {
                 "key": "pet_head",
-                "fallback_text": "摸摸头。",
+                "fallback_text": "摸摸头，辛苦啦。",
                 "default_seconds": 1.8,
             })
             self.assertEqual(status, 200)
             self.assertEqual(expression["safety"], "fallback")
-            self.assertEqual(expression["text"], "摸摸头。")
+            self.assertEqual(expression["text"], "摸摸头，辛苦啦。")
             status, summary = post_json(f"{base}/v1/memory-summary", {"recent_events": []})
             self.assertEqual(status, 200)
             self.assertEqual(summary["safety"], "fallback")
@@ -191,7 +191,7 @@ class CompanionAISidecarTests(unittest.TestCase):
             os.environ["MASCOTMATE_OPENAI_COMPATIBLE_MODEL"] = "test-model"
             payload = {
                 "key": "pet_head",
-                "fallback_text": "摸摸头。",
+                "fallback_text": "摸摸头，辛苦啦。",
                 "default_seconds": 1.8,
                 "personality": {"dialogue_style": {"max_chars": 28}},
             }
@@ -205,7 +205,7 @@ class CompanionAISidecarTests(unittest.TestCase):
                     self.assertEqual(status, 200)
                     self.assertEqual(set(expression.keys()), {"text", "seconds", "emotion", "safety"})
                     self.assertEqual(expression["safety"], "fallback")
-                    self.assertEqual(expression["text"], "摸摸头。")
+                    self.assertEqual(expression["text"], "摸摸头，辛苦啦。")
             for route in ["http500", "bad-json", "non-json", "summary-invalid-schema", "summary-low-confidence"]:
                 with self.subTest(summary_route=route):
                     os.environ["MASCOTMATE_OPENAI_COMPATIBLE_URL"] = f"{upstream_base}/{route}"

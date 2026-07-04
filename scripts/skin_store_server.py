@@ -30,6 +30,7 @@ MAX_IMPORT_BYTES = 100 * 1024 * 1024
 INSTALLABLE_SOURCE_TYPES = {"curated_package", "local_package"}
 COMPANION_COMMANDS = {
     "set_behavior_mode",
+    "set_dialogue_tone",
     "set_adaptation",
     "set_ai_expression",
     "set_ai_memory_summary",
@@ -39,6 +40,7 @@ COMPANION_COMMANDS = {
     "run_scenario",
 }
 COMPANION_MODES = {"安静", "活泼", "捣乱"}
+COMPANION_DIALOGUE_TONES = {"gentle", "short_cute", "calm"}
 COMPANION_STRENGTHS = {"subtle", "visible", "bold"}
 COMPANION_AI_PROVIDERS = {"local_stub", "openai_compatible"}
 COMPANION_SCENARIOS = {
@@ -393,6 +395,11 @@ class SkinStoreApp:
             if mode not in COMPANION_MODES:
                 raise ValueError("行为模式不合法。")
             payload = {"mode": mode}
+        elif command == "set_dialogue_tone":
+            tone = str(payload.get("tone", body.get("tone", ""))).strip()
+            if tone not in COMPANION_DIALOGUE_TONES:
+                raise ValueError("文案语气不合法。")
+            payload = {"tone": tone}
         elif command == "set_adaptation":
             strength = str(payload.get("strength", body.get("strength", "visible"))).strip()
             if strength not in COMPANION_STRENGTHS:

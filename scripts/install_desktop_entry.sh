@@ -10,7 +10,7 @@ LEGACY_DESKTOP_FILE="$DESKTOP_DIR/crayon-shinchan-desktop-pet.desktop"
 ICON_NAME="mascotmate-desktop"
 ICON_FILE="$ICON_DIR/$ICON_NAME.png"
 LEGACY_ICON_FILE="$ICON_DIR/crayon-shinchan-desktop-pet.png"
-ICON_SOURCE="$(find "$ROOT_DIR/resource_hd/xianzhi" -maxdepth 1 -type f -name '*.png' 2>/dev/null | sort | head -n 1)"
+ICON_SOURCE="$ROOT_DIR/packaging/icons/mascotmate-desktop.png"
 
 if [[ -x "$GODOT_EXEC" ]]; then
   APP_EXEC="$GODOT_EXEC"
@@ -22,8 +22,11 @@ fi
 
 mkdir -p "$DESKTOP_DIR" "$ICON_DIR"
 rm -f "$LEGACY_DESKTOP_FILE" "$LEGACY_ICON_FILE"
-if [[ -n "$ICON_SOURCE" ]]; then
+if [[ -f "$ICON_SOURCE" ]]; then
   cp "$ICON_SOURCE" "$ICON_FILE"
+else
+  echo "Launcher icon not found: $ICON_SOURCE" >&2
+  exit 1
 fi
 
 sed \

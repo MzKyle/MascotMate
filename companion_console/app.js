@@ -75,6 +75,7 @@ function renderSnapshot(snapshot) {
   setMeter("affection", state.affection);
 
   const adaptation = valueAt(snapshot, ["config", "behavior_adaptation"], {});
+  $("dialogueTone").value = valueAt(snapshot, ["config", "dialogue_tone"], "gentle");
   $("adaptEnabled").checked = Boolean(adaptation.enabled);
   $("adaptStrength").value = adaptation.strength || "visible";
   const aiConfig = valueAt(snapshot, ["config", "ai_expression"], {});
@@ -254,6 +255,10 @@ function bindControls() {
       enabled: $("adaptEnabled").checked,
       strength: $("adaptStrength").value,
     },
+  }));
+  $("applyDialogueTone").addEventListener("click", () => sendCommand({
+    command: "set_dialogue_tone",
+    payload: { tone: $("dialogueTone").value },
   }));
   $("applyAiExpression").addEventListener("click", () => sendCommand({
     command: "set_ai_expression",

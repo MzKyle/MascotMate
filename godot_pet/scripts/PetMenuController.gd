@@ -13,6 +13,9 @@ const MENU_SCALE_150 := 12
 const MENU_QUIET := 20
 const MENU_ACTIVE := 21
 const MENU_MISCHIEF := 22
+const MENU_TONE_GENTLE := 23
+const MENU_TONE_SHORT_CUTE := 24
+const MENU_TONE_CALM := 25
 const MENU_CLEAR := 30
 const MENU_TOGGLE_GRAVITY := 40
 const MENU_EXIT_PEEK := 41
@@ -23,6 +26,7 @@ const MENU_EXIT := 99
 
 var popup: PopupMenu
 var current_behavior_mode := "安静"
+var current_dialogue_tone := "gentle"
 
 
 func _ready() -> void:
@@ -31,8 +35,9 @@ func _ready() -> void:
 	popup.id_pressed.connect(_on_menu_id_pressed)
 
 
-func show_menu(gravity_enabled: bool, peek_mode: bool, behavior_mode: String) -> void:
+func show_menu(gravity_enabled: bool, peek_mode: bool, behavior_mode: String, dialogue_tone := "gentle") -> void:
 	current_behavior_mode = behavior_mode
+	current_dialogue_tone = dialogue_tone
 	popup.clear()
 	popup.add_item("散步", MENU_WALK)
 	popup.add_item("饭团投喂", MENU_FEED)
@@ -55,6 +60,11 @@ func show_menu(gravity_enabled: bool, peek_mode: bool, behavior_mode: String) ->
 	popup.add_check_item("活泼模式", MENU_ACTIVE)
 	popup.add_check_item("捣乱模式", MENU_MISCHIEF)
 	_sync_behavior_menu_checks()
+	popup.add_separator()
+	popup.add_check_item("温柔文案", MENU_TONE_GENTLE)
+	popup.add_check_item("元气文案", MENU_TONE_SHORT_CUTE)
+	popup.add_check_item("安静文案", MENU_TONE_CALM)
+	_sync_tone_menu_checks()
 	popup.add_item("清理捣乱物", MENU_CLEAR)
 	popup.add_separator()
 	popup.add_item("退出", MENU_EXIT)
@@ -71,6 +81,18 @@ func _sync_behavior_menu_checks() -> void:
 		var index = popup.get_item_index(item_id)
 		if index >= 0:
 			popup.set_item_checked(index, modes[item_id] == current_behavior_mode)
+
+
+func _sync_tone_menu_checks() -> void:
+	var tones = {
+		MENU_TONE_GENTLE: "gentle",
+		MENU_TONE_SHORT_CUTE: "short_cute",
+		MENU_TONE_CALM: "calm",
+	}
+	for item_id in tones.keys():
+		var index = popup.get_item_index(item_id)
+		if index >= 0:
+			popup.set_item_checked(index, tones[item_id] == current_dialogue_tone)
 
 
 func _on_menu_id_pressed(id: int) -> void:
@@ -91,6 +113,9 @@ func _on_menu_id_pressed(id: int) -> void:
 		MENU_QUIET: "mode_quiet",
 		MENU_ACTIVE: "mode_active",
 		MENU_MISCHIEF: "mode_mischief",
+		MENU_TONE_GENTLE: "tone_gentle",
+		MENU_TONE_SHORT_CUTE: "tone_short_cute",
+		MENU_TONE_CALM: "tone_calm",
 		MENU_CLEAR: "clear_mischief",
 		MENU_EXIT: "exit",
 	}

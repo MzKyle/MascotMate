@@ -242,12 +242,12 @@ func _urgent_decision(status: Dictionary, memory: Dictionary, period: String, no
 		var last_feed = int(memory.get("last_feed_at", 0))
 		if now - last_feed >= 2 * 60 * 60 and _attention_cooldown_remaining(memory, period, now, adaptation) <= 0.0:
 			return _attach_adaptation(_attach_intent(
-				{"type": "prompt", "name": "hungry", "message": "有点饿了。", "retry_after": _adapted_cooldown_seconds(period, adaptation)},
+				{"type": "prompt", "name": "hungry", "message": "我有点饿了，要不要补点能量？", "retry_after": _adapted_cooldown_seconds(period, adaptation)},
 				_intent("care_request", "hungry", _reason_with_adaptation("hunger >= %d and last_feed_at older than 2h" % hunger_threshold, adaptation), 90, "prompt:hungry", "low")
 			), adaptation)
 	if mood <= play_threshold and period == "entertainment" and _attention_cooldown_remaining(memory, period, now, adaptation) <= 0.0:
 		return _attach_adaptation(_attach_intent(
-			{"type": "prompt", "name": "play", "message": "要不要玩一会儿？", "retry_after": _adapted_cooldown_seconds(period, adaptation)},
+			{"type": "prompt", "name": "play", "message": "要不要放松一下？", "retry_after": _adapted_cooldown_seconds(period, adaptation)},
 			_intent("play_request", "low_mood", _reason_with_adaptation("mood <= %d during entertainment period" % play_threshold, adaptation), 80, "prompt:play", "low")
 		), adaptation)
 	return {}
