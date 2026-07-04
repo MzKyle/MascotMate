@@ -235,7 +235,11 @@ func _start_hotkey_helper() -> void:
 
 func _stop_hotkey_helper() -> void:
 	if hotkey_pid > 0:
-		OS.kill(hotkey_pid)
+		var killed := false
+		if OS.get_name() == "Windows":
+			killed = OS.execute("taskkill", PackedStringArray(["/F", "/T", "/PID", str(hotkey_pid)]), [], true) == 0
+		if not killed:
+			OS.kill(hotkey_pid)
 		hotkey_pid = -1
 
 

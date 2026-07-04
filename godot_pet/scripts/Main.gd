@@ -27,6 +27,7 @@ const CompanionExpressionResolverScript = preload("res://scripts/CompanionExpres
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
 const COMPANION_DEBUG_REFRESH_SECONDS := 1.0
+const INITIAL_WINDOW_MARGIN := 40
 
 var repo_root := ""
 var manifest := {}
@@ -100,6 +101,7 @@ func _ready() -> void:
 	_create_nodes()
 	_play_capability("resting")
 	_sync_window_size(true)
+	_place_window_on_screen_if_needed()
 	physics.set_position_from_window(Vector2(get_window().position))
 	physics.set_gravity_enabled(gravity_enabled)
 	if transparent_window:
@@ -390,6 +392,34 @@ func _play_area() -> Rect2:
 		Vector2(DisplayServer.screen_get_position(screen)),
 		Vector2(DisplayServer.screen_get_size(screen))
 	)
+
+
+func _place_window_on_screen_if_needed() -> void:
+	var window = get_window()
+	var window_rect = Rect2(Vector2(window.position), Vector2(window.size))
+	if _window_rect_is_on_screen(window_rect):
+		return
+	var area = _play_area()
+	var min_pos = area.position + Vector2(INITIAL_WINDOW_MARGIN, INITIAL_WINDOW_MARGIN)
+	var max_pos = area.position + area.size - Vector2(window.size) - Vector2(INITIAL_WINDOW_MARGIN, INITIAL_WINDOW_MARGIN)
+	if max_pos.x < min_pos.x:
+		max_pos.x = area.position.x
+		min_pos.x = area.position.x
+	if max_pos.y < min_pos.y:
+		max_pos.y = area.position.y
+		min_pos.y = area.position.y
+	_apply_window_position(Vector2(max_pos.x, max_pos.y))
+
+
+func _window_rect_is_on_screen(rect: Rect2) -> bool:
+	for screen in range(DisplayServer.get_screen_count()):
+		var screen_rect = Rect2(
+			Vector2(DisplayServer.screen_get_position(screen)),
+			Vector2(DisplayServer.screen_get_size(screen))
+		)
+		if screen_rect.intersects(rect, true):
+			return true
+	return false
 
 
 func _movement_contact_rect() -> Rect2:
@@ -1121,6 +1151,7 @@ func _play_capability(capability: String, constraints: Dictionary = {}) -> bool:
 func show_bubble(text: String, seconds := 1.8) -> void:
 	if feedback != null:
 		feedback.show_bubble(text, seconds)
+		_update_mouse_passthrough()
 
 
 func _show_social_response(key: String, fallback_text: String, seconds := 1.8, suffix := "", context := {}) -> void:
@@ -1250,8 +1281,8 @@ func _update_mouse_passthrough() -> void:
 		_set_mouse_passthrough_polygon(PackedVector2Array())
 		return
 	if mischief_grab_active:
-		var rect = mischief_controller.stop_rect().grow(4.0)
-		_set_mouse_passthrough_polygon(_rect_polygon(rect))
+		var size = Vector2(window.size)
+		_set_mouse_passthrough_polygon(_rect_polygon(Rect2(Vector2.ZERO, size)))
 		return
 	if mini_games != null and mini_games.active != "":
 		if mini_games.active == "tease":
@@ -1270,6 +1301,9 @@ func _update_mouse_passthrough() -> void:
 
 	var visible_rect = pet_sprite.visible_rect()
 	var rect = Rect2(pet_sprite.position + visible_rect.position, visible_rect.size).grow(10.0)
+	var bubble_rect = _feedback_bubble_rect()
+	if bubble_rect.size.x > 1.0 and bubble_rect.size.y > 1.0:
+		rect = rect.merge(bubble_rect.grow(12.0))
 	rect = rect.intersection(Rect2(Vector2.ZERO, Vector2(window.size)))
 	if rect.size.x <= 1.0 or rect.size.y <= 1.0:
 		_set_mouse_passthrough_polygon(PackedVector2Array())
@@ -1294,6 +1328,12 @@ func _rect_polygon(rect: Rect2) -> PackedVector2Array:
 		rect.position + rect.size,
 		rect.position + Vector2(0, rect.size.y),
 	])
+
+
+func _feedback_bubble_rect() -> Rect2:
+	if feedback == null or feedback.bubble == null or not feedback.bubble.visible:
+		return Rect2()
+	return Rect2(feedback.bubble.position, feedback.bubble.size)
 
 
 func _set_mouse_passthrough_polygon(polygon: PackedVector2Array) -> void:

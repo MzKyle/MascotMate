@@ -31,7 +31,7 @@ def frame_files(relative_dir: str) -> list[Path]:
 
 
 def frames(relative_dir: str) -> list[str]:
-    return [str(Path(relative_dir) / path.name) for path in frame_files(relative_dir)]
+    return [(Path(relative_dir) / path.name).as_posix() for path in frame_files(relative_dir)]
 
 
 def used_rects(relative_dir: str) -> list[list[int]]:

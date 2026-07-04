@@ -3,7 +3,7 @@ config_version=5
 [application]
 
 config/name="MascotMate Desktop"
-config/version="1.2"
+config/version="1.2.3"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.6")
 config/icon="res://assets/app_icon.png"
@@ -22,4 +22,5 @@ window/per_pixel_transparency/allowed=true
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
 environment/defaults/default_clear_color=Color(0, 0, 0, 0)
