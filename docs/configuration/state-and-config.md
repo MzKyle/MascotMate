@@ -48,6 +48,14 @@
 
 `CompanionEventStore.gd` 会记录最近 200 条结构化陪伴事件，包括用户互动、自动提示、自动动作和轻特效。事件日志只作为 Companion Model v2 的事实来源，不参与当前行为决策；文件缺失或损坏时会自动从空日志恢复。
 
+## 陪伴记忆
+
+```text
+~/.config/mascotmate-desktop/companion_memory.json
+```
+
+`CompanionMemory.gd` 会从最近 200 条陪伴事件聚合今日计数、近 3 天计数、偏好互动、常用模式/时段、关系熟悉度和最近表达。当前记忆只影响气泡文案选择，不改变行为权重、冷却或核心状态数值；文件缺失或损坏时会从事件日志重新聚合。
+
 ## 应用与截图贴图配置
 
 ```text
@@ -119,6 +127,12 @@ rm -rf ~/.config/mascotmate-desktop/screenshots
 
 ```bash
 rm -f ~/.config/mascotmate-desktop/companion_events.json
+```
+
+清理陪伴记忆：
+
+```bash
+rm -f ~/.config/mascotmate-desktop/companion_memory.json
 ```
 
 清理用户导入皮肤：

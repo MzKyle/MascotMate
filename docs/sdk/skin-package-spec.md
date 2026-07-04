@@ -53,6 +53,34 @@ python3 scripts/pet_helper.py install-skin /path/to/my-skin.zip --output-root ~/
 
 兼容等级固定为：`excellent`、`good`、`partial`、`minimal`。评分由核心能力覆盖、缺失帧、fallback 使用、镜像补全和导入警告共同决定。
 
+## 可选人格
+
+皮肤可以声明 `personality`，用于 Companion Model v2 的表达语气和文案选择。缺失时运行时会使用默认人格，不影响旧皮肤加载。
+
+```json
+{
+  "personality": {
+    "version": 1,
+    "archetype": "playful",
+    "tone": "short_cute",
+    "traits": {
+      "playfulness": 70,
+      "mischief": 35,
+      "patience": 60,
+      "clinginess": 45
+    },
+    "favorite_intents": [],
+    "dialogue_style": {
+      "max_chars": 28,
+      "use_status_numbers": false,
+      "avoid_repeating_recent": true
+    }
+  }
+}
+```
+
+当前版本只使用 `tone` 和 `dialogue_style` 辅助表达选择；`traits` 为后续行为适配保留，不能绕过全局冷却、忙碌判断或能力边界。
+
 ## 能力标签
 
 核心能力必须尽量覆盖：

@@ -16,6 +16,8 @@ const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const AnimationResolverScript = preload("res://scripts/AnimationResolver.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
 const CompanionEventStoreScript = preload("res://scripts/CompanionEventStore.gd")
+const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
+const CompanionExpressionBankScript = preload("res://scripts/CompanionExpressionBank.gd")
 
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
@@ -39,6 +41,8 @@ var skin_manager
 var animation_resolver
 var skin_store_bridge
 var companion_event_store
+var companion_memory
+var companion_expression_bank
 var display_scale := 1.0
 var drag_offset := Vector2.ZERO
 var landing_squash := 0.0
@@ -117,6 +121,8 @@ func _notification(what: int) -> void:
 			state_store.flush_save()
 		if companion_event_store != null and companion_event_store.has_method("flush_save"):
 			companion_event_store.flush_save()
+		if companion_memory != null and companion_memory.has_method("flush_save"):
+			companion_memory.flush_save()
 		if skin_store_bridge != null:
 			skin_store_bridge.stop()
 		get_tree().quit()
@@ -145,6 +151,13 @@ func _create_nodes() -> void:
 	companion_event_store = CompanionEventStoreScript.new()
 	add_child(companion_event_store)
 	companion_event_store.configure(config_store.config_dir)
+
+	companion_memory = CompanionMemoryScript.new()
+	add_child(companion_memory)
+	companion_memory.configure(config_store.config_dir, companion_event_store)
+
+	companion_expression_bank = CompanionExpressionBankScript.new()
+	add_child(companion_expression_bank)
 
 	physics = PetPhysicsScript.new()
 	add_child(physics)
@@ -357,13 +370,13 @@ func _on_single_clicked(local_pos: Vector2) -> void:
 		var before = state_store.snapshot()
 		var changes = state_store.pet()
 		_record_interaction("pet", "", {}, ["social", "positive"], before, state_store.snapshot())
-		show_bubble("摸摸头。" + _format_changes(changes))
+		_show_expression("pet_head", "摸摸头。", 1.8, _format_changes(changes))
 		feedback.spawn_heart()
 	else:
 		var before = state_store.snapshot()
 		var changes = state_store.poke()
 		_record_interaction("poke", "", {}, ["social"], before, state_store.snapshot())
-		show_bubble("戳到了。" + _format_changes(changes))
+		_show_expression("poke_body", "戳到了。", 1.8, _format_changes(changes))
 		_jiggle()
 
 
@@ -385,7 +398,7 @@ func _on_grab_started(global_pos: Vector2) -> void:
 	drag_offset = get_viewport().get_mouse_position()
 	physics.begin_grab(global_pos - drag_offset)
 	_play_capability("held")
-	show_bubble("抱起来啦。")
+	_show_expression("grab_start", "抱起来啦。")
 
 
 func _on_grab_moved(global_pos: Vector2) -> void:
@@ -404,12 +417,12 @@ func _on_grab_released(velocity: Vector2, held: bool, global_pos: Vector2) -> vo
 		_record_interaction("throw", "", {"speed": speed}, ["physics"])
 		physics.release(velocity, true)
 		_play_capability("falling")
-		show_bubble("飞出去啦！")
+		_show_expression("throw_fast", "飞出去啦！")
 	else:
 		physics.release(velocity, false)
 		if held:
 			_record_interaction("release")
-			show_bubble("轻轻放下。")
+			_show_expression("release_soft", "轻轻放下。")
 
 
 func _on_landed() -> void:
@@ -463,13 +476,13 @@ func _on_behavior_action(action_name: String) -> void:
 			_play_capability("companion")
 			_sync_window_size(true)
 		"invite":
-			show_bubble("要不要玩一会儿？")
+			_show_expression("auto_prompt:play", "要不要玩一会儿？")
 
 
 func _on_behavior_prompt(kind: String, message: String) -> void:
 	if kind == "hungry":
 		feedback.spawn_note()
-	show_bubble(message, 2.4)
+	_show_expression("auto_prompt:%s" % kind, message, 2.4)
 
 
 func _on_behavior_effect(kind: String) -> void:
@@ -497,7 +510,7 @@ func _on_feed_success() -> void:
 	_record_interaction("feed", "", {"result": "success"}, ["care", "food", "positive"], before, state_store.snapshot())
 	_play_capability("feeding")
 	_sync_window_size(true)
-	show_bubble("吃到啦。" + _format_changes(changes))
+	_show_expression("feed_success", "吃到啦。", 1.8, _format_changes(changes))
 
 
 func _on_tease_success(count: int, direction: Vector2) -> void:
@@ -507,9 +520,9 @@ func _on_tease_success(count: int, direction: Vector2) -> void:
 		var before = state_store.snapshot()
 		var changes = state_store.play()
 		_record_interaction("play", "", {"count": count}, ["play", "positive"], before, state_store.snapshot())
-		show_bubble("嘿嘿，别挠啦。" + _format_changes(changes), 1.4)
+		_show_expression("tease_success", "嘿嘿，别挠啦。", 1.4, _format_changes(changes))
 	elif count >= 3:
-		show_bubble("玩够啦。", 1.3)
+		_show_expression("tease_done", "玩够啦。", 1.3)
 	if count >= 2:
 		feedback.spawn_heart()
 
@@ -531,7 +544,7 @@ func _start_tease_interaction() -> void:
 	tease_nudge = Vector2.ZERO
 	_sync_window_size(true)
 	_update_mouse_passthrough()
-	show_bubble("来逗我呀。", 1.4)
+	_show_expression("tease_start", "来逗我呀。", 1.4)
 
 
 func _apply_tease_nudge(direction: Vector2, count: int) -> void:
@@ -623,7 +636,7 @@ func _set_behavior_mode(value: String, announce := true) -> void:
 	if next_mode != "捣乱":
 		_stop_mischief_grab(false)
 	if announce:
-		show_bubble("%s模式。" % next_mode)
+		_show_expression("mode_changed", "%s模式。" % next_mode, 1.8, "", {"mode": next_mode})
 	if next_mode != previous_mode:
 		_record_interaction("", "mode_changed", {"from": previous_mode, "to": next_mode}, ["mode"])
 
@@ -792,6 +805,45 @@ func show_bubble(text: String, seconds := 1.8) -> void:
 		feedback.show_bubble(text, seconds)
 
 
+func _show_expression(key: String, fallback_text: String, seconds := 1.8, suffix := "", context := {}) -> void:
+	var expression_context = _expression_context(context)
+	if companion_expression_bank == null or not companion_expression_bank.has_method("resolve"):
+		show_bubble(fallback_text + suffix, seconds)
+		_record_expression(key, fallback_text)
+		return
+	var expression = companion_expression_bank.resolve(key, expression_context, fallback_text, seconds)
+	var text = str(expression.get("text", fallback_text))
+	show_bubble(text + suffix, float(expression.get("seconds", seconds)))
+	_record_expression(key, text)
+
+
+func _expression_context(context := {}) -> Dictionary:
+	var result := {}
+	if companion_memory != null and companion_memory.has_method("expression_context"):
+		result = companion_memory.expression_context({})
+	if typeof(context) == TYPE_DICTIONARY:
+		for key in context.keys():
+			result[key] = context[key]
+	result["mode"] = str(result.get("mode", behavior_mode))
+	result["skin_id"] = skin_manager.selected_skin_id() if skin_manager != null and skin_manager.has_method("selected_skin_id") else ""
+	result["state"] = state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {}
+	var personality = _selected_personality()
+	result["personality"] = personality
+	result["tone"] = str(personality.get("tone", "short_cute"))
+	return result
+
+
+func _record_expression(key: String, text: String) -> void:
+	if companion_memory != null and companion_memory.has_method("record_expression"):
+		companion_memory.record_expression(key, text)
+
+
+func _selected_personality() -> Dictionary:
+	if skin_manager != null and skin_manager.has_method("selected_personality"):
+		return skin_manager.selected_personality()
+	return {}
+
+
 func _on_feedback_window_requested(seconds: float) -> void:
 	if seconds <= 0.0:
 		return
@@ -913,7 +965,7 @@ func _exit_peek_mode(show_message: bool) -> void:
 	pet_sprite.reset_transform()
 	_update_mouse_passthrough()
 	if show_message:
-		show_bubble("被发现啦。")
+		_show_expression("peek_exit", "被发现啦。")
 	_record_interaction("", "peek_exit", {"edge": previous_edge}, ["peek"])
 
 
@@ -951,6 +1003,9 @@ func _behavior_context() -> Dictionary:
 		"state": state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {},
 		"state_store": state_store,
 		"event_store": companion_event_store,
+		"memory_store": companion_memory,
+		"memory": companion_memory.snapshot() if companion_memory != null and companion_memory.has_method("snapshot") else {},
+		"personality": _selected_personality(),
 	}
 
 
@@ -971,7 +1026,9 @@ func _record_interaction(legacy_kind: String, event_kind := "", meta := {}, tags
 func _record_companion_event(kind: String, source: String, meta := {}, tags := [], state_before := {}, state_after := {}) -> void:
 	if companion_event_store == null or not companion_event_store.has_method("record_event"):
 		return
-	companion_event_store.record_event(kind, source, _event_context(), meta, tags, state_before, state_after)
+	var event = companion_event_store.record_event(kind, source, _event_context(), meta, tags, state_before, state_after)
+	if typeof(event) == TYPE_DICTIONARY and not event.is_empty() and companion_memory != null and companion_memory.has_method("refresh"):
+		companion_memory.refresh()
 
 
 func _event_context() -> Dictionary:
@@ -982,6 +1039,8 @@ func _event_context() -> Dictionary:
 		"peek_mode": peek_mode,
 		"skin_id": skin_manager.selected_skin_id() if skin_manager != null and skin_manager.has_method("selected_skin_id") else "",
 		"state": state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {},
+		"memory": companion_memory.snapshot() if companion_memory != null and companion_memory.has_method("snapshot") else {},
+		"personality": _selected_personality(),
 	}
 
 

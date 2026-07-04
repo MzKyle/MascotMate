@@ -65,6 +65,17 @@ func recent_events(limit := 20) -> Array:
 	return result
 
 
+func all_events() -> Array:
+	var events = data.get("events", [])
+	if typeof(events) != TYPE_ARRAY:
+		return []
+	var result := []
+	for event in events:
+		if typeof(event) == TYPE_DICTIONARY:
+			result.append(event.duplicate(true))
+	return result
+
+
 func flush_save() -> void:
 	if event_path == "":
 		return

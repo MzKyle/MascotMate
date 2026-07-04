@@ -6,6 +6,23 @@ signal skin_selected(skin_id)
 const DEFAULT_SKIN_ID := "classic_shinchan"
 const DEFAULT_SKIN_PATH := "res://assets/skins/classic_shinchan/skin.json"
 const CORE_CAPABILITIES := ["resting", "locomotion", "falling", "held", "edge"]
+const DEFAULT_PERSONALITY := {
+	"version": 1,
+	"archetype": "playful",
+	"tone": "short_cute",
+	"traits": {
+		"playfulness": 70,
+		"mischief": 35,
+		"patience": 60,
+		"clinginess": 45,
+	},
+	"favorite_intents": [],
+	"dialogue_style": {
+		"max_chars": 28,
+		"use_status_numbers": false,
+		"avoid_repeating_recent": true,
+	},
+}
 
 var repo_root := ""
 var config_dir := ""
@@ -60,6 +77,10 @@ func selected_skin_id() -> String:
 
 func selected_skin_name() -> String:
 	return str(current_skin.get("name", selected_skin_id()))
+
+
+func selected_personality() -> Dictionary:
+	return _normalized_personality(current_skin.get("personality", {}))
 
 
 func delete_user_skin(skin_id: String) -> bool:
@@ -146,6 +167,10 @@ func _normalized_skin(source: Dictionary, path: String, kind: String) -> Diction
 		skin["source"] = {}
 	if not skin.has("behavior_profile") or typeof(skin["behavior_profile"]) != TYPE_DICTIONARY:
 		skin["behavior_profile"] = {}
+	var personality_source = skin.get("personality", {})
+	if (typeof(personality_source) != TYPE_DICTIONARY or personality_source.is_empty()) and typeof(skin["behavior_profile"]) == TYPE_DICTIONARY:
+		personality_source = skin["behavior_profile"].get("personality", {})
+	skin["personality"] = _normalized_personality(personality_source)
 	var report = _load_import_report(path)
 	if not report.is_empty():
 		skin["import_report"] = report
@@ -230,6 +255,41 @@ func _add_skin(skin: Dictionary) -> void:
 	var skin_id = str(skin.get("id", ""))
 	if skin_id != "":
 		skins_by_id[skin_id] = skin
+
+
+func _default_personality() -> Dictionary:
+	return DEFAULT_PERSONALITY.duplicate(true)
+
+
+func _normalized_personality(source) -> Dictionary:
+	var result = _default_personality()
+	if typeof(source) != TYPE_DICTIONARY:
+		return result
+	result["version"] = max(1, int(source.get("version", result["version"])))
+	var archetype = str(source.get("archetype", result["archetype"])).strip_edges()
+	if archetype != "":
+		result["archetype"] = archetype
+	var tone = str(source.get("tone", result["tone"])).strip_edges()
+	if tone != "":
+		result["tone"] = tone
+	var traits = source.get("traits", {})
+	if typeof(traits) == TYPE_DICTIONARY:
+		for key in result["traits"].keys():
+			result["traits"][key] = clampi(int(traits.get(key, result["traits"][key])), 0, 100)
+	var favorite_intents := []
+	var source_favorites = source.get("favorite_intents", [])
+	if typeof(source_favorites) == TYPE_ARRAY:
+		for item in source_favorites:
+			var value = str(item).strip_edges()
+			if value != "":
+				favorite_intents.append(value)
+	result["favorite_intents"] = favorite_intents
+	var dialogue_style = source.get("dialogue_style", {})
+	if typeof(dialogue_style) == TYPE_DICTIONARY:
+		result["dialogue_style"]["max_chars"] = clampi(int(dialogue_style.get("max_chars", result["dialogue_style"]["max_chars"])), 8, 80)
+		result["dialogue_style"]["use_status_numbers"] = bool(dialogue_style.get("use_status_numbers", result["dialogue_style"]["use_status_numbers"]))
+		result["dialogue_style"]["avoid_repeating_recent"] = bool(dialogue_style.get("avoid_repeating_recent", result["dialogue_style"]["avoid_repeating_recent"]))
+	return result
 
 
 func _legacy_default_skin() -> Dictionary:

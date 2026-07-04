@@ -21,12 +21,15 @@ v2 的目标是把当前规则系统升级成“本地优先、可解释、低�
 
 ## 当前实施状态
 
-首批实现范围是事件日志和意图骨架：
+当前已完成本地陪伴闭环 v1：
 
 - `CompanionEventStore.gd` 持久化最近 200 条用户互动和自动行为事件。
 - `BehaviorBrain.decide()` 在原有 decision 字段外附带 `intent` 元数据。
 - 自动 prompt、action、effect 会记录到 `companion_events.json`。
-- 表达库、长期记忆、皮肤人格和 AI sidecar 仍是后续阶段。
+- `CompanionMemory.gd` 从事件日志聚合今日/近 3 天计数、偏好互动、常用模式/时段和关系熟悉度。
+- `SkinManager.gd` 会为皮肤归一化可选 `personality`，缺失时使用默认人格。
+- `CompanionExpressionBank.gd` 负责互动和自动提示气泡的本地表达选择，可读取记忆、人格 tone 和最近文案。
+- AI sidecar、长期历史迁移和记忆驱动行为权重仍是后续阶段。
 
 ## 设计原则
 
@@ -141,53 +144,47 @@ flowchart TB
 | short-term memory | 最近 1-3 天 | 识别今天互动、最近模式、最近偏好 |
 | long-term profile | 长期累积 | 用户偏好、角色关系、互动习惯 |
 
-推荐存储结构：
+当前 Memory v1 存储在独立的 `companion_memory.json`，由最近 200 条事件重新聚合：
 
 ```json
 {
-  "version": 3,
-  "core": {
-    "mood": 70,
-    "hunger": 60,
-    "energy": 80,
-    "affection": 30
+  "version": 1,
+  "updated_at": 1761998400,
+  "daily": {
+    "date": "2026-07-04",
+    "counts": {
+      "feed_success": 1,
+      "tease_success": 3
+    },
+    "last_event_at": 1761998400
   },
-  "memory": {
-    "last_interaction_at": 0,
-    "last_interaction_kind": "",
-    "last_prompt_at": 0,
-    "last_action_at": 0,
-    "interaction_counts": {}
+  "short_term": {
+    "days": 3,
+    "counts": {},
+    "mode_counts": {},
+    "period_counts": {},
+    "recent_kinds": [],
+    "last_event_kind": "tease_success"
   },
-  "companion": {
-    "recent_events": [],
-    "daily": {
-      "date": "2026-07-04",
-      "counts": {
-        "feed_success": 1,
-        "tease_success": 3
-      },
-      "last_summary": ""
-    },
-    "preferences": {
-      "favorite_interactions": [],
-      "quiet_hours": [],
-      "ignored_prompt_counts": {}
-    },
-    "relationship": {
-      "trust": 30,
-      "playfulness": 50,
-      "familiarity": 1
-    },
-    "dialogue": {
-      "recent_lines": [],
-      "last_intent_at": {}
-    }
+  "preferences": {
+    "favorite_interactions": [],
+    "favorite_mode": "活泼",
+    "favorite_period": "entertainment"
+  },
+  "relationship": {
+    "level": "familiar",
+    "familiarity": 33,
+    "care_score": 10,
+    "play_score": 10
+  },
+  "dialogue": {
+    "recent_lines": [],
+    "last_intent_at": {}
   }
 }
 ```
 
-`core` 可以继续由当前字段承载，不要求一次迁移成嵌套结构。关键是新增 `companion` 命名空间，避免污染旧字段。
+`StateStore.gd` 的四维核心数值仍保留在 `state.json`。Memory v1 只为表达层提供上下文，不改变行为决策权重、冷却和状态数值。
 
 ### Companion Intent
 
@@ -232,6 +229,8 @@ flowchart TB
 ### Companion Expression
 
 表达是 intent 到运行时动作的翻译结果。
+
+Expression Bank v1 已覆盖用户互动和自动提示气泡。它不读取外部 JSON，也不改变动作、状态数值或行为权重；没有匹配表达时会使用调用方传入的原始文案作为 fallback。当前实现会读取 `CompanionMemory` 的关系熟悉度、偏好互动、最近表达，以及皮肤 `personality.tone`，用于选择上下文候选文案。
 
 示例：
 
@@ -332,7 +331,7 @@ v1 用 `work`、`entertainment`、`rest` 三段即可继续保留。v2 应把时
 }
 ```
 
-人格只影响权重、文案和表达风格，不允许绕过全局安全约束：
+当前实现会归一化人格字段，并只让它影响文案和表达风格。后续如果让人格影响权重，也不允许绕过全局安全约束：
 
 - 不能缩短到低于全局下限的打扰冷却。
 - 不能在忙碌状态强行打断用户操作。
@@ -341,7 +340,7 @@ v1 用 `work`、`entertainment`、`rest` 三段即可继续保留。v2 应把时
 
 ## 文案与表达库
 
-新增 `CompanionExpressionBank` 或资源文件，例如：
+当前 `CompanionExpressionBank.gd` 先使用 GDScript 内置候选表，支持 `tones`、`relationship_levels`、`favorite_interactions`、`modes`、`periods` 条件。后续如果资源化，可以迁移为等价 JSON，例如：
 
 ```json
 {
@@ -501,13 +500,13 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。
 ### 第四步：皮肤人格
 
 - `SkinManager.gd` 合并 `personality` 默认值。
-- `BehaviorBrain.gd` 按人格 traits 调整 intent 权重。
-- `CompanionExpressionBank` 按 tone 选择文案。
+- `CompanionExpressionBank` 按 tone、熟悉度和偏好选择文案。
+- `BehaviorBrain.gd` 按人格 traits 调整 intent 权重属于后续增强。
 
 验收标准：
 
 - 缺少人格字段的旧皮肤完全兼容。
-- 不同皮肤可以改变陪伴动作倾向和语气，但不能破坏全局冷却。
+- 不同皮肤可以改变表达语气；行为倾向仍由现有 `behavior_profile` 控制，后续再接 traits。
 
 ### 第五步：AI 表达增强
 
@@ -528,9 +527,10 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。
 需要新增或扩展：
 
 - 事件存储读写、裁剪、损坏恢复。
+- 记忆聚合、损坏恢复和最近表达记录。
 - v2 状态迁移。
 - intent 生成原因。
-- expression 文案选择与去重。
+- expression 文案选择、上下文候选和去重。
 - 皮肤人格缺省合并。
 - AI 超时和回退。
 
@@ -562,7 +562,8 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。
 
 ## 兼容性
 
-- 旧 `state.json` 读取后补齐 `companion` 命名空间。
+- 旧 `state.json` 继续只承载核心状态和旧 memory 字段，不迁移到嵌套 `companion` 命名空间。
+- `companion_memory.json` 可由事件日志重建，损坏时丢弃并重新聚合。
 - 旧 `behavior.json` 继续有效。
 - 旧 `skin.json` 缺少 `personality` 时使用默认人格。
 - 旧信号保留，新增 v2 intent 可以先只在内部使用。
@@ -583,11 +584,11 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。
 
 不按日期排期，按依赖推进：
 
-1. `CompanionEventStore`：先让系统知道发生过什么。
-2. 表达库：把文案从 `Main.gd` 抽出，建立 key 和去重。
-3. intent 层：让行为决策有语义和原因。
-4. 记忆聚合：从事件中总结偏好和近期状态。
-5. 皮肤人格：让不同皮肤在同一模型下有差异。
-6. AI sidecar：只增强文案，不接管行为。
+1. 已完成 `CompanionEventStore`：系统知道发生过什么。
+2. 已完成表达库：文案从 `Main.gd` 抽出，建立 key 和去重。
+3. 已完成 intent 层：行为决策有语义和原因。
+4. 已完成本地陪伴闭环 v1：从事件中聚合记忆，结合皮肤人格选择表达。
+5. 后续行为适配：让记忆和人格在全局冷却约束内轻微影响行为权重。
+6. 后续 AI sidecar：只增强文案，不接管行为。
 
 这一顺序的好处是每一步都能单独验收，并且不会要求一次性重写运行时。

@@ -423,7 +423,10 @@ func _record_automatic_event(decision: Dictionary, context: Dictionary, now: int
 		"intent_key": _intent_key(intent),
 		"reason": str(intent.get("reason", "")),
 	}
-	event_store.record_event(event_kind, "system", event_context, meta, [decision_type], {}, {}, now)
+	var event = event_store.record_event(event_kind, "system", event_context, meta, [decision_type], {}, {}, now)
+	var memory_store = context.get("memory_store", null)
+	if typeof(event) == TYPE_DICTIONARY and not event.is_empty() and memory_store != null and memory_store.has_method("refresh"):
+		memory_store.refresh(now)
 
 
 func _state_from_context(context: Dictionary) -> Dictionary:

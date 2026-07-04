@@ -10,6 +10,8 @@ const MiniGamesScript = preload("res://scripts/MiniGames.gd")
 const SkinCatalogClientScript = preload("res://scripts/SkinCatalogClient.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
 const CompanionEventStoreScript = preload("res://scripts/CompanionEventStore.gd")
+const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
+const CompanionExpressionBankScript = preload("res://scripts/CompanionExpressionBank.gd")
 
 const FIXED_ENTERTAINMENT_TIME := 1761998400
 
@@ -50,6 +52,85 @@ func _run() -> void:
 	var recovered = event_store.recent_events(1)
 	if recovered.size() != 1 or str(recovered[0].get("kind", "")) != "after_corrupt":
 		_fail("CompanionEventStore did not recover after invalid JSON: %s" % JSON.stringify(recovered))
+		return
+	var all_recovered_events = event_store.all_events()
+	if all_recovered_events.size() != 1 or str(all_recovered_events[0].get("kind", "")) != "after_corrupt":
+		_fail("CompanionEventStore all_events returned unexpected data: %s" % JSON.stringify(all_recovered_events))
+		return
+
+	event_store.record_event("pet_head", "user", {"mode": "活泼", "period": "entertainment", "skin_id": "test_skin"}, {}, ["social"], {}, {}, FIXED_ENTERTAINMENT_TIME + 10)
+	event_store.record_event("feed_success", "user", {"mode": "活泼", "period": "entertainment", "skin_id": "test_skin"}, {}, ["care"], {}, {}, FIXED_ENTERTAINMENT_TIME + 20)
+	event_store.record_event("tease_success", "user", {"mode": "活泼", "period": "entertainment", "skin_id": "test_skin"}, {}, ["play"], {}, {}, FIXED_ENTERTAINMENT_TIME + 30)
+	var memory_store = CompanionMemoryScript.new()
+	root_node.add_child(memory_store)
+	memory_store.configure(config_dir, event_store)
+	memory_store.refresh(FIXED_ENTERTAINMENT_TIME + 40)
+	var memory_snapshot = memory_store.snapshot()
+	var daily_counts = memory_snapshot.get("daily", {}).get("counts", {})
+	var short_counts = memory_snapshot.get("short_term", {}).get("counts", {})
+	if int(daily_counts.get("pet_head", 0)) != 1 or int(short_counts.get("feed_success", 0)) != 1 or int(short_counts.get("tease_success", 0)) != 1:
+		_fail("CompanionMemory did not aggregate event counts: %s" % JSON.stringify(memory_snapshot))
+		return
+	var favorites = memory_snapshot.get("preferences", {}).get("favorite_interactions", [])
+	if typeof(favorites) != TYPE_ARRAY or not favorites.has("pet_head") or not favorites.has("feed_success") or not favorites.has("tease_success"):
+		_fail("CompanionMemory did not derive favorite interactions: %s" % JSON.stringify(memory_snapshot))
+		return
+	var relationship = memory_snapshot.get("relationship", {})
+	if typeof(relationship) != TYPE_DICTIONARY or str(relationship.get("level", "")) != "familiar" or int(relationship.get("familiarity", 0)) < 25:
+		_fail("CompanionMemory did not derive the expected relationship level: %s" % JSON.stringify(memory_snapshot))
+		return
+	memory_store.record_expression("pet_head", "今天也摸摸头。", FIXED_ENTERTAINMENT_TIME + 41)
+	var memory_context = memory_store.expression_context({"mode": "活泼"})
+	var recent_expression_texts = memory_context.get("recent_expression_texts", [])
+	if typeof(recent_expression_texts) != TYPE_ARRAY or not recent_expression_texts.has("今天也摸摸头。"):
+		_fail("CompanionMemory did not expose recent expression text: %s" % JSON.stringify(memory_context))
+		return
+	var corrupt_memory_file = FileAccess.open(config_dir.path_join("companion_memory.json"), FileAccess.WRITE)
+	if corrupt_memory_file == null:
+		_fail("CompanionMemory file could not be opened for corruption test.")
+		return
+	corrupt_memory_file.store_string("{broken")
+	corrupt_memory_file = null
+	memory_store.configure(config_dir, event_store)
+	memory_store.refresh(FIXED_ENTERTAINMENT_TIME + 50)
+	var recovered_memory = memory_store.snapshot()
+	var recovered_counts = recovered_memory.get("short_term", {}).get("counts", {})
+	if int(recovered_counts.get("pet_head", 0)) != 1 or int(recovered_counts.get("feed_success", 0)) != 1:
+		_fail("CompanionMemory did not recover after invalid JSON: %s" % JSON.stringify(recovered_memory))
+		return
+
+	var expression_bank = CompanionExpressionBankScript.new()
+	root_node.add_child(expression_bank)
+	var pet_expression = expression_bank.resolve("pet_head")
+	if not bool(pet_expression.get("found", false)) or str(pet_expression.get("text", "")) != "摸摸头。":
+		_fail("CompanionExpressionBank did not return the default pet_head line: %s" % JSON.stringify(pet_expression))
+		return
+	var repeated_pet_expression = expression_bank.resolve("pet_head")
+	if str(repeated_pet_expression.get("text", "")) == str(pet_expression.get("text", "")):
+		_fail("CompanionExpressionBank did not avoid a recently used line: %s then %s" % [JSON.stringify(pet_expression), JSON.stringify(repeated_pet_expression)])
+		return
+	var fallback_expression = expression_bank.resolve("missing_key", {}, "fallback")
+	if bool(fallback_expression.get("found", true)) or str(fallback_expression.get("text", "")) != "fallback":
+		_fail("CompanionExpressionBank missing key fallback failed: %s" % JSON.stringify(fallback_expression))
+		return
+	var mode_expression = expression_bank.resolve("mode_changed", {"mode": "活泼"})
+	if str(mode_expression.get("text", "")) != "活泼模式。":
+		_fail("CompanionExpressionBank template replacement failed: %s" % JSON.stringify(mode_expression))
+		return
+	var hungry_expression = expression_bank.resolve("auto_prompt:hungry")
+	var play_expression = expression_bank.resolve("auto_prompt:play")
+	if not bool(hungry_expression.get("found", false)) or not bool(play_expression.get("found", false)):
+		_fail("CompanionExpressionBank auto prompt expressions are missing: hungry=%s play=%s" % [JSON.stringify(hungry_expression), JSON.stringify(play_expression)])
+		return
+	expression_bank.reset_history()
+	var contextual_pet_expression = expression_bank.resolve("pet_head", {
+		"tone": "short_cute",
+		"relationship_level": "familiar",
+		"favorite_interactions": ["pet_head"],
+		"recent_expression_texts": ["摸摸头。", "再摸一下也可以。"],
+	})
+	if str(contextual_pet_expression.get("text", "")) != "今天也摸摸头。":
+		_fail("CompanionExpressionBank did not select the contextual pet_head line: %s" % JSON.stringify(contextual_pet_expression))
 		return
 
 	var state_store = StateStoreScript.new()
@@ -112,13 +193,17 @@ func _run() -> void:
 	if str(effect_decision.get("type", "")) != "effect" or str(effect_decision.get("name", "")) != "footprint":
 		_fail("BehaviorBrain did not produce active footprint as an effect: %s" % JSON.stringify(effect_decision))
 		return
-	effect_brain._emit_decision(effect_decision, {"state": calm_state, "event_store": event_store})
+	effect_brain._emit_decision(effect_decision, {"state": calm_state, "event_store": event_store, "memory_store": memory_store})
 	if str(effect_events["effect"]) != "footprint" or str(effect_events["mischief"]) != "":
 		_fail("BehaviorBrain effect signal routing was wrong: %s" % JSON.stringify(effect_events))
 		return
 	var auto_effect_events = event_store.recent_events(1)
 	if auto_effect_events.size() != 1 or str(auto_effect_events[0].get("kind", "")) != "auto_effect":
 		_fail("BehaviorBrain did not record an auto_effect event: %s" % JSON.stringify(auto_effect_events))
+		return
+	var auto_memory_counts = memory_store.snapshot().get("short_term", {}).get("counts", {})
+	if int(auto_memory_counts.get("auto_effect", 0)) < 1:
+		_fail("BehaviorBrain did not refresh CompanionMemory after auto_effect: %s" % JSON.stringify(memory_store.snapshot()))
 		return
 
 	var forced_brain = BehaviorBrainScript.new()
@@ -154,6 +239,15 @@ func _run() -> void:
 	skin_manager.configure(repo_root, config_dir, _load_json("res://assets/actions.json"))
 	if not skin_manager.select_skin("classic_shinchan"):
 		_fail("Default skin could not be selected.")
+		return
+	var default_personality = skin_manager.selected_personality()
+	if str(default_personality.get("tone", "")) != "short_cute" or int(default_personality.get("traits", {}).get("playfulness", 0)) != 70:
+		_fail("SkinManager did not provide the default personality: %s" % JSON.stringify(default_personality))
+		return
+	skin_manager.current_skin.erase("personality")
+	var fallback_personality = skin_manager.selected_personality()
+	if str(fallback_personality.get("archetype", "")) != "playful" or int(fallback_personality.get("dialogue_style", {}).get("max_chars", 0)) != 28:
+		_fail("SkinManager did not recover a missing personality: %s" % JSON.stringify(fallback_personality))
 		return
 
 	var catalog_client = SkinCatalogClientScript.new()
