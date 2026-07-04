@@ -168,12 +168,16 @@ func decide(context: Dictionary, now_unix := 0) -> Dictionary:
 	if mode == "安静":
 		return {"type": "none", "retry_after": float(companion_config.get("tick_seconds", 60.0))}
 	if period == "rest":
-		return {"type": "action", "name": "sleep", "retry_after": 180.0}
+		return _attach_intent(
+			{"type": "action", "name": "sleep", "retry_after": 180.0},
+			_intent("rest_request", "rest_period", "period is rest and active behavior should sleep", 85, "action:sleep", "low")
+		)
 
 	var action = _pick_contextual_action(mode, status, period)
 	if action.is_empty():
 		return {"type": "none", "retry_after": float(companion_config.get("tick_seconds", 60.0))}
 	action["retry_after"] = _cooldown_seconds(period)
+	action["intent"] = _intent_for_contextual_action(action, status, period)
 	return action
 
 
@@ -226,15 +230,27 @@ func _urgent_decision(status: Dictionary, memory: Dictionary, period: String, no
 	var energy = int(status.get("energy", 80))
 	var mood = int(status.get("mood", 70))
 	if energy <= 20:
-		return {"type": "action", "name": "sleep", "retry_after": 180.0}
+		return _attach_intent(
+			{"type": "action", "name": "sleep", "retry_after": 180.0},
+			_intent("rest_request", "sleepy", "energy <= 20", 95, "action:sleep", "low")
+		)
 	if period == "rest" and energy < 85:
-		return {"type": "action", "name": "sleep", "retry_after": 180.0}
+		return _attach_intent(
+			{"type": "action", "name": "sleep", "retry_after": 180.0},
+			_intent("rest_request", "rest_period", "period is rest and energy < 85", 90, "action:sleep", "low")
+		)
 	if hunger >= 80 and period != "rest":
 		var last_feed = int(memory.get("last_feed_at", 0))
 		if now - last_feed >= 2 * 60 * 60 and _attention_cooldown_remaining(memory, period, now) <= 0.0:
-			return {"type": "prompt", "name": "hungry", "message": "有点饿了。", "retry_after": _cooldown_seconds(period)}
+			return _attach_intent(
+				{"type": "prompt", "name": "hungry", "message": "有点饿了。", "retry_after": _cooldown_seconds(period)},
+				_intent("care_request", "hungry", "hunger >= 80 and last_feed_at older than 2h", 90, "prompt:hungry", "low")
+			)
 	if mood <= 35 and period == "entertainment" and _attention_cooldown_remaining(memory, period, now) <= 0.0:
-		return {"type": "prompt", "name": "play", "message": "要不要玩一会儿？", "retry_after": _cooldown_seconds(period)}
+		return _attach_intent(
+			{"type": "prompt", "name": "play", "message": "要不要玩一会儿？", "retry_after": _cooldown_seconds(period)},
+			_intent("play_request", "low_mood", "mood <= 35 during entertainment period", 80, "prompt:play", "low")
+		)
 	return {}
 
 
@@ -294,6 +310,27 @@ func _pick_weighted(actions: Array) -> Dictionary:
 	return {"type": str(last.get("type", "")), "name": str(last.get("name", ""))} if typeof(last) == TYPE_DICTIONARY else {}
 
 
+func _intent_for_contextual_action(action: Dictionary, status: Dictionary, period: String) -> Dictionary:
+	var action_type = str(action.get("type", ""))
+	var action_name = str(action.get("name", ""))
+	var reason = "weighted action selected for %s mode during %s period" % [mode, period]
+	if action_type == "mischief" and action_name == "grab":
+		return _intent("mischief", "grab_mouse", reason, 70, "mischief:grab", "medium", "weighted")
+	if action_type == "effect" and action_name == "footprint":
+		return _intent("ambient", "footprint", reason, 35, "effect:footprint", "low", "weighted")
+	if action_name == "edge":
+		return _intent("ambient", "edge_peek", reason, 40, "action:edge", "low", "weighted")
+	if action_name == "invite":
+		return _intent("play_request", "invite", "weighted invite selected with mood %d" % int(status.get("mood", 70)), 55, "action:invite", "low", "weighted")
+	if action_name == "walk":
+		return _intent("ambient", "walk", reason, 35, "action:walk", "low", "weighted")
+	if action_name == "idle":
+		return _intent("ambient", "idle", reason, 25, "action:idle", "low", "weighted")
+	if action_name == "companion":
+		return _intent("ambient", "companion_pose", reason, 35, "action:companion", "low", "weighted")
+	return _intent("ambient", action_name if action_name != "" else action_type, reason, 30, "%s:%s" % [action_type, action_name], "low", "weighted")
+
+
 func _attention_cooldown_remaining(memory: Dictionary, period: String, now: int) -> float:
 	var last_attention = max(
 		int(memory.get("last_prompt_at", 0)),
@@ -321,6 +358,7 @@ func _forced_mischief_decision(now: float, blocked: bool, period: String) -> Dic
 		"name": forced_mischief_kind,
 		"forced_mischief": true,
 		"retry_after": _cooldown_seconds(period),
+		"intent": _intent("mischief", "grab_mouse", "forced mischief requested and ready", 90, "mischief:%s" % forced_mischief_kind, "medium", "forced"),
 	}
 
 
@@ -350,12 +388,42 @@ func _remember_decision(decision: Dictionary, context: Dictionary) -> void:
 	elif decision_type in ["action", "mischief", "effect"]:
 		local_memory["last_action_at"] = now
 	var store = context.get("state_store", null)
-	if store == null:
+	if store != null:
+		if decision_type == "prompt" and store.has_method("record_prompt"):
+			store.record_prompt(str(decision.get("name", "")), now)
+		elif decision_type in ["action", "mischief", "effect"] and store.has_method("record_action"):
+			store.record_action("%s:%s" % [decision_type, str(decision.get("name", ""))], now)
+	_record_automatic_event(decision, context, now)
+
+
+func _record_automatic_event(decision: Dictionary, context: Dictionary, now: int) -> void:
+	var decision_type = str(decision.get("type", ""))
+	if not decision_type in ["prompt", "action", "mischief", "effect"]:
 		return
-	if decision_type == "prompt" and store.has_method("record_prompt"):
-		store.record_prompt(str(decision.get("name", "")), now)
-	elif decision_type in ["action", "mischief", "effect"] and store.has_method("record_action"):
-		store.record_action("%s:%s" % [decision_type, str(decision.get("name", ""))], now)
+	var event_store = context.get("event_store", null)
+	if event_store == null or not event_store.has_method("record_event"):
+		return
+	var event_kind = "auto_action"
+	if decision_type == "prompt":
+		event_kind = "auto_prompt"
+	elif decision_type == "effect":
+		event_kind = "auto_effect"
+	var intent = decision.get("intent", {})
+	if typeof(intent) != TYPE_DICTIONARY:
+		intent = {}
+	var event_context = context.duplicate(true)
+	if not event_context.has("period"):
+		event_context["period"] = _period_for(now)
+	var store = context.get("state_store", null)
+	if store != null and store.has_method("snapshot"):
+		event_context["state"] = store.snapshot()
+	var meta = {
+		"decision_type": decision_type,
+		"decision_name": str(decision.get("name", "")),
+		"intent_key": _intent_key(intent),
+		"reason": str(intent.get("reason", "")),
+	}
+	event_store.record_event(event_kind, "system", event_context, meta, [decision_type], {}, {}, now)
 
 
 func _state_from_context(context: Dictionary) -> Dictionary:
@@ -373,6 +441,32 @@ func _memory_from_state(status: Dictionary) -> Dictionary:
 		if not memory.has(key):
 			memory[key] = local_memory[key]
 	return memory
+
+
+func _attach_intent(decision: Dictionary, intent: Dictionary) -> Dictionary:
+	var result = decision.duplicate(true)
+	result["intent"] = intent
+	return result
+
+
+func _intent(intent_type: String, intent_name: String, reason: String, priority: int, cooldown_key: String, interruption_level: String, source := "rule") -> Dictionary:
+	return {
+		"type": intent_type,
+		"name": intent_name,
+		"reason": reason,
+		"priority": priority,
+		"cooldown_key": cooldown_key,
+		"interruption_level": interruption_level,
+		"source": source,
+	}
+
+
+func _intent_key(intent: Dictionary) -> String:
+	var intent_type = str(intent.get("type", ""))
+	var intent_name = str(intent.get("name", ""))
+	if intent_type == "" or intent_name == "":
+		return ""
+	return "%s:%s" % [intent_type, intent_name]
 
 
 func _period_for(now: int) -> String:

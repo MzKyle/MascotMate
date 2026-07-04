@@ -9,6 +9,7 @@ const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
 const MiniGamesScript = preload("res://scripts/MiniGames.gd")
 const SkinCatalogClientScript = preload("res://scripts/SkinCatalogClient.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
+const CompanionEventStoreScript = preload("res://scripts/CompanionEventStore.gd")
 
 const FIXED_ENTERTAINMENT_TIME := 1761998400
 
@@ -23,6 +24,32 @@ func _run() -> void:
 	var config_dir = OS.get_environment("CRAYON_PET_CONFIG_DIR")
 	if config_dir == "":
 		_fail("CRAYON_PET_CONFIG_DIR is required for smoke tests.")
+		return
+
+	var event_store = CompanionEventStoreScript.new()
+	root_node.add_child(event_store)
+	event_store.configure(config_dir)
+	for i in range(205):
+		event_store.record_event("event_%03d" % i, "test", {"mode": "smoke", "skin_id": "test_skin"}, {"index": i}, ["smoke"], {}, {}, FIXED_ENTERTAINMENT_TIME + i)
+	var recent = event_store.recent_events(200)
+	if recent.size() != 200 or str(recent[0].get("kind", "")) != "event_005" or str(recent[199].get("kind", "")) != "event_204":
+		_fail("CompanionEventStore did not retain the newest 200 events: size=%d first=%s last=%s" % [
+			recent.size(),
+			str(recent[0].get("kind", "")) if recent.size() > 0 else "",
+			str(recent[recent.size() - 1].get("kind", "")) if recent.size() > 0 else "",
+		])
+		return
+	var corrupt_file = FileAccess.open(config_dir.path_join("companion_events.json"), FileAccess.WRITE)
+	if corrupt_file == null:
+		_fail("CompanionEventStore file could not be opened for corruption test.")
+		return
+	corrupt_file.store_string("{broken")
+	corrupt_file = null
+	event_store.configure(config_dir)
+	event_store.record_event("after_corrupt", "test", {}, {}, [], {}, {}, FIXED_ENTERTAINMENT_TIME)
+	var recovered = event_store.recent_events(1)
+	if recovered.size() != 1 or str(recovered[0].get("kind", "")) != "after_corrupt":
+		_fail("CompanionEventStore did not recover after invalid JSON: %s" % JSON.stringify(recovered))
 		return
 
 	var state_store = StateStoreScript.new()
@@ -60,6 +87,10 @@ func _run() -> void:
 	if str(decision.get("type", "")) != "prompt" or str(decision.get("name", "")) != "hungry":
 		_fail("BehaviorBrain did not produce the expected hungry prompt: %s" % JSON.stringify(decision))
 		return
+	var hungry_intent = decision.get("intent", {})
+	if typeof(hungry_intent) != TYPE_DICTIONARY or str(hungry_intent.get("type", "")) != "care_request" or str(hungry_intent.get("name", "")) != "hungry" or str(hungry_intent.get("reason", "")) == "":
+		_fail("BehaviorBrain hungry prompt did not include the expected intent: %s" % JSON.stringify(decision))
+		return
 
 	var effect_brain = BehaviorBrainScript.new()
 	root_node.add_child(effect_brain)
@@ -81,9 +112,13 @@ func _run() -> void:
 	if str(effect_decision.get("type", "")) != "effect" or str(effect_decision.get("name", "")) != "footprint":
 		_fail("BehaviorBrain did not produce active footprint as an effect: %s" % JSON.stringify(effect_decision))
 		return
-	effect_brain._emit_decision(effect_decision, {"state": calm_state})
+	effect_brain._emit_decision(effect_decision, {"state": calm_state, "event_store": event_store})
 	if str(effect_events["effect"]) != "footprint" or str(effect_events["mischief"]) != "":
 		_fail("BehaviorBrain effect signal routing was wrong: %s" % JSON.stringify(effect_events))
+		return
+	var auto_effect_events = event_store.recent_events(1)
+	if auto_effect_events.size() != 1 or str(auto_effect_events[0].get("kind", "")) != "auto_effect":
+		_fail("BehaviorBrain did not record an auto_effect event: %s" % JSON.stringify(auto_effect_events))
 		return
 
 	var forced_brain = BehaviorBrainScript.new()
@@ -108,6 +143,10 @@ func _run() -> void:
 	var forced_decision = forced_brain.decide({"busy": false, "state": recent_state}, forced_now + 2)
 	if str(forced_decision.get("type", "")) != "mischief" or str(forced_decision.get("name", "")) != "grab":
 		_fail("Forced mischief did not bypass recent interaction cooldown: %s" % JSON.stringify(forced_decision))
+		return
+	var forced_intent = forced_decision.get("intent", {})
+	if typeof(forced_intent) != TYPE_DICTIONARY or str(forced_intent.get("type", "")) != "mischief" or str(forced_intent.get("source", "")) != "forced":
+		_fail("Forced mischief did not include forced intent metadata: %s" % JSON.stringify(forced_decision))
 		return
 
 	var skin_manager = SkinManagerScript.new()

@@ -19,6 +19,15 @@ v1 的主要问题不是“动作太少”，而是陪伴上下文太薄：
 
 v2 的目标是把当前规则系统升级成“本地优先、可解释、低打扰、可接 AI 的陪伴模型”。
 
+## 当前实施状态
+
+首批实现范围是事件日志和意图骨架：
+
+- `CompanionEventStore.gd` 持久化最近 200 条用户互动和自动行为事件。
+- `BehaviorBrain.decide()` 在原有 decision 字段外附带 `intent` 元数据。
+- 自动 prompt、action、effect 会记录到 `companion_events.json`。
+- 表达库、长期记忆、皮肤人格和 AI sidecar 仍是后续阶段。
+
 ## 设计原则
 
 - 本地规则是主控，AI 只做可选增强。

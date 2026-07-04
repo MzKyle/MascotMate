@@ -15,6 +15,17 @@
 
 `Main.gd` 接到请求后，会判断当前是否忙碌，再决定是否执行或只显示气泡。
 
+`decide()` 的返回字典会保留原有 `type`、`name` 和 `retry_after` 字段，并附带可选 `intent` 元数据：
+
+- `type` / `name`：意图类型和名称，例如 `care_request:hungry`
+- `reason`：触发原因，供测试和调参使用
+- `priority`：语义优先级
+- `cooldown_key`：冷却归类
+- `interruption_level`：打扰等级
+- `source`：规则、权重选择或强制触发
+
+这些元数据不会改变现有信号接口。自动提示、自动动作和自动特效会同步写入 `companion_events.json`，用于 Companion Model v2 后续记忆聚合。
+
 基础动作权重和陪伴冷却来自：
 
 ```text

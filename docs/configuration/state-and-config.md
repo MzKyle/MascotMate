@@ -40,6 +40,14 @@
 
 行为模式不保存。每次启动都会回到安静模式。
 
+## 陪伴事件日志
+
+```text
+~/.config/mascotmate-desktop/companion_events.json
+```
+
+`CompanionEventStore.gd` 会记录最近 200 条结构化陪伴事件，包括用户互动、自动提示、自动动作和轻特效。事件日志只作为 Companion Model v2 的事实来源，不参与当前行为决策；文件缺失或损坏时会自动从空日志恢复。
+
 ## 应用与截图贴图配置
 
 ```text
@@ -105,6 +113,12 @@ rm -f ~/.config/mascotmate-desktop/config.json
 
 ```bash
 rm -rf ~/.config/mascotmate-desktop/screenshots
+```
+
+清理陪伴事件日志：
+
+```bash
+rm -f ~/.config/mascotmate-desktop/companion_events.json
 ```
 
 清理用户导入皮肤：

@@ -15,6 +15,7 @@ const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
 const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const AnimationResolverScript = preload("res://scripts/AnimationResolver.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
+const CompanionEventStoreScript = preload("res://scripts/CompanionEventStore.gd")
 
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
@@ -37,6 +38,7 @@ var feedback
 var skin_manager
 var animation_resolver
 var skin_store_bridge
+var companion_event_store
 var display_scale := 1.0
 var drag_offset := Vector2.ZERO
 var landing_squash := 0.0
@@ -113,6 +115,8 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if state_store != null and state_store.has_method("flush_save"):
 			state_store.flush_save()
+		if companion_event_store != null and companion_event_store.has_method("flush_save"):
+			companion_event_store.flush_save()
 		if skin_store_bridge != null:
 			skin_store_bridge.stop()
 		get_tree().quit()
@@ -137,6 +141,10 @@ func _configure_window() -> void:
 func _create_nodes() -> void:
 	state_store = StateStoreScript.new()
 	add_child(state_store)
+
+	companion_event_store = CompanionEventStoreScript.new()
+	add_child(companion_event_store)
+	companion_event_store.configure(config_store.config_dir)
 
 	physics = PetPhysicsScript.new()
 	add_child(physics)
@@ -346,13 +354,15 @@ func _on_single_clicked(local_pos: Vector2) -> void:
 		return
 	var pet_local = pet_sprite.to_local(local_pos)
 	if pet_local.y < pet_sprite.pet_rect().position.y + pet_sprite.pet_rect().size.y * 0.42:
+		var before = state_store.snapshot()
 		var changes = state_store.pet()
-		_record_interaction("pet")
+		_record_interaction("pet", "", {}, ["social", "positive"], before, state_store.snapshot())
 		show_bubble("摸摸头。" + _format_changes(changes))
 		feedback.spawn_heart()
 	else:
+		var before = state_store.snapshot()
 		var changes = state_store.poke()
-		_record_interaction("poke")
+		_record_interaction("poke", "", {}, ["social"], before, state_store.snapshot())
 		show_bubble("戳到了。" + _format_changes(changes))
 		_jiggle()
 
@@ -387,11 +397,11 @@ func _on_grab_released(velocity: Vector2, held: bool, global_pos: Vector2) -> vo
 	brain.set_paused(false)
 	var hide_edge = _hide_edge_for_release(global_pos)
 	if held and hide_edge != "":
-		_record_interaction("peek")
+		_record_interaction("peek", "", {"edge": hide_edge}, ["peek"])
 		_enter_peek_mode(hide_edge)
 		return
 	if speed > 420.0:
-		_record_interaction("throw")
+		_record_interaction("throw", "", {"speed": speed}, ["physics"])
 		physics.release(velocity, true)
 		_play_capability("falling")
 		show_bubble("飞出去啦！")
@@ -482,8 +492,9 @@ func _on_mischief(kind: String) -> void:
 
 
 func _on_feed_success() -> void:
+	var before = state_store.snapshot()
 	var changes = state_store.feed()
-	_record_interaction("feed")
+	_record_interaction("feed", "", {"result": "success"}, ["care", "food", "positive"], before, state_store.snapshot())
 	_play_capability("feeding")
 	_sync_window_size(true)
 	show_bubble("吃到啦。" + _format_changes(changes))
@@ -493,8 +504,9 @@ func _on_tease_success(count: int, direction: Vector2) -> void:
 	_apply_tease_nudge(direction, count)
 	if not tease_reward_recorded:
 		tease_reward_recorded = true
+		var before = state_store.snapshot()
 		var changes = state_store.play()
-		_record_interaction("play")
+		_record_interaction("play", "", {"count": count}, ["play", "positive"], before, state_store.snapshot())
 		show_bubble("嘿嘿，别挠啦。" + _format_changes(changes), 1.4)
 	elif count >= 3:
 		show_bubble("玩够啦。", 1.3)
@@ -514,6 +526,7 @@ func _start_tease_interaction() -> void:
 	if peek_mode:
 		_exit_peek_mode(true)
 	mini_games.start_tease()
+	_record_interaction("", "tease_start", {}, ["play"])
 	tease_reward_recorded = false
 	tease_nudge = Vector2.ZERO
 	_sync_window_size(true)
@@ -557,7 +570,7 @@ func _on_menu_command(command: String) -> void:
 			_record_interaction("menu_walk")
 			_on_behavior_action("walk")
 		"feed":
-			_record_interaction("menu_feed")
+			_record_interaction("menu_feed", "feed_start", {"command": "feed"}, ["care", "food"])
 			mini_games.start_feed()
 			_sync_window_size(true)
 			_update_mouse_passthrough()
@@ -601,6 +614,7 @@ func _on_menu_command(command: String) -> void:
 
 func _set_behavior_mode(value: String, announce := true) -> void:
 	var next_mode = value if value in ["安静", "活泼", "捣乱"] else "安静"
+	var previous_mode = behavior_mode
 	behavior_mode = next_mode
 	if brain != null:
 		brain.set_mode(next_mode)
@@ -610,6 +624,8 @@ func _set_behavior_mode(value: String, announce := true) -> void:
 		_stop_mischief_grab(false)
 	if announce:
 		show_bubble("%s模式。" % next_mode)
+	if next_mode != previous_mode:
+		_record_interaction("", "mode_changed", {"from": previous_mode, "to": next_mode}, ["mode"])
 
 
 func _set_display_scale(scale: float) -> void:
@@ -875,6 +891,7 @@ func _enter_peek_mode(edge: String) -> void:
 func _exit_peek_mode(show_message: bool) -> void:
 	if not peek_mode:
 		return
+	var previous_edge = peek_edge
 	peek_mode = false
 	peek_edge = ""
 	brain.set_paused(false)
@@ -897,6 +914,7 @@ func _exit_peek_mode(show_message: bool) -> void:
 	_update_mouse_passthrough()
 	if show_message:
 		show_bubble("被发现啦。")
+	_record_interaction("", "peek_exit", {"edge": previous_edge}, ["peek"])
 
 
 func _peek_window_position(edge: String, global_pos: Vector2) -> Vector2:
@@ -929,16 +947,56 @@ func _behavior_context() -> Dictionary:
 		"physics_state": str(physics.state) if physics != null else "",
 		"mini_game": str(mini_games.active) if mini_games != null else "",
 		"peek_mode": peek_mode,
+		"skin_id": skin_manager.selected_skin_id() if skin_manager != null and skin_manager.has_method("selected_skin_id") else "",
 		"state": state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {},
 		"state_store": state_store,
+		"event_store": companion_event_store,
 	}
 
 
-func _record_interaction(kind: String) -> void:
-	if state_store != null and state_store.has_method("record_interaction"):
-		state_store.record_interaction(kind)
-	if brain != null and brain.has_method("record_interaction"):
-		brain.record_interaction(kind)
+func _record_interaction(legacy_kind: String, event_kind := "", meta := {}, tags := [], state_before := {}, state_after := {}) -> void:
+	var clean_legacy = legacy_kind.strip_edges()
+	if clean_legacy != "":
+		if state_store != null and state_store.has_method("record_interaction"):
+			state_store.record_interaction(clean_legacy)
+		if brain != null and brain.has_method("record_interaction"):
+			brain.record_interaction(clean_legacy)
+	var clean_event_kind = event_kind.strip_edges()
+	if clean_event_kind == "":
+		clean_event_kind = _event_kind_for_interaction(clean_legacy)
+	if clean_event_kind != "":
+		_record_companion_event(clean_event_kind, "user", meta, tags, state_before, state_after)
+
+
+func _record_companion_event(kind: String, source: String, meta := {}, tags := [], state_before := {}, state_after := {}) -> void:
+	if companion_event_store == null or not companion_event_store.has_method("record_event"):
+		return
+	companion_event_store.record_event(kind, source, _event_context(), meta, tags, state_before, state_after)
+
+
+func _event_context() -> Dictionary:
+	return {
+		"mode": behavior_mode,
+		"physics_state": str(physics.state) if physics != null else "",
+		"mini_game": str(mini_games.active) if mini_games != null else "",
+		"peek_mode": peek_mode,
+		"skin_id": skin_manager.selected_skin_id() if skin_manager != null and skin_manager.has_method("selected_skin_id") else "",
+		"state": state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {},
+	}
+
+
+func _event_kind_for_interaction(legacy_kind: String) -> String:
+	var mapping = {
+		"pet": "pet_head",
+		"poke": "poke_body",
+		"grab": "grab_start",
+		"release": "release_soft",
+		"throw": "throw_fast",
+		"peek": "peek_enter",
+		"feed": "feed_success",
+		"play": "tease_success",
+	}
+	return str(mapping.get(legacy_kind, legacy_kind))
 
 
 func _format_changes(changes: Dictionary) -> String:
