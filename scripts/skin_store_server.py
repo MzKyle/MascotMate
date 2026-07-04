@@ -28,9 +28,10 @@ from import_shimeji_skin import install_skin_source
 CONFIG_DIR_NAME = "mascotmate-desktop"
 MAX_IMPORT_BYTES = 100 * 1024 * 1024
 INSTALLABLE_SOURCE_TYPES = {"curated_package", "local_package"}
-COMPANION_COMMANDS = {"set_behavior_mode", "set_adaptation", "rebuild_memory", "run_scenario"}
+COMPANION_COMMANDS = {"set_behavior_mode", "set_adaptation", "set_ai_expression", "rebuild_memory", "run_scenario"}
 COMPANION_MODES = {"安静", "活泼", "捣乱"}
 COMPANION_STRENGTHS = {"subtle", "visible", "bold"}
+COMPANION_AI_PROVIDERS = {"local_stub", "openai_compatible"}
 COMPANION_SCENARIOS = {"all", "work_focus", "hungry_care", "low_mood_play", "rest_boundary", "busy_guard", "mischief_forced"}
 
 
@@ -377,6 +378,19 @@ class SkinStoreApp:
             payload = {
                 "enabled": _coerce_bool(payload.get("enabled", body.get("enabled", True))),
                 "strength": strength,
+            }
+        elif command == "set_ai_expression":
+            provider = str(payload.get("provider", body.get("provider", "local_stub"))).strip()
+            if provider not in COMPANION_AI_PROVIDERS:
+                raise ValueError("AI provider 不合法。")
+            try:
+                timeout_ms = int(payload.get("timeout_ms", body.get("timeout_ms", 800)))
+            except (TypeError, ValueError):
+                timeout_ms = 800
+            payload = {
+                "enabled": _coerce_bool(payload.get("enabled", body.get("enabled", False))),
+                "provider": provider,
+                "timeout_ms": max(100, min(5000, timeout_ms)),
             }
         elif command == "run_scenario":
             scenario_id = str(payload.get("scenario_id", body.get("scenario_id", "all"))).strip() or "all"

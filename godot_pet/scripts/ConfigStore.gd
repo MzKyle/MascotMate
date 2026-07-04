@@ -13,6 +13,11 @@ const DEFAULT_CONFIG := {
 			"enabled": true,
 			"strength": "visible",
 		},
+		"ai_expression": {
+			"enabled": false,
+			"provider": "local_stub",
+			"timeout_ms": 800,
+		},
 	},
 	"shortcuts": {
 		"screenshot": "F1",
@@ -86,11 +91,17 @@ func set_app_config(values: Dictionary) -> void:
 		config["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
 	if values.has("behavior_adaptation"):
 		config["app"]["behavior_adaptation"] = _merged_behavior_adaptation(values["behavior_adaptation"])
+	if values.has("ai_expression"):
+		config["app"]["ai_expression"] = _merged_ai_expression(values["ai_expression"])
 	save_config()
 
 
 func set_behavior_adaptation_config(values: Dictionary) -> void:
 	set_app_config({"behavior_adaptation": values})
+
+
+func set_ai_expression_config(values: Dictionary) -> void:
+	set_app_config({"ai_expression": values})
 
 
 func set_screenshot_pins_config(values: Dictionary) -> void:
@@ -119,6 +130,8 @@ func _merged_config(source: Dictionary) -> Dictionary:
 			merged["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
 		if source["app"].has("behavior_adaptation"):
 			merged["app"]["behavior_adaptation"] = _merged_behavior_adaptation(source["app"]["behavior_adaptation"])
+		if source["app"].has("ai_expression"):
+			merged["app"]["ai_expression"] = _merged_ai_expression(source["app"]["ai_expression"])
 
 	if source.has("shortcuts") and typeof(source["shortcuts"]) == TYPE_DICTIONARY:
 		for key in merged["shortcuts"].keys():
@@ -146,6 +159,20 @@ func _merged_behavior_adaptation(source) -> Dictionary:
 	if source.has("strength"):
 		var strength = str(source["strength"])
 		merged["strength"] = strength if strength in ["subtle", "visible", "bold"] else "visible"
+	return merged
+
+
+func _merged_ai_expression(source) -> Dictionary:
+	var merged = DEFAULT_CONFIG["app"]["ai_expression"].duplicate(true)
+	if typeof(source) != TYPE_DICTIONARY:
+		return merged
+	if source.has("enabled"):
+		merged["enabled"] = bool(source["enabled"])
+	if source.has("provider"):
+		var provider = str(source["provider"])
+		merged["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
+	if source.has("timeout_ms"):
+		merged["timeout_ms"] = clampi(int(source["timeout_ms"]), 100, 5000)
 	return merged
 
 

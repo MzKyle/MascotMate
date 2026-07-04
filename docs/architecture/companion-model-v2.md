@@ -31,7 +31,8 @@ v2 的目标是把当前规则系统升级成“本地优先、可解释、低�
 - `CompanionExpressionBank.gd` 负责互动和自动提示气泡的本地表达选择，可读取记忆、人格 tone 和最近文案。
 - 行为适配 v1 已让记忆和皮肤人格影响主动提示阈值、自动行为权重和非工作时段冷却，并在 decision 中附带 `adaptation` 元数据。
 - 本地陪伴控制台 v1 已提供浏览器观测、行为适配开关/强度调参和固定场景回放；运行时会写入 `companion_debug_snapshot.json` 和 `companion_scenario_result.json` 供排查。
-- AI sidecar、长期历史迁移和更细粒度的长期行为画像仍是后续阶段。
+- `CompanionLongTermProfile.gd` 已持久化长期画像聚合结果，AI 表达 sidecar v1 已作为可选文案增强接入表达管线。
+- 长期画像影响行为权重、更细粒度行为画像和自由聊天入口仍是后续阶段。
 
 ## 设计原则
 
@@ -392,7 +393,9 @@ v1 用 `work`、`entertainment`、`rest` 三段即可继续保留。v2 应把时
 
 ## AI 接入边界
 
-AI 作为可选表达生成器，不作为第一阶段依赖。
+AI 作为可选表达生成器，不参与动作、状态或行为权重。
+
+当前 sidecar 由 `pet_helper.py companion-ai-sidecar` 启动，只监听 `127.0.0.1`。默认 provider 为 `local_stub`；`openai_compatible` 的 endpoint、API key 和 model 只从环境变量读取。
 
 推荐协议：
 
@@ -409,9 +412,8 @@ AI 作为可选表达生成器，不作为第一阶段依赖。
       "energy": 70,
       "affection": 33
     },
-    "recent_events": [
-      {"kind": "feed_success", "minutes_ago": 0}
-    ],
+    "memory": {},
+    "profile": {},
     "personality": {
       "tone": "short_cute",
       "max_chars": 28
@@ -433,7 +435,7 @@ AI 作为可选表达生成器，不作为第一阶段依赖。
 - 是否超出当前 intent 范围。
 - 超时、失败或不合规时回退本地文案。
 
-AI 不返回动作命令。动作仍由本地 expression resolver 决定。
+AI 不返回动作命令。动作仍由本地 expression resolver 决定。当前实现只接受 `text`、`seconds`、`emotion`、`safety` 四个响应字段；未知字段、超长文本、空文本、超时或 `safety != "ok"` 都回退本地表达。
 
 ## 文件与模块建议
 
@@ -443,8 +445,10 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。
 | --- | --- |
 | `CompanionEventStore.gd` | 事件写入、环形裁剪、近期查询 |
 | `CompanionMemory.gd` | 从事件和状态生成短期/长期摘要 |
+| `CompanionLongTermProfile.gd` | 保存长期画像聚合结果 |
 | `CompanionIntent.gd` | intent 常量、校验和工具函数 |
 | `CompanionExpressionBank.gd` | 本地文案和 expression 选择 |
+| `CompanionAIExpressionClient.gd` | 可选 AI 文案请求、校验和回退 |
 | `BehaviorBrain.gd` | 继续作为决策入口，逐步委托给 v2 模块 |
 
 持久化路径建议：
@@ -453,6 +457,7 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。
 ~/.config/mascotmate-desktop/state.json
 ~/.config/mascotmate-desktop/companion_events.json
 ~/.config/mascotmate-desktop/companion_memory.json
+~/.config/mascotmate-desktop/companion_profile.json
 ```
 
 事件日志需要上限：
@@ -515,6 +520,7 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。
 - Python sidecar 或本地 HTTP helper 接收结构化 request。
 - Godot 设置超时和本地回退。
 - 首期只允许生成 bubble 文案。
+- 默认关闭，可离线运行；控制台展示 AI 状态和最近表达来源。
 
 验收标准：
 
@@ -592,6 +598,7 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。
 3. 已完成 intent 层：行为决策有语义和原因。
 4. 已完成本地陪伴闭环 v1：从事件中聚合记忆，结合皮肤人格选择表达。
 5. 已完成行为适配 v1：让记忆和人格在全局冷却约束内影响提示阈值、自动行为权重和冷却。
-6. 后续 AI sidecar：只增强文案，不接管行为。
+6. 已完成长期画像 + AI 表达增强 v1：长期画像进入表达上下文，AI 只增强文案、不接管行为。
+7. 后续长期行为画像适配：在控制台和回放稳定后，再决定是否让长期画像影响行为权重。
 
 这一顺序的好处是每一步都能单独验收，并且不会要求一次性重写运行时。

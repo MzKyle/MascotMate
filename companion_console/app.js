@@ -77,12 +77,16 @@ function renderSnapshot(snapshot) {
   const adaptation = valueAt(snapshot, ["config", "behavior_adaptation"], {});
   $("adaptEnabled").checked = Boolean(adaptation.enabled);
   $("adaptStrength").value = adaptation.strength || "visible";
+  const aiConfig = valueAt(snapshot, ["config", "ai_expression"], {});
+  $("aiEnabled").checked = Boolean(aiConfig.enabled);
+  $("aiProvider").value = aiConfig.provider || "local_stub";
+  $("aiTimeout").value = Number(aiConfig.timeout_ms || 800);
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.classList.toggle("active", button.dataset.mode === valueAt(snapshot, ["runtime", "behavior_mode"], ""));
   });
 
   renderDecision(snapshot.last_decision || {});
-  renderMemory(snapshot.memory || {});
+  renderMemory(snapshot.memory || {}, snapshot.profile || {}, snapshot.last_expression || {}, snapshot.ai_expression || {});
   renderEvents(snapshot.recent_events || []);
 }
 
@@ -102,16 +106,36 @@ function renderDecision(decision) {
   }
 }
 
-function renderMemory(memory) {
+function renderMemory(memory, profile, lastExpression, aiStatus) {
   const relationship = memory.relationship || {};
   setText("relationship", `${relationship.level || "-"} / ${relationship.familiarity ?? "-"}`);
   const favorites = valueAt(memory, ["preferences", "favorite_interactions"], []);
   setText("favorites", Array.isArray(favorites) && favorites.length ? favorites.join("、") : "-");
+  const profilePrefs = profile.preferences || {};
+  const profileSummary = [
+    `照料 ${profilePrefs.care_tendency ?? "-"}`,
+    `陪玩 ${profilePrefs.play_tendency ?? "-"}`,
+    `打扰 ${profilePrefs.interruption_tolerance || "-"}`,
+  ].join(" / ");
+  setText("profileSummary", profileSummary);
   const lines = valueAt(memory, ["dialogue", "recent_lines"], []);
   if (Array.isArray(lines) && lines.length) {
     setText("recentExpressions", lines.slice(-3).map((item) => item.text).join(" / "));
   } else {
     setText("recentExpressions", "-");
+  }
+  if (lastExpression && lastExpression.key) {
+    const reason = lastExpression.fallback_reason ? ` / ${lastExpression.fallback_reason}` : "";
+    setText("lastExpression", `${lastExpression.key} / ${lastExpression.source || "-"}${reason}`);
+  } else {
+    setText("lastExpression", "-");
+  }
+  if (aiStatus && Object.keys(aiStatus).length) {
+    const available = aiStatus.available ? "可用" : "未确认";
+    const error = aiStatus.last_error ? ` / ${aiStatus.last_error}` : "";
+    setText("aiStatus", `${aiStatus.enabled ? "开启" : "关闭"} / ${aiStatus.provider || "-"} / ${available}${error}`);
+  } else {
+    setText("aiStatus", "-");
   }
 }
 
@@ -191,6 +215,14 @@ function bindControls() {
     payload: {
       enabled: $("adaptEnabled").checked,
       strength: $("adaptStrength").value,
+    },
+  }));
+  $("applyAiExpression").addEventListener("click", () => sendCommand({
+    command: "set_ai_expression",
+    payload: {
+      enabled: $("aiEnabled").checked,
+      provider: $("aiProvider").value,
+      timeout_ms: Number($("aiTimeout").value || 800),
     },
   }));
   $("rebuildMemory").addEventListener("click", () => sendCommand({ command: "rebuild_memory" }));

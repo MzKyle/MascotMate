@@ -155,7 +155,8 @@ h2 {
 }
 
 button,
-select {
+select,
+input[type="number"] {
   min-height: 34px;
   border: 1px solid #b8c3d0;
   border-radius: 6px;
@@ -170,7 +171,8 @@ button {
 }
 
 button:hover,
-select:hover {
+select:hover,
+input[type="number"]:hover {
   border-color: var(--blue);
 }
 
@@ -190,7 +192,8 @@ button.active {
   margin-bottom: 10px;
 }
 
-.field select {
+.field select,
+.field input {
   min-width: 110px;
   padding: 0 8px;
 }

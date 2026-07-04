@@ -29,6 +29,8 @@
 
 自动提示气泡会先经过 `CompanionExpressionBank.gd` 解析；如果没有匹配表达，则继续使用 `BehaviorBrain.gd` 信号里的原始 message。表达库只影响气泡文本，不改变决策、动画或状态数值。
 
+启用 `app.ai_expression.enabled` 后，白名单表达 key 会在本地表达解析之后尝试请求 AI sidecar。AI 只允许返回气泡文案、显示秒数、情绪标签和 safety 状态；超时、返回不合规或 sidecar 不可用时继续使用本地表达。AI 不会进入 `BehaviorBrain`，也不会改变行为权重、状态数值或动画。
+
 `Main.gd` 会把 `CompanionMemory.gd` 的记忆快照和当前皮肤的 `personality` 放入行为上下文。表达库会用这些上下文选择文案；`BehaviorBrain.gd` 也会用它们调整主动提示阈值、自动行为权重和非工作时段冷却。适配不会改变手动互动行为、核心状态数值、信号接口或忙碌/暂停/休息边界。
 
 基础动作权重和陪伴冷却来自：
@@ -57,7 +59,7 @@ godot_pet/assets/behavior.json
 
 右键菜单的“陪伴控制台”会打开本地浏览器页面。控制台读取 `companion_debug_snapshot.json`，展示当前状态、最近 decision、intent、adaptation、记忆摘要和最近事件。
 
-控制台的固定场景回放会在 Godot 运行时创建临时行为脑执行 dry-run decision，包括工作低打扰、饥饿照料、低心情陪玩、休息边界、忙碌保护和强制捣乱。回放结果写入 `companion_scenario_result.json`，不会触发真实动画、不会写入事件日志，也不会改变状态数值。
+控制台还展示长期画像、AI 表达状态和最近表达来源。固定场景回放会在 Godot 运行时创建临时行为脑执行 dry-run decision，包括工作低打扰、饥饿照料、低心情陪玩、休息边界、忙碌保护和强制捣乱。回放结果写入 `companion_scenario_result.json`，不会触发真实动画、不会写入事件日志，也不会改变状态数值。
 
 ## 陪伴上下文
 

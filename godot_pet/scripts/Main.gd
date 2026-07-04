@@ -18,7 +18,9 @@ const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
 const CompanionConsoleBridgeScript = preload("res://scripts/CompanionConsoleBridge.gd")
 const CompanionEventStoreScript = preload("res://scripts/CompanionEventStore.gd")
 const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
+const CompanionLongTermProfileScript = preload("res://scripts/CompanionLongTermProfile.gd")
 const CompanionExpressionBankScript = preload("res://scripts/CompanionExpressionBank.gd")
+const CompanionAIExpressionClientScript = preload("res://scripts/CompanionAIExpressionClient.gd")
 
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
@@ -44,7 +46,9 @@ var skin_store_bridge
 var companion_console_bridge
 var companion_event_store
 var companion_memory
+var companion_profile
 var companion_expression_bank
+var companion_ai_expression_client
 var display_scale := 1.0
 var drag_offset := Vector2.ZERO
 var landing_squash := 0.0
@@ -66,6 +70,7 @@ var companion_debug_snapshot_path := ""
 var companion_scenario_result_path := ""
 var last_behavior_decision := {}
 var last_behavior_context := {}
+var last_expression := {}
 
 
 func _ready() -> void:
@@ -133,6 +138,8 @@ func _notification(what: int) -> void:
 			companion_event_store.flush_save()
 		if companion_memory != null and companion_memory.has_method("flush_save"):
 			companion_memory.flush_save()
+		if companion_profile != null and companion_profile.has_method("flush_save"):
+			companion_profile.flush_save()
 		_write_companion_debug_snapshot()
 		if skin_store_bridge != null:
 			skin_store_bridge.stop()
@@ -169,8 +176,16 @@ func _create_nodes() -> void:
 	add_child(companion_memory)
 	companion_memory.configure(config_store.config_dir, companion_event_store)
 
+	companion_profile = CompanionLongTermProfileScript.new()
+	add_child(companion_profile)
+	companion_profile.configure(config_store.config_dir, companion_event_store, companion_memory)
+
 	companion_expression_bank = CompanionExpressionBankScript.new()
 	add_child(companion_expression_bank)
+
+	companion_ai_expression_client = CompanionAIExpressionClientScript.new()
+	add_child(companion_ai_expression_client)
+	companion_ai_expression_client.configure(config_store.app_config().get("ai_expression", {}))
 
 	physics = PetPhysicsScript.new()
 	add_child(physics)
@@ -693,6 +708,17 @@ func _set_behavior_adaptation(values: Dictionary, announce := true) -> void:
 	_write_companion_debug_snapshot()
 
 
+func _set_ai_expression_config(values: Dictionary, announce := true) -> void:
+	var next_config = _sanitize_ai_expression(values)
+	if config_store != null and config_store.has_method("set_ai_expression_config"):
+		config_store.set_ai_expression_config(next_config)
+	if companion_ai_expression_client != null and companion_ai_expression_client.has_method("configure"):
+		companion_ai_expression_client.configure(next_config)
+	if announce:
+		show_bubble("AI 表达：%s。" % ("开启" if bool(next_config.get("enabled", false)) else "关闭"), 2.0)
+	_write_companion_debug_snapshot()
+
+
 func _apply_behavior_configuration() -> void:
 	if brain == null:
 		return
@@ -792,11 +818,24 @@ func _on_companion_console_command(command: Dictionary) -> void:
 			if command.has("strength"):
 				values["strength"] = command["strength"]
 			_set_behavior_adaptation(values)
+		"set_ai_expression":
+			var ai_values = payload.duplicate(true)
+			if command.has("enabled"):
+				ai_values["enabled"] = command["enabled"]
+			if command.has("provider"):
+				ai_values["provider"] = command["provider"]
+			if command.has("timeout_ms"):
+				ai_values["timeout_ms"] = command["timeout_ms"]
+			_set_ai_expression_config(ai_values)
 		"rebuild_memory":
 			if companion_memory != null and companion_memory.has_method("refresh"):
 				companion_memory.refresh()
 				if companion_memory.has_method("flush_save"):
 					companion_memory.flush_save()
+			if companion_profile != null and companion_profile.has_method("refresh"):
+				companion_profile.refresh()
+				if companion_profile.has_method("flush_save"):
+					companion_profile.flush_save()
 			show_bubble("陪伴记忆已重建。", 2.0)
 			_write_companion_debug_snapshot()
 		"run_scenario":
@@ -927,19 +966,44 @@ func _show_expression(key: String, fallback_text: String, seconds := 1.8, suffix
 	if companion_expression_bank == null or not companion_expression_bank.has_method("resolve"):
 		show_bubble(fallback_text + suffix, seconds)
 		_record_expression(key, fallback_text)
+		_remember_expression(key, fallback_text, seconds, "fallback", "missing_expression_bank", "")
 		_write_companion_debug_snapshot()
 		return
 	var expression = companion_expression_bank.resolve(key, expression_context, fallback_text, seconds)
-	var text = str(expression.get("text", fallback_text))
-	show_bubble(text + suffix, float(expression.get("seconds", seconds)))
+	var result = await _resolve_ai_expression(key, expression_context, expression, fallback_text, seconds)
+	var text = str(result.get("text", expression.get("text", fallback_text)))
+	var display_seconds = float(result.get("seconds", expression.get("seconds", seconds)))
+	show_bubble(text + suffix, display_seconds)
 	_record_expression(key, text)
+	_remember_expression(key, text, display_seconds, str(result.get("source", "local")), str(result.get("fallback_reason", "")), str(result.get("emotion", "")))
 	_write_companion_debug_snapshot()
+
+
+func _resolve_ai_expression(key: String, expression_context: Dictionary, local_expression: Dictionary, fallback_text: String, seconds: float):
+	if companion_ai_expression_client == null or not companion_ai_expression_client.has_method("resolve_expression"):
+		return _local_expression_result(local_expression, fallback_text, seconds, "missing_ai_client")
+	return await companion_ai_expression_client.resolve_expression(key, expression_context, local_expression, fallback_text, seconds)
+
+
+func _local_expression_result(local_expression: Dictionary, fallback_text: String, seconds: float, reason: String) -> Dictionary:
+	var found = bool(local_expression.get("found", false))
+	return {
+		"text": str(local_expression.get("text", fallback_text)),
+		"seconds": float(local_expression.get("seconds", seconds)),
+		"source": "local" if found else "fallback",
+		"fallback_reason": "" if found else reason,
+		"emotion": "",
+	}
 
 
 func _expression_context(context := {}) -> Dictionary:
 	var result := {}
 	if companion_memory != null and companion_memory.has_method("expression_context"):
 		result = companion_memory.expression_context({})
+	if companion_profile != null and companion_profile.has_method("expression_context"):
+		var profile_context = companion_profile.expression_context({})
+		for key in profile_context.keys():
+			result[key] = profile_context[key]
 	if typeof(context) == TYPE_DICTIONARY:
 		for key in context.keys():
 			result[key] = context[key]
@@ -955,6 +1019,18 @@ func _expression_context(context := {}) -> Dictionary:
 func _record_expression(key: String, text: String) -> void:
 	if companion_memory != null and companion_memory.has_method("record_expression"):
 		companion_memory.record_expression(key, text)
+
+
+func _remember_expression(key: String, text: String, seconds: float, source: String, fallback_reason: String, emotion: String) -> void:
+	last_expression = {
+		"key": key,
+		"text": text,
+		"seconds": seconds,
+		"source": source,
+		"fallback_reason": fallback_reason,
+		"emotion": emotion,
+		"at": int(Time.get_unix_time_from_system()),
+	}
 
 
 func _selected_personality() -> Dictionary:
@@ -1137,6 +1213,7 @@ func _behavior_context() -> Dictionary:
 		"event_store": companion_event_store,
 		"memory_store": companion_memory,
 		"memory": companion_memory.snapshot() if companion_memory != null and companion_memory.has_method("snapshot") else {},
+		"profile": companion_profile.snapshot() if companion_profile != null and companion_profile.has_method("snapshot") else {},
 		"personality": _selected_personality(),
 	}
 
@@ -1161,6 +1238,8 @@ func _record_companion_event(kind: String, source: String, meta := {}, tags := [
 	var event = companion_event_store.record_event(kind, source, _event_context(), meta, tags, state_before, state_after)
 	if typeof(event) == TYPE_DICTIONARY and not event.is_empty() and companion_memory != null and companion_memory.has_method("refresh"):
 		companion_memory.refresh()
+	if typeof(event) == TYPE_DICTIONARY and not event.is_empty() and companion_profile != null and companion_profile.has_method("refresh"):
+		companion_profile.refresh()
 	_write_companion_debug_snapshot()
 
 
@@ -1173,6 +1252,7 @@ func _event_context() -> Dictionary:
 		"skin_id": skin_manager.selected_skin_id() if skin_manager != null and skin_manager.has_method("selected_skin_id") else "",
 		"state": state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {},
 		"memory": companion_memory.snapshot() if companion_memory != null and companion_memory.has_method("snapshot") else {},
+		"profile": companion_profile.snapshot() if companion_profile != null and companion_profile.has_method("snapshot") else {},
 		"personality": _selected_personality(),
 	}
 
@@ -1201,6 +1281,7 @@ func _companion_debug_snapshot() -> Dictionary:
 	var now_unix = int(Time.get_unix_time_from_system())
 	var tick_now = float(Time.get_ticks_msec()) / 1000.0
 	var memory_snapshot = companion_memory.snapshot() if companion_memory != null and companion_memory.has_method("snapshot") else {}
+	var profile_snapshot = companion_profile.snapshot() if companion_profile != null and companion_profile.has_method("snapshot") else {}
 	var state_snapshot = state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {}
 	var recent_events = companion_event_store.recent_events(50) if companion_event_store != null and companion_event_store.has_method("recent_events") else []
 	var app_config = config_store.app_config() if config_store != null and config_store.has_method("app_config") else {}
@@ -1226,14 +1307,18 @@ func _companion_debug_snapshot() -> Dictionary:
 		},
 		"config": {
 			"behavior_adaptation": _sanitize_behavior_adaptation(app_config.get("behavior_adaptation", {})),
+			"ai_expression": _sanitize_ai_expression(app_config.get("ai_expression", {})),
 			"gravity_enabled": gravity_enabled,
 			"display_scale": display_scale,
 		},
 		"memory": memory_snapshot,
+		"profile": profile_snapshot,
+		"ai_expression": companion_ai_expression_client.status() if companion_ai_expression_client != null and companion_ai_expression_client.has_method("status") else {},
 		"recent_expressions": memory_snapshot.get("dialogue", {}).get("recent_lines", []) if typeof(memory_snapshot.get("dialogue", {})) == TYPE_DICTIONARY else [],
 		"recent_events": recent_events,
 		"last_decision": last_behavior_decision.duplicate(true),
 		"last_decision_context": last_behavior_context.duplicate(true),
+		"last_expression": last_expression.duplicate(true),
 		"scenario_result_path": companion_scenario_result_path,
 	}
 
@@ -1275,6 +1360,7 @@ func _compact_behavior_context(context: Dictionary) -> Dictionary:
 		"skin_id": str(context.get("skin_id", "")),
 		"state": context.get("state", {}).duplicate(true) if typeof(context.get("state", {})) == TYPE_DICTIONARY else {},
 		"memory": context.get("memory", {}).duplicate(true) if typeof(context.get("memory", {})) == TYPE_DICTIONARY else {},
+		"profile": context.get("profile", {}).duplicate(true) if typeof(context.get("profile", {})) == TYPE_DICTIONARY else {},
 		"personality": context.get("personality", {}).duplicate(true) if typeof(context.get("personality", {})) == TYPE_DICTIONARY else {},
 	}
 
@@ -1554,6 +1640,24 @@ func _sanitize_behavior_adaptation(value) -> Dictionary:
 	if value.has("strength"):
 		var strength = str(value["strength"])
 		result["strength"] = strength if strength in ["subtle", "visible", "bold"] else "visible"
+	return result
+
+
+func _sanitize_ai_expression(value) -> Dictionary:
+	var result := {
+		"enabled": false,
+		"provider": "local_stub",
+		"timeout_ms": 800,
+	}
+	if typeof(value) != TYPE_DICTIONARY:
+		return result
+	if value.has("enabled"):
+		result["enabled"] = bool(value["enabled"])
+	if value.has("provider"):
+		var provider = str(value["provider"])
+		result["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
+	if value.has("timeout_ms"):
+		result["timeout_ms"] = clampi(int(value["timeout_ms"]), 100, 5000)
 	return result
 
 

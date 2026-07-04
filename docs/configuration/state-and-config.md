@@ -56,6 +56,14 @@
 
 `CompanionMemory.gd` 会从最近 200 条陪伴事件聚合今日计数、近 3 天计数、偏好互动、常用模式/时段、关系熟悉度和最近表达。当前记忆会影响气泡文案选择、主动提示阈值、自动行为权重和非工作时段冷却；不会改变核心状态数值。文件缺失或损坏时会从事件日志重新聚合。
 
+## 长期陪伴画像
+
+```text
+~/.config/mascotmate-desktop/companion_profile.json
+```
+
+`CompanionLongTermProfile.gd` 会保存长期聚合结果，包括常见互动、常用模式、常用时段、照料/陪玩倾向、打扰容忍度和 7/30 天趋势摘要。画像只保存聚合结果和少量去重标记，不保存大量原始事件。当前画像只进入表达上下文和控制台快照，不改变行为权重。
+
 ## 陪伴控制台诊断文件
 
 ```text
@@ -82,6 +90,9 @@
 | `app.skin_id` | 当前启用皮肤 ID |
 | `app.behavior_adaptation.enabled` | 是否启用本地行为适配 |
 | `app.behavior_adaptation.strength` | 适配强度：`subtle`、`visible`、`bold` |
+| `app.ai_expression.enabled` | 是否启用可选 AI 气泡文案 |
+| `app.ai_expression.provider` | AI 表达 provider：`local_stub`、`openai_compatible` |
+| `app.ai_expression.timeout_ms` | Godot 请求 sidecar 的超时时间，范围 100-5000ms |
 | `shortcuts.screenshot` | 截图快捷键 |
 | `shortcuts.paste_pin` | 贴图快捷键 |
 | `shortcuts.close_pin` | 关闭贴图快捷键 |
@@ -145,6 +156,12 @@ rm -f ~/.config/mascotmate-desktop/companion_events.json
 
 ```bash
 rm -f ~/.config/mascotmate-desktop/companion_memory.json
+```
+
+清理长期陪伴画像：
+
+```bash
+rm -f ~/.config/mascotmate-desktop/companion_profile.json
 ```
 
 清理陪伴控制台诊断文件：

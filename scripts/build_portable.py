@@ -130,6 +130,9 @@ def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir
     skin_store_server = ROOT / "scripts" / "skin_store_server.py"
     if skin_store_server.exists():
         shutil.copy2(skin_store_server, scripts_dir / "skin_store_server.py")
+    companion_ai_sidecar = ROOT / "scripts" / "companion_ai_sidecar.py"
+    if companion_ai_sidecar.exists():
+        shutil.copy2(companion_ai_sidecar, scripts_dir / "companion_ai_sidecar.py")
     featured_skins = ROOT / "scripts" / "fetch_featured_skins.py"
     if featured_skins.exists():
         shutil.copy2(featured_skins, scripts_dir / "fetch_featured_skins.py")

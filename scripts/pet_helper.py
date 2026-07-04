@@ -197,6 +197,23 @@ def load_skin_store_module():
     return module
 
 
+def load_companion_ai_module():
+    script = Path(__file__).resolve().with_name("companion_ai_sidecar.py")
+    if not script.is_file() and getattr(sys, "frozen", False):
+        script = Path(sys.executable).resolve().with_name("companion_ai_sidecar.py")
+    if not script.is_file():
+        print("companion_ai_sidecar.py was not found.", file=sys.stderr)
+        return None
+    spec = importlib.util.spec_from_file_location("companion_ai_sidecar", script)
+    if spec == None or spec.loader == None:
+        print("Unable to load companion_ai_sidecar.py.", file=sys.stderr)
+        return None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def run_skin_store(args: argparse.Namespace) -> int:
     module = load_skin_store_module()
     if module is None:
@@ -220,6 +237,18 @@ def run_companion_console(args: argparse.Namespace) -> int:
         open_browser=args.open_browser,
         idle_timeout=args.idle_timeout,
         port=args.port,
+    ))
+
+
+def run_companion_ai_sidecar(args: argparse.Namespace) -> int:
+    module = load_companion_ai_module()
+    if module is None:
+        return 2
+    return int(module.serve(
+        args.provider,
+        port=args.port,
+        idle_timeout=args.idle_timeout,
+        timeout=args.timeout,
     ))
 
 
@@ -547,6 +576,12 @@ def parse_args() -> argparse.Namespace:
     companion_console.add_argument("--open-browser", action="store_true")
     companion_console.add_argument("--idle-timeout", type=float, default=900.0)
     companion_console.add_argument("--port", type=int, default=0)
+
+    companion_ai = subparsers.add_parser("companion-ai-sidecar")
+    companion_ai.add_argument("--provider", choices=["local_stub", "openai_compatible"], default="local_stub")
+    companion_ai.add_argument("--port", type=int, default=8765)
+    companion_ai.add_argument("--idle-timeout", type=float, default=900.0)
+    companion_ai.add_argument("--timeout", type=float, default=8.0)
     return parser.parse_args()
 
 
@@ -567,6 +602,8 @@ def main() -> int:
             return run_skin_store(args)
         if args.command == "companion-console":
             return run_companion_console(args)
+        if args.command == "companion-ai-sidecar":
+            return run_companion_ai_sidecar(args)
     except Exception as exc:
         print(f"pet_helper.py: {exc}", file=sys.stderr)
         return 1

@@ -55,6 +55,24 @@
         <button id="applyAdaptation">应用适配</button>
         <button id="rebuildMemory">重建记忆</button>
       </div>
+      <label class="toggle">
+        <input id="aiEnabled" type="checkbox">
+        <span>AI 表达</span>
+      </label>
+      <label class="field">
+        <span>Provider</span>
+        <select id="aiProvider">
+          <option value="local_stub">local_stub</option>
+          <option value="openai_compatible">openai_compatible</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Timeout</span>
+        <input id="aiTimeout" type="number" min="100" max="5000" step="100">
+      </label>
+      <div class="button-row">
+        <button id="applyAiExpression">应用 AI 表达</button>
+      </div>
       <p id="commandStatus" class="muted">-</p>
     </section>
 
@@ -73,7 +91,10 @@
       <dl class="decision-list">
         <div><dt>关系</dt><dd id="relationship">-</dd></div>
         <div><dt>偏好</dt><dd id="favorites">-</dd></div>
+        <div><dt>长期画像</dt><dd id="profileSummary">-</dd></div>
         <div><dt>最近表达</dt><dd id="recentExpressions">-</dd></div>
+        <div><dt>表达来源</dt><dd id="lastExpression">-</dd></div>
+        <div><dt>AI 状态</dt><dd id="aiStatus">-</dd></div>
       </dl>
     </section>
 

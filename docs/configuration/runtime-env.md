@@ -66,3 +66,20 @@ MASCOTMATE_SKIN_CATALOG_URL=http://127.0.0.1:8000/catalog.json scripts/run_godot
 ```
 
 这个变量只影响可应用内下载的精选源。Cachomon/Shimeji 浏览索引由 helper 写入 `~/.config/mascotmate-desktop/catalog_cache/cachomon/index.json`，应用只打开原站页面，不代下载第三方 ZIP。
+
+## AI 表达增强
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `MASCOTMATE_AI_EXPRESSION_URL` | `http://127.0.0.1:8765` | Godot 请求本地 AI expression sidecar 的地址 |
+| `MASCOTMATE_OPENAI_COMPATIBLE_URL` | 空 | `openai_compatible` provider 的 Chat Completions 兼容 endpoint |
+| `MASCOTMATE_OPENAI_COMPATIBLE_API_KEY` | 空 | `openai_compatible` provider 的 API key |
+| `MASCOTMATE_OPENAI_COMPATIBLE_MODEL` | `gpt-4o-mini` | `openai_compatible` provider 使用的模型名 |
+
+启动本地 stub sidecar：
+
+```bash
+python3 scripts/pet_helper.py companion-ai-sidecar --provider local_stub
+```
+
+AI 表达默认关闭。开启后也只生成气泡文案；sidecar 不可用、超时或返回不合规时会使用本地表达库。
