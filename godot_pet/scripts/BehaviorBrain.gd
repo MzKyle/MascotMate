@@ -4,6 +4,7 @@ signal action_requested(action_name)
 signal mischief_requested(kind)
 signal prompt_requested(kind, message)
 signal effect_requested(kind)
+signal decision_observed(decision, context)
 
 const VALID_MODES := ["安静", "活泼", "捣乱"]
 const DEFAULT_BEHAVIOR := {
@@ -163,8 +164,10 @@ func decide(context: Dictionary, now_unix := 0) -> Dictionary:
 	if not forced_decision.is_empty():
 		return forced_decision
 
-	if paused or bool(context.get("busy", false)):
-		return {"type": "none", "retry_after": 2.0}
+	if paused:
+		return _none_decision("paused", 2.0, adaptation)
+	if bool(context.get("busy", false)):
+		return _none_decision("busy", 2.0, adaptation)
 
 	var urgent = _urgent_decision(status, memory, period, now, adaptation)
 	if not urgent.is_empty():
@@ -172,9 +175,9 @@ func decide(context: Dictionary, now_unix := 0) -> Dictionary:
 
 	var remaining = _attention_cooldown_remaining(memory, period, now, adaptation)
 	if remaining > 0.0:
-		return {"type": "none", "retry_after": clamp(remaining, 10.0, 120.0)}
+		return _none_decision("attention_cooldown", clamp(remaining, 10.0, 120.0), adaptation, {"cooldown_remaining": remaining})
 	if mode == "安静":
-		return {"type": "none", "retry_after": float(companion_config.get("tick_seconds", 60.0))}
+		return _none_decision("quiet_mode", float(companion_config.get("tick_seconds", 60.0)), adaptation)
 	if period == "rest":
 		return _attach_adaptation(_attach_intent(
 			{"type": "action", "name": "sleep", "retry_after": 180.0},
@@ -183,7 +186,7 @@ func decide(context: Dictionary, now_unix := 0) -> Dictionary:
 
 	var action = _pick_contextual_action(mode, status, period, adaptation)
 	if action.is_empty():
-		return {"type": "none", "retry_after": float(companion_config.get("tick_seconds", 60.0))}
+		return _none_decision("no_weighted_action", float(companion_config.get("tick_seconds", 60.0)), adaptation)
 	action["retry_after"] = _adapted_cooldown_seconds(period, adaptation)
 	action["intent"] = _intent_for_contextual_action(action, status, period, adaptation)
 	action = _attach_adaptation(action, adaptation)
@@ -193,6 +196,7 @@ func decide(context: Dictionary, now_unix := 0) -> Dictionary:
 func _decide() -> void:
 	var context = _current_context()
 	var decision = decide(context)
+	emit_signal("decision_observed", decision.duplicate(true), context.duplicate(false))
 	_emit_decision(decision, context)
 	var retry_after = float(decision.get("retry_after", 0.0))
 	if retry_after > 0.0:
@@ -362,9 +366,9 @@ func _forced_mischief_decision(now: float, blocked: bool, period: String, adapta
 		clear_forced_mischief()
 		return {}
 	if blocked:
-		return {"type": "none", "retry_after": _forced_retry_after(now)}
+		return _none_decision("forced_mischief_blocked", _forced_retry_after(now), adaptation)
 	if now < forced_mischief_ready_at:
-		return {"type": "none", "retry_after": max(0.1, min(1.0, forced_mischief_ready_at - now))}
+		return _none_decision("forced_mischief_waiting", max(0.1, min(1.0, forced_mischief_ready_at - now)), adaptation)
 	return _attach_adaptation({
 		"type": "mischief",
 		"name": forced_mischief_kind,
@@ -664,6 +668,18 @@ func _attach_intent(decision: Dictionary, intent: Dictionary) -> Dictionary:
 	var result = decision.duplicate(true)
 	result["intent"] = intent
 	return result
+
+
+func _none_decision(reason: String, retry_after: float, adaptation := {}, extra := {}) -> Dictionary:
+	var result := {
+		"type": "none",
+		"reason": reason,
+		"retry_after": retry_after,
+	}
+	if typeof(extra) == TYPE_DICTIONARY:
+		for key in extra.keys():
+			result[key] = extra[key]
+	return _attach_adaptation(result, adaptation)
 
 
 func _intent(intent_type: String, intent_name: String, reason: String, priority: int, cooldown_key: String, interruption_level: String, source := "rule") -> Dictionary:

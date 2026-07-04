@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>陪伴控制台</title>
+  <link rel="stylesheet" href="/companion/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>陪伴控制台</h1>
+      <p id="updated">等待运行时快照</p>
+    </div>
+    <div class="status-pill" id="connection">连接中</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel overview">
+      <h2>运行态</h2>
+      <div class="metric-grid">
+        <div><span>模式</span><strong id="mode">-</strong></div>
+        <div><span>时段</span><strong id="period">-</strong></div>
+        <div><span>忙碌</span><strong id="busy">-</strong></div>
+        <div><span>透明</span><strong id="transparent">-</strong></div>
+      </div>
+      <div class="state-grid">
+        <div><span>心情</span><meter id="mood" min="0" max="100"></meter><b id="moodText">-</b></div>
+        <div><span>饥饿</span><meter id="hunger" min="0" max="100"></meter><b id="hungerText">-</b></div>
+        <div><span>体力</span><meter id="energy" min="0" max="100"></meter><b id="energyText">-</b></div>
+        <div><span>亲密</span><meter id="affection" min="0" max="100"></meter><b id="affectionText">-</b></div>
+      </div>
+    </section>
+
+    <section class="panel controls">
+      <h2>调参</h2>
+      <div class="button-row">
+        <button data-mode="安静">安静</button>
+        <button data-mode="活泼">活泼</button>
+        <button data-mode="捣乱">捣乱</button>
+      </div>
+      <label class="toggle">
+        <input id="adaptEnabled" type="checkbox">
+        <span>行为适配</span>
+      </label>
+      <label class="field">
+        <span>强度</span>
+        <select id="adaptStrength">
+          <option value="subtle">轻微</option>
+          <option value="visible">明显</option>
+          <option value="bold">强</option>
+        </select>
+      </label>
+      <div class="button-row">
+        <button id="applyAdaptation">应用适配</button>
+        <button id="rebuildMemory">重建记忆</button>
+      </div>
+      <p id="commandStatus" class="muted">-</p>
+    </section>
+
+    <section class="panel decision">
+      <h2>最近决策</h2>
+      <dl class="decision-list">
+        <div><dt>type/name</dt><dd id="decisionType">-</dd></div>
+        <div><dt>reason</dt><dd id="decisionReason">-</dd></div>
+        <div><dt>intent</dt><dd id="decisionIntent">-</dd></div>
+        <div><dt>adaptation</dt><dd id="decisionAdaptation">-</dd></div>
+      </dl>
+    </section>
+
+    <section class="panel memory">
+      <h2>记忆</h2>
+      <dl class="decision-list">
+        <div><dt>关系</dt><dd id="relationship">-</dd></div>
+        <div><dt>偏好</dt><dd id="favorites">-</dd></div>
+        <div><dt>最近表达</dt><dd id="recentExpressions">-</dd></div>
+      </dl>
+    </section>
+
+    <section class="panel events">
+      <h2>最近事件</h2>
+      <table>
+        <thead><tr><th>#</th><th>kind</th><th>source</th><th>mode</th><th>at</th></tr></thead>
+        <tbody id="eventsBody"></tbody>
+      </table>
+    </section>
+
+    <section class="panel scenarios">
+      <h2>场景回放</h2>
+      <div class="scenario-grid" id="scenarioButtons">
+        <button data-scenario="all">全部</button>
+        <button data-scenario="work_focus">工作</button>
+        <button data-scenario="hungry_care">饥饿</button>
+        <button data-scenario="low_mood_play">陪玩</button>
+        <button data-scenario="rest_boundary">休息</button>
+        <button data-scenario="busy_guard">忙碌</button>
+        <button data-scenario="mischief_forced">捣乱</button>
+      </div>
+      <div id="scenarioResults" class="scenario-results"></div>
+    </section>
+  </main>
+
+  <script src="/companion/app.js"></script>
+</body>
+</html>

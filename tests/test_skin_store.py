@@ -61,6 +61,25 @@ def read_json(url: str) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
+def get_json_status(url: str, token: str | None = None) -> tuple[int, dict]:
+    headers = {}
+    if token is not None:
+        headers["X-MascotMate-Token"] = token
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=5) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read().decode("utf-8"))
+
+
+def read_text(url: str) -> str:
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(url, timeout=5) as response:
+        return response.read().decode("utf-8")
+
+
 def post_json(url: str, payload: dict, token: str | None = None) -> tuple[int, dict]:
     headers = {"Content-Type": "application/json"}
     if token is not None:
@@ -129,6 +148,9 @@ class SkinStoreTests(unittest.TestCase):
         repo = self.root / "repo"
         catalog_root = repo / "skin_catalog"
         self.featured.generate_catalog(self.source_zip, catalog_root)
+        companion_static = repo / "companion_console"
+        companion_static.mkdir(parents=True)
+        (companion_static / "index.html").write_text("<!doctype html><title>陪伴控制台</title>", encoding="utf-8")
         (catalog_root / "cachomon_index.json").write_text(json.dumps({
             "schema_version": 1,
             "entries": [{
@@ -153,6 +175,48 @@ class SkinStoreTests(unittest.TestCase):
             catalog = read_json(f"{base}/api/catalog?token={token}")
             self.assertEqual(len(catalog["featured"]), 2)
             self.assertEqual(len(catalog["external"]), 1)
+
+            html = read_text(f"{base}/companion/?token={token}")
+            self.assertIn("陪伴控制台", html)
+
+            config_dir.mkdir(parents=True, exist_ok=True)
+            (config_dir / "companion_debug_snapshot.json").write_text(json.dumps({
+                "version": 1,
+                "runtime": {"behavior_mode": "活泼"},
+                "last_decision": {"type": "none", "reason": "busy"},
+            }), encoding="utf-8")
+            (config_dir / "companion_scenario_result.json").write_text(json.dumps({
+                "version": 1,
+                "scenarios": [{"id": "busy_guard", "passed": True}],
+            }), encoding="utf-8")
+            status, body = get_json_status(f"{base}/api/companion/snapshot")
+            self.assertEqual(status, 403)
+            self.assertFalse(body["ok"])
+            status, body = get_json_status(f"{base}/api/companion/snapshot", token)
+            self.assertEqual(status, 200)
+            self.assertTrue(body["ok"])
+            self.assertEqual(body["snapshot"]["runtime"]["behavior_mode"], "活泼")
+            status, body = get_json_status(f"{base}/api/companion/scenario-result", token)
+            self.assertEqual(status, 200)
+            self.assertTrue(body["result"]["scenarios"][0]["passed"])
+
+            status, body = post_json(f"{base}/api/companion/command", {"command": "set_behavior_mode", "payload": {"mode": "活泼"}})
+            self.assertEqual(status, 403)
+            self.assertFalse(body["ok"])
+            status, body = post_json(f"{base}/api/companion/command", {"command": "set_behavior_mode", "payload": {"mode": "活泼"}}, token)
+            self.assertEqual(status, 200)
+            self.assertEqual(body["payload"]["mode"], "活泼")
+            companion_command = json.loads((config_dir / "companion_console_command.json").read_text(encoding="utf-8"))
+            self.assertEqual(companion_command["command"], "set_behavior_mode")
+            self.assertEqual(companion_command["payload"]["mode"], "活泼")
+            status, body = post_json(f"{base}/api/companion/command", {"command": "set_adaptation", "payload": {"enabled": "false", "strength": "bold"}}, token)
+            self.assertEqual(status, 200)
+            self.assertEqual(body["payload"], {"enabled": False, "strength": "bold"})
+            status, body = post_json(f"{base}/api/companion/command", {"command": "run_scenario", "payload": {"scenario_id": "busy_guard"}}, token)
+            self.assertEqual(status, 200)
+            self.assertEqual(body["payload"]["scenario_id"], "busy_guard")
+            status, body = post_json(f"{base}/api/companion/command", {"command": "run_scenario", "payload": {"scenario_id": "../bad"}}, token)
+            self.assertEqual(status, 400)
 
             status, body = post_json(f"{base}/api/install", {"id": "omen"})
             self.assertEqual(status, 403)

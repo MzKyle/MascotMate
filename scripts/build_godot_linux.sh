@@ -40,6 +40,10 @@ copy_external_assets() {
     cp -a "$ROOT_DIR/skin_store" "$DIST_DIR/skin_store"
   fi
 
+  if [[ -d "$ROOT_DIR/companion_console" ]]; then
+    cp -a "$ROOT_DIR/companion_console" "$DIST_DIR/companion_console"
+  fi
+
   mkdir -p "$DIST_DIR/scripts"
   cp "$ROOT_DIR/scripts/pet_helper.py" "$DIST_DIR/scripts/pet_helper.py"
   cp "$ROOT_DIR/scripts/import_shimeji_skin.py" "$DIST_DIR/scripts/import_shimeji_skin.py"

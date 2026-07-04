@@ -56,6 +56,16 @@
 
 `CompanionMemory.gd` 会从最近 200 条陪伴事件聚合今日计数、近 3 天计数、偏好互动、常用模式/时段、关系熟悉度和最近表达。当前记忆会影响气泡文案选择、主动提示阈值、自动行为权重和非工作时段冷却；不会改变核心状态数值。文件缺失或损坏时会从事件日志重新聚合。
 
+## 陪伴控制台诊断文件
+
+```text
+~/.config/mascotmate-desktop/companion_debug_snapshot.json
+~/.config/mascotmate-desktop/companion_scenario_result.json
+~/.config/mascotmate-desktop/companion_console_command.json
+```
+
+浏览器陪伴控制台会读取运行时快照和场景回放结果。快照包含当前状态、行为模式、时段、忙碌状态、透明窗口状态、皮肤人格、记忆摘要、最近事件和最近一次 decision。控制台命令通过 `companion_console_command.json` 传给 Godot，处理后会删除该命令文件。
+
 ## 应用与截图贴图配置
 
 ```text
@@ -70,6 +80,8 @@
 | `app.display_scale` | 显示大小，范围 1.0-1.5 |
 | `app.gravity_enabled` | 是否开启重力 |
 | `app.skin_id` | 当前启用皮肤 ID |
+| `app.behavior_adaptation.enabled` | 是否启用本地行为适配 |
+| `app.behavior_adaptation.strength` | 适配强度：`subtle`、`visible`、`bold` |
 | `shortcuts.screenshot` | 截图快捷键 |
 | `shortcuts.paste_pin` | 贴图快捷键 |
 | `shortcuts.close_pin` | 关闭贴图快捷键 |
@@ -133,6 +145,14 @@ rm -f ~/.config/mascotmate-desktop/companion_events.json
 
 ```bash
 rm -f ~/.config/mascotmate-desktop/companion_memory.json
+```
+
+清理陪伴控制台诊断文件：
+
+```bash
+rm -f ~/.config/mascotmate-desktop/companion_debug_snapshot.json
+rm -f ~/.config/mascotmate-desktop/companion_scenario_result.json
+rm -f ~/.config/mascotmate-desktop/companion_console_command.json
 ```
 
 清理用户导入皮肤：

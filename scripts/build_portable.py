@@ -110,7 +110,7 @@ def build_helper() -> Path:
 
 
 def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir: Path | None = None) -> None:
-    for name in ("resource_hd", "assets", "skin_catalog", "skin_store"):
+    for name in ("resource_hd", "assets", "skin_catalog", "skin_store", "companion_console"):
         source = ROOT / name
         if source.exists():
             shutil.copytree(source, package_dir / name, dirs_exist_ok=True)

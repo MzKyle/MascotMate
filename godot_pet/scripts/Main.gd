@@ -15,6 +15,7 @@ const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
 const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const AnimationResolverScript = preload("res://scripts/AnimationResolver.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
+const CompanionConsoleBridgeScript = preload("res://scripts/CompanionConsoleBridge.gd")
 const CompanionEventStoreScript = preload("res://scripts/CompanionEventStore.gd")
 const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
 const CompanionExpressionBankScript = preload("res://scripts/CompanionExpressionBank.gd")
@@ -40,6 +41,7 @@ var feedback
 var skin_manager
 var animation_resolver
 var skin_store_bridge
+var companion_console_bridge
 var companion_event_store
 var companion_memory
 var companion_expression_bank
@@ -59,6 +61,11 @@ var feedback_window_until := 0.0
 var tease_reward_recorded := false
 var tease_nudge := Vector2.ZERO
 var auto_behavior_lock_until := 0.0
+var companion_debug_timer: Timer
+var companion_debug_snapshot_path := ""
+var companion_scenario_result_path := ""
+var last_behavior_decision := {}
+var last_behavior_context := {}
 
 
 func _ready() -> void:
@@ -70,6 +77,8 @@ func _ready() -> void:
 	config_store = ConfigStoreScript.new()
 	add_child(config_store)
 	config_store.configure()
+	companion_debug_snapshot_path = config_store.config_dir.path_join("companion_debug_snapshot.json")
+	companion_scenario_result_path = config_store.config_dir.path_join("companion_scenario_result.json")
 	var app_config = config_store.app_config()
 	display_scale = clamp(float(app_config.get("display_scale", 1.0)), 1.0, 1.5)
 	gravity_enabled = bool(app_config.get("gravity_enabled", true))
@@ -124,8 +133,11 @@ func _notification(what: int) -> void:
 			companion_event_store.flush_save()
 		if companion_memory != null and companion_memory.has_method("flush_save"):
 			companion_memory.flush_save()
+		_write_companion_debug_snapshot()
 		if skin_store_bridge != null:
 			skin_store_bridge.stop()
+		if companion_console_bridge != null:
+			companion_console_bridge.stop()
 		get_tree().quit()
 
 
@@ -204,9 +216,10 @@ func _create_nodes() -> void:
 
 	brain = BehaviorBrainScript.new()
 	add_child(brain)
-	brain.configure(behavior_manifest)
+	brain.configure(_behavior_config_with_app_overrides())
 	brain.set_context_provider(Callable(self, "_behavior_context"))
 	brain.set_skin_behavior_profile(skin_manager.current_skin.get("behavior_profile", {}))
+	brain.decision_observed.connect(_on_behavior_decision_observed)
 	brain.action_requested.connect(_on_behavior_action)
 	brain.mischief_requested.connect(_on_mischief)
 	brain.prompt_requested.connect(_on_behavior_prompt)
@@ -237,6 +250,19 @@ func _create_nodes() -> void:
 	skin_store_bridge.configure(repo_root, config_store.config_dir)
 	skin_store_bridge.skin_requested.connect(_on_skin_store_skin_requested)
 	skin_store_bridge.notify.connect(_on_skin_store_notify)
+
+	companion_console_bridge = CompanionConsoleBridgeScript.new()
+	add_child(companion_console_bridge)
+	companion_console_bridge.configure(repo_root, config_store.config_dir)
+	companion_console_bridge.command_received.connect(_on_companion_console_command)
+	companion_console_bridge.notify.connect(_on_companion_console_notify)
+
+	companion_debug_timer = Timer.new()
+	add_child(companion_debug_timer)
+	companion_debug_timer.wait_time = 1.0
+	companion_debug_timer.timeout.connect(_write_companion_debug_snapshot)
+	companion_debug_timer.start()
+	_write_companion_debug_snapshot()
 
 
 func _sync_window_size(keep_position := false) -> void:
@@ -618,6 +644,8 @@ func _on_menu_command(command: String) -> void:
 			_exit_peek_mode(true)
 		"skins":
 			_open_skin_manager()
+		"companion_console":
+			_open_companion_console()
 		"screenshot_settings":
 			screenshot_pins.open_settings()
 		"mode_quiet":
@@ -647,6 +675,31 @@ func _set_behavior_mode(value: String, announce := true) -> void:
 		_show_expression("mode_changed", "%s模式。" % next_mode, 1.8, "", {"mode": next_mode})
 	if next_mode != previous_mode:
 		_record_interaction("", "mode_changed", {"from": previous_mode, "to": next_mode}, ["mode"])
+	_write_companion_debug_snapshot()
+
+
+func _set_behavior_adaptation(values: Dictionary, announce := true) -> void:
+	var next_config = _sanitize_behavior_adaptation(values)
+	if config_store != null and config_store.has_method("set_behavior_adaptation_config"):
+		config_store.set_behavior_adaptation_config(next_config)
+	_apply_behavior_configuration()
+	if announce:
+		var strength_label = {
+			"subtle": "轻微",
+			"visible": "明显",
+			"bold": "强",
+		}.get(str(next_config.get("strength", "visible")), "明显")
+		show_bubble("行为适配：%s，%s。" % ["开启" if bool(next_config.get("enabled", true)) else "关闭", strength_label], 2.0)
+	_write_companion_debug_snapshot()
+
+
+func _apply_behavior_configuration() -> void:
+	if brain == null:
+		return
+	brain.configure(_behavior_config_with_app_overrides())
+	if skin_manager != null:
+		brain.set_skin_behavior_profile(skin_manager.current_skin.get("behavior_profile", {}))
+	brain.set_mode(behavior_mode)
 
 
 func _set_display_scale(scale: float) -> void:
@@ -678,6 +731,13 @@ func _open_skin_manager() -> void:
 	show_bubble("皮肤商店启动失败，请检查 helper。", 2.8)
 
 
+func _open_companion_console() -> void:
+	_write_companion_debug_snapshot()
+	if companion_console_bridge != null and companion_console_bridge.open_console():
+		return
+	show_bubble("陪伴控制台启动失败，请检查 helper。", 2.8)
+
+
 func _set_skin(skin_id: String) -> void:
 	if skin_manager == null or pet_sprite == null:
 		return
@@ -699,6 +759,7 @@ func _set_skin(skin_id: String) -> void:
 	_sync_window_size(true)
 	_update_mouse_passthrough()
 	show_bubble("已切换：%s。" % skin_manager.selected_skin_name())
+	_write_companion_debug_snapshot()
 
 
 func _on_skin_store_skin_requested(skin_id: String) -> void:
@@ -709,6 +770,54 @@ func _on_skin_store_skin_requested(skin_id: String) -> void:
 
 func _on_skin_store_notify(message: String) -> void:
 	show_bubble(message, 2.8)
+
+
+func _on_companion_console_notify(message: String) -> void:
+	show_bubble(message, 2.8)
+
+
+func _on_companion_console_command(command: Dictionary) -> void:
+	var command_name = str(command.get("command", "")).strip_edges()
+	var payload = command.get("payload", {})
+	if typeof(payload) != TYPE_DICTIONARY:
+		payload = {}
+	match command_name:
+		"set_behavior_mode":
+			var mode = str(payload.get("mode", command.get("mode", ""))).strip_edges()
+			_set_behavior_mode(mode)
+		"set_adaptation":
+			var values = payload.duplicate(true)
+			if command.has("enabled"):
+				values["enabled"] = command["enabled"]
+			if command.has("strength"):
+				values["strength"] = command["strength"]
+			_set_behavior_adaptation(values)
+		"rebuild_memory":
+			if companion_memory != null and companion_memory.has_method("refresh"):
+				companion_memory.refresh()
+				if companion_memory.has_method("flush_save"):
+					companion_memory.flush_save()
+			show_bubble("陪伴记忆已重建。", 2.0)
+			_write_companion_debug_snapshot()
+		"run_scenario":
+			var scenario_id = str(payload.get("scenario_id", command.get("scenario_id", "all"))).strip_edges()
+			if scenario_id == "":
+				scenario_id = "all"
+			var result = _run_companion_scenarios(scenario_id)
+			var failed = 0
+			for item in result.get("scenarios", []):
+				if typeof(item) == TYPE_DICTIONARY and not bool(item.get("passed", false)):
+					failed += 1
+			show_bubble("回放完成：%d 个异常。" % failed, 2.2)
+		_:
+			show_bubble("未知控制台命令。", 1.8)
+			_write_companion_debug_snapshot()
+
+
+func _on_behavior_decision_observed(decision: Dictionary, context: Dictionary) -> void:
+	last_behavior_decision = decision.duplicate(true)
+	last_behavior_context = _compact_behavior_context(context)
+	_write_companion_debug_snapshot()
 
 
 func _start_mischief_grab() -> bool:
@@ -818,11 +927,13 @@ func _show_expression(key: String, fallback_text: String, seconds := 1.8, suffix
 	if companion_expression_bank == null or not companion_expression_bank.has_method("resolve"):
 		show_bubble(fallback_text + suffix, seconds)
 		_record_expression(key, fallback_text)
+		_write_companion_debug_snapshot()
 		return
 	var expression = companion_expression_bank.resolve(key, expression_context, fallback_text, seconds)
 	var text = str(expression.get("text", fallback_text))
 	show_bubble(text + suffix, float(expression.get("seconds", seconds)))
 	_record_expression(key, text)
+	_write_companion_debug_snapshot()
 
 
 func _expression_context(context := {}) -> Dictionary:
@@ -1050,6 +1161,7 @@ func _record_companion_event(kind: String, source: String, meta := {}, tags := [
 	var event = companion_event_store.record_event(kind, source, _event_context(), meta, tags, state_before, state_after)
 	if typeof(event) == TYPE_DICTIONARY and not event.is_empty() and companion_memory != null and companion_memory.has_method("refresh"):
 		companion_memory.refresh()
+	_write_companion_debug_snapshot()
 
 
 func _event_context() -> Dictionary:
@@ -1079,6 +1191,323 @@ func _event_kind_for_interaction(legacy_kind: String) -> String:
 	return str(mapping.get(legacy_kind, legacy_kind))
 
 
+func _write_companion_debug_snapshot() -> void:
+	if companion_debug_snapshot_path == "":
+		return
+	_write_json_file(companion_debug_snapshot_path, _companion_debug_snapshot())
+
+
+func _companion_debug_snapshot() -> Dictionary:
+	var now_unix = int(Time.get_unix_time_from_system())
+	var tick_now = float(Time.get_ticks_msec()) / 1000.0
+	var memory_snapshot = companion_memory.snapshot() if companion_memory != null and companion_memory.has_method("snapshot") else {}
+	var state_snapshot = state_store.snapshot() if state_store != null and state_store.has_method("snapshot") else {}
+	var recent_events = companion_event_store.recent_events(50) if companion_event_store != null and companion_event_store.has_method("recent_events") else []
+	var app_config = config_store.app_config() if config_store != null and config_store.has_method("app_config") else {}
+	return {
+		"version": 1,
+		"generated_at": now_unix,
+		"runtime": {
+			"behavior_mode": behavior_mode,
+			"period": _current_behavior_period(now_unix),
+			"busy": _busy() if physics != null and mini_games != null else false,
+			"physics_state": str(physics.state) if physics != null else "",
+			"mini_game": str(mini_games.active) if mini_games != null else "",
+			"peek_mode": peek_mode,
+			"mischief_grab_active": mischief_grab_active,
+			"auto_behavior_lock_remaining": max(0.0, auto_behavior_lock_until - tick_now),
+		},
+		"window": _window_debug_state(),
+		"state": state_snapshot,
+		"skin": {
+			"id": skin_manager.selected_skin_id() if skin_manager != null and skin_manager.has_method("selected_skin_id") else "",
+			"name": skin_manager.selected_skin_name() if skin_manager != null and skin_manager.has_method("selected_skin_name") else "",
+			"personality": _selected_personality(),
+		},
+		"config": {
+			"behavior_adaptation": _sanitize_behavior_adaptation(app_config.get("behavior_adaptation", {})),
+			"gravity_enabled": gravity_enabled,
+			"display_scale": display_scale,
+		},
+		"memory": memory_snapshot,
+		"recent_expressions": memory_snapshot.get("dialogue", {}).get("recent_lines", []) if typeof(memory_snapshot.get("dialogue", {})) == TYPE_DICTIONARY else [],
+		"recent_events": recent_events,
+		"last_decision": last_behavior_decision.duplicate(true),
+		"last_decision_context": last_behavior_context.duplicate(true),
+		"scenario_result_path": companion_scenario_result_path,
+	}
+
+
+func _window_debug_state() -> Dictionary:
+	var result := {
+		"transparent_window": transparent_window,
+		"mouse_passthrough_enabled": mouse_passthrough_enabled,
+		"borderless": false,
+		"always_on_top": false,
+		"window_transparent": false,
+		"viewport_transparent_bg": false,
+		"position": [],
+		"size": [],
+	}
+	if not is_inside_tree():
+		return result
+	var window = get_window()
+	if window != null:
+		result["borderless"] = window.borderless
+		result["always_on_top"] = window.always_on_top
+		result["window_transparent"] = window.transparent
+		result["position"] = [window.position.x, window.position.y]
+		result["size"] = [window.size.x, window.size.y]
+	var viewport = get_viewport()
+	if viewport != null:
+		result["viewport_transparent_bg"] = viewport.transparent_bg
+	return result
+
+
+func _compact_behavior_context(context: Dictionary) -> Dictionary:
+	return {
+		"mode": str(context.get("mode", "")),
+		"period": str(context.get("period", "")),
+		"busy": bool(context.get("busy", false)),
+		"physics_state": str(context.get("physics_state", "")),
+		"mini_game": str(context.get("mini_game", "")),
+		"peek_mode": bool(context.get("peek_mode", false)),
+		"skin_id": str(context.get("skin_id", "")),
+		"state": context.get("state", {}).duplicate(true) if typeof(context.get("state", {})) == TYPE_DICTIONARY else {},
+		"memory": context.get("memory", {}).duplicate(true) if typeof(context.get("memory", {})) == TYPE_DICTIONARY else {},
+		"personality": context.get("personality", {}).duplicate(true) if typeof(context.get("personality", {})) == TYPE_DICTIONARY else {},
+	}
+
+
+func _current_behavior_period(now_unix: int) -> String:
+	if brain != null and brain.has_method("_period_for"):
+		return str(brain._period_for(now_unix))
+	return ""
+
+
+func _write_json_file(path: String, payload: Dictionary) -> void:
+	if path == "":
+		return
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file = FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(payload, "\t"))
+
+
+func _run_companion_scenarios(requested_id := "all") -> Dictionary:
+	var available = ["work_focus", "hungry_care", "low_mood_play", "rest_boundary", "busy_guard", "mischief_forced"]
+	var selected := []
+	for scenario_id in available:
+		if requested_id == "all" or requested_id == scenario_id:
+			selected.append(scenario_id)
+	if selected.is_empty():
+		selected = available
+	var events_before = _recent_companion_event_count()
+	var result := {
+		"version": 1,
+		"generated_at": int(Time.get_unix_time_from_system()),
+		"requested": requested_id,
+		"events_before": events_before,
+		"scenarios": [],
+	}
+	for scenario_id in selected:
+		result["scenarios"].append(_run_companion_scenario(scenario_id))
+	result["events_after"] = _recent_companion_event_count()
+	result["mutated_events"] = int(result["events_after"]) != events_before
+	_write_json_file(companion_scenario_result_path, result)
+	_write_companion_debug_snapshot()
+	return result
+
+
+func _run_companion_scenario(scenario_id: String) -> Dictionary:
+	var work_time = _debug_unix_for_local_datetime(2025, 11, 3, 11)
+	var entertainment_time = _debug_unix_for_local_datetime(2025, 11, 1, 20)
+	var rest_time = _debug_unix_for_local_datetime(2025, 11, 3, 2)
+	var now = entertainment_time
+	var mode = "活泼"
+	var context := {
+		"busy": false,
+		"state": _debug_calm_state(now),
+		"memory": _debug_adaptive_memory([], 40, 20, 20),
+		"personality": _selected_personality(),
+	}
+	match scenario_id:
+		"work_focus":
+			now = work_time
+			mode = "活泼"
+			context["state"] = _debug_calm_state(now)
+			context["state"]["memory"]["last_action_at"] = now - 80
+			context["memory"] = _debug_adaptive_memory(["tease_success"], 85, 20, 80)
+			context["personality"] = _debug_adaptive_personality(95, 20, 25, 90)
+		"hungry_care":
+			context["state"]["hunger"] = 76
+			context["memory"] = _debug_adaptive_memory(["feed_success"], 85, 80, 10)
+			context["personality"] = _debug_adaptive_personality(70, 20, 25, 60)
+		"low_mood_play":
+			context["state"]["mood"] = 45
+			context["memory"] = _debug_adaptive_memory(["tease_success"], 85, 10, 80)
+			context["personality"] = _debug_adaptive_personality(95, 25, 20, 90)
+		"rest_boundary":
+			now = rest_time
+			mode = "活泼"
+			context["state"] = _debug_calm_state(now)
+			context["state"]["energy"] = 80
+		"busy_guard":
+			context["busy"] = true
+			context["memory"] = _debug_adaptive_memory(["tease_success"], 85, 10, 80)
+			context["personality"] = _debug_adaptive_personality(95, 25, 20, 90)
+		"mischief_forced":
+			mode = "捣乱"
+			context["state"]["memory"]["last_interaction_at"] = now
+			context["personality"] = _debug_adaptive_personality(40, 90, 20, 35)
+	var scenario_brain = BehaviorBrainScript.new()
+	scenario_brain.configure(_behavior_config_with_app_overrides())
+	if skin_manager != null:
+		scenario_brain.set_skin_behavior_profile(skin_manager.current_skin.get("behavior_profile", {}))
+	scenario_brain.set_mode(mode)
+	if scenario_id == "mischief_forced":
+		scenario_brain.request_forced_mischief("grab", 0.0, 6.0, now)
+	var decision = scenario_brain.decide(context, now)
+	scenario_brain.free()
+	var passed = _scenario_passed(scenario_id, decision)
+	return {
+		"id": scenario_id,
+		"label": _scenario_label(scenario_id),
+		"passed": passed,
+		"expected": _scenario_expected(scenario_id),
+		"mode": mode,
+		"period": _current_behavior_period(now),
+		"context": _compact_behavior_context(context),
+		"decision": decision,
+	}
+
+
+func _scenario_passed(scenario_id: String, decision: Dictionary) -> bool:
+	var decision_type = str(decision.get("type", ""))
+	var decision_name = str(decision.get("name", ""))
+	var intent = decision.get("intent", {})
+	if typeof(intent) != TYPE_DICTIONARY:
+		intent = {}
+	match scenario_id:
+		"work_focus":
+			return decision_type == "none"
+		"hungry_care":
+			return decision_type == "prompt" and decision_name == "hungry" and str(intent.get("type", "")) == "care_request"
+		"low_mood_play":
+			return decision_type == "prompt" and decision_name == "play" and str(intent.get("type", "")) == "play_request"
+		"rest_boundary":
+			return decision_type == "action" and decision_name == "sleep"
+		"busy_guard":
+			return decision_type == "none" and str(decision.get("reason", "")) == "busy"
+		"mischief_forced":
+			return decision_type == "mischief" and decision_name == "grab" and str(intent.get("source", "")) == "forced"
+	return false
+
+
+func _scenario_label(scenario_id: String) -> String:
+	var labels = {
+		"work_focus": "工作时段低打扰",
+		"hungry_care": "饥饿照料",
+		"low_mood_play": "低心情陪玩",
+		"rest_boundary": "休息边界",
+		"busy_guard": "忙碌保护",
+		"mischief_forced": "强制捣乱",
+	}
+	return str(labels.get(scenario_id, scenario_id))
+
+
+func _scenario_expected(scenario_id: String) -> String:
+	var expected = {
+		"work_focus": "工作时段不缩短基础冷却，返回 none",
+		"hungry_care": "feed_success 偏好使 hunger=76 触发 hungry prompt",
+		"low_mood_play": "高玩心和陪玩偏好使 mood=45 触发 play prompt",
+		"rest_boundary": "休息时段且 energy<85 进入 sleep",
+		"busy_guard": "busy=true 时返回 none/busy",
+		"mischief_forced": "捣乱强制首轮返回 mischief grab 且 source=forced",
+	}
+	return str(expected.get(scenario_id, ""))
+
+
+func _recent_companion_event_count() -> int:
+	if companion_event_store != null and companion_event_store.has_method("all_events"):
+		return companion_event_store.all_events().size()
+	return 0
+
+
+func _debug_calm_state(now_unix: int) -> Dictionary:
+	return {
+		"version": 2,
+		"mood": 70,
+		"hunger": 60,
+		"energy": 80,
+		"affection": 30,
+		"last_decay_at": now_unix,
+		"memory": {
+			"last_interaction_at": 0,
+			"last_interaction_kind": "",
+			"last_feed_at": 0,
+			"last_play_at": 0,
+			"last_prompt_at": 0,
+			"last_action_at": 0,
+			"interaction_counts": {},
+		},
+	}
+
+
+func _debug_adaptive_memory(favorites: Array, familiarity: int, care_score: int, play_score: int) -> Dictionary:
+	return {
+		"version": 1,
+		"preferences": {
+			"favorite_interactions": favorites,
+			"favorite_mode": "活泼",
+			"favorite_period": "entertainment",
+		},
+		"relationship": {
+			"level": "close" if familiarity >= 70 else "familiar",
+			"familiarity": familiarity,
+			"care_score": care_score,
+			"play_score": play_score,
+		},
+		"short_term": {
+			"counts": {},
+			"recent_kinds": favorites,
+		},
+	}
+
+
+func _debug_adaptive_personality(playfulness: int, mischief: int, patience: int, clinginess: int) -> Dictionary:
+	return {
+		"version": 1,
+		"archetype": "playful",
+		"tone": "short_cute",
+		"traits": {
+			"playfulness": playfulness,
+			"mischief": mischief,
+			"patience": patience,
+			"clinginess": clinginess,
+		},
+		"dialogue_style": {
+			"max_chars": 28,
+			"use_status_numbers": false,
+			"avoid_repeating_recent": true,
+		},
+	}
+
+
+func _debug_unix_for_local_datetime(year: int, month: int, day: int, hour: int) -> int:
+	var utc_unix = int(Time.get_unix_time_from_datetime_dict({
+		"year": year,
+		"month": month,
+		"day": day,
+		"hour": hour,
+		"minute": 0,
+		"second": 0,
+	}))
+	var time_zone = Time.get_time_zone_from_system()
+	var bias_minutes = int(time_zone.get("bias", 0)) if typeof(time_zone) == TYPE_DICTIONARY else 0
+	return utc_unix - bias_minutes * 60
+
+
 func _format_changes(changes: Dictionary) -> String:
 	var labels = {"mood": "心情", "hunger": "饥饿", "energy": "体力", "affection": "亲密"}
 	var parts := []
@@ -1099,6 +1528,33 @@ func _load_json(path: String) -> Dictionary:
 	if typeof(parsed) == TYPE_DICTIONARY:
 		return parsed
 	return {}
+
+
+func _behavior_config_with_app_overrides() -> Dictionary:
+	var result = behavior_manifest.duplicate(true)
+	var app_config = config_store.app_config() if config_store != null and config_store.has_method("app_config") else {}
+	var adaptation = _sanitize_behavior_adaptation(app_config.get("behavior_adaptation", {}))
+	var companion = result.get("companion", {})
+	if typeof(companion) != TYPE_DICTIONARY:
+		companion = {}
+	companion["adaptation"] = adaptation
+	result["companion"] = companion
+	return result
+
+
+func _sanitize_behavior_adaptation(value) -> Dictionary:
+	var result := {
+		"enabled": true,
+		"strength": "visible",
+	}
+	if typeof(value) != TYPE_DICTIONARY:
+		return result
+	if value.has("enabled"):
+		result["enabled"] = bool(value["enabled"])
+	if value.has("strength"):
+		var strength = str(value["strength"])
+		result["strength"] = strength if strength in ["subtle", "visible", "bold"] else "visible"
+	return result
 
 
 func _has_resource_root(path: String) -> bool:

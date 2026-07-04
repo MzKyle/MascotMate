@@ -12,6 +12,7 @@
 - `mischief_requested("grab")`
 - `effect_requested("footprint")`
 - `prompt_requested("hungry", "...")`
+- `decision_observed(decision, context)`
 
 `Main.gd` 接到请求后，会判断当前是否忙碌，再决定是否执行或只显示气泡。
 
@@ -24,7 +25,7 @@
 - `interruption_level`：打扰等级
 - `source`：规则、权重选择或强制触发
 
-这些元数据不会改变现有信号接口。行为适配 v1 会额外附带可选 `adaptation` 元数据，用于说明本次决策使用的提示阈值、冷却倍率、权重倍率和适配原因。自动提示、自动动作和自动特效会同步写入 `companion_events.json`，用于 Companion Model v2 后续记忆聚合。
+这些元数据不会改变现有执行信号接口。行为适配 v1 会额外附带可选 `adaptation` 元数据，用于说明本次决策使用的提示阈值、冷却倍率、权重倍率和适配原因。`decision_observed` 是只读观测信号，也会暴露 `none` 决策的原因，例如忙碌、冷却、暂停或安静模式。自动提示、自动动作和自动特效会同步写入 `companion_events.json`，用于 Companion Model v2 后续记忆聚合。
 
 自动提示气泡会先经过 `CompanionExpressionBank.gd` 解析；如果没有匹配表达，则继续使用 `BehaviorBrain.gd` 信号里的原始 message。表达库只影响气泡文本，不改变决策、动画或状态数值。
 
@@ -49,6 +50,14 @@ godot_pet/assets/behavior.json
 ```
 
 配置异常时会回退到代码内置默认值，避免桌宠启动失败。
+
+浏览器陪伴控制台可以覆盖 `enabled` 和 `strength`，覆盖值保存到 `config.json` 的 `app.behavior_adaptation`。控制台不会直接改底层权重数组。
+
+## 本地陪伴控制台
+
+右键菜单的“陪伴控制台”会打开本地浏览器页面。控制台读取 `companion_debug_snapshot.json`，展示当前状态、最近 decision、intent、adaptation、记忆摘要和最近事件。
+
+控制台的固定场景回放会在 Godot 运行时创建临时行为脑执行 dry-run decision，包括工作低打扰、饥饿照料、低心情陪玩、休息边界、忙碌保护和强制捣乱。回放结果写入 `companion_scenario_result.json`，不会触发真实动画、不会写入事件日志，也不会改变状态数值。
 
 ## 陪伴上下文
 

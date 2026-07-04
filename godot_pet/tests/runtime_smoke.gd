@@ -6,10 +6,12 @@ const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const PetSpriteScript = preload("res://scripts/PetSprite.gd")
 const PetPhysicsScript = preload("res://scripts/PetPhysics.gd")
 const MainScript = preload("res://scripts/Main.gd")
+const ConfigStoreScript = preload("res://scripts/ConfigStore.gd")
 const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
 const MiniGamesScript = preload("res://scripts/MiniGames.gd")
 const SkinCatalogClientScript = preload("res://scripts/SkinCatalogClient.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
+const CompanionConsoleBridgeScript = preload("res://scripts/CompanionConsoleBridge.gd")
 const CompanionEventStoreScript = preload("res://scripts/CompanionEventStore.gd")
 const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
 const CompanionExpressionBankScript = preload("res://scripts/CompanionExpressionBank.gd")
@@ -467,6 +469,115 @@ func _run() -> void:
 	if not skin_manager.select_skin(str(requested_skin["id"])):
 		_fail("SkinStoreBridge requested skin could not be selected.")
 		return
+
+	var console_bridge = CompanionConsoleBridgeScript.new()
+	root_node.add_child(console_bridge)
+	await process_frame
+	console_bridge.configure(repo_root, config_dir)
+	var console_command := {"payload": {}}
+	console_bridge.command_received.connect(func(command): console_command["payload"] = command)
+	var console_command_file = FileAccess.open(config_dir.path_join("companion_console_command.json"), FileAccess.WRITE)
+	if console_command_file == null:
+		_fail("CompanionConsoleBridge command file could not be written.")
+		return
+	console_command_file.store_string(JSON.stringify({
+		"command": "set_behavior_mode",
+		"payload": {"mode": "活泼"},
+		"nonce": "runtime-smoke-console",
+	}))
+	console_command_file = null
+	console_bridge._poll_command()
+	var emitted_console_command = console_command.get("payload", {})
+	if str(emitted_console_command.get("command", "")) != "set_behavior_mode" or str(emitted_console_command.get("payload", {}).get("mode", "")) != "活泼":
+		_fail("CompanionConsoleBridge did not emit the command payload: %s" % JSON.stringify(console_command))
+		return
+	if FileAccess.file_exists(config_dir.path_join("companion_console_command.json")):
+		_fail("CompanionConsoleBridge did not remove the handled command file.")
+		return
+
+	var config_store = ConfigStoreScript.new()
+	root_node.add_child(config_store)
+	config_store.configure()
+	config_store.set_behavior_adaptation_config({"enabled": false, "strength": "bold"})
+	var adaptation_config = config_store.app_config().get("behavior_adaptation", {})
+	if bool(adaptation_config.get("enabled", true)) or str(adaptation_config.get("strength", "")) != "bold":
+		_fail("ConfigStore did not persist behavior adaptation config: %s" % JSON.stringify(config_store.get_config()))
+		return
+
+	var observed_brain = BehaviorBrainScript.new()
+	root_node.add_child(observed_brain)
+	await process_frame
+	observed_brain.configure(behavior_config)
+	observed_brain.set_mode("活泼")
+	var observed := {"decision": {}}
+	observed_brain.decision_observed.connect(func(decision, _context): observed["decision"] = decision)
+	observed_brain.set_context_provider(func(): return {"busy": true, "state": _calm_state(FIXED_ENTERTAINMENT_TIME)})
+	observed_brain._decide()
+	if str(observed["decision"].get("type", "")) != "none" or str(observed["decision"].get("reason", "")) != "busy":
+		_fail("BehaviorBrain decision_observed did not expose the busy none decision: %s" % JSON.stringify(observed))
+		return
+
+	var main_debug = MainScript.new()
+	main_debug.config_store = config_store
+	main_debug.behavior_manifest = behavior_config
+	main_debug.behavior_mode = "活泼"
+	main_debug.state_store = state_store
+	main_debug.companion_event_store = event_store
+	main_debug.companion_memory = memory_store
+	main_debug.skin_manager = skin_manager
+	main_debug.physics = PetPhysicsScript.new()
+	main_debug.mini_games = MiniGamesScript.new()
+	main_debug.brain = BehaviorBrainScript.new()
+	main_debug.brain.configure(main_debug._behavior_config_with_app_overrides())
+	main_debug.companion_debug_snapshot_path = config_dir.path_join("companion_debug_snapshot.json")
+	main_debug.companion_scenario_result_path = config_dir.path_join("companion_scenario_result.json")
+	main_debug.last_behavior_decision = {"type": "none", "reason": "busy", "retry_after": 2.0}
+	main_debug.last_behavior_context = {"mode": "活泼", "busy": true}
+	main_debug._write_companion_debug_snapshot()
+	var debug_snapshot = _load_json(main_debug.companion_debug_snapshot_path)
+	if str(debug_snapshot.get("runtime", {}).get("behavior_mode", "")) != "活泼" or typeof(debug_snapshot.get("memory", {})) != TYPE_DICTIONARY or typeof(debug_snapshot.get("recent_events", [])) != TYPE_ARRAY:
+		_fail("Main debug snapshot was incomplete: %s" % JSON.stringify(debug_snapshot))
+		return
+	if str(debug_snapshot.get("last_decision", {}).get("reason", "")) != "busy":
+		_fail("Main debug snapshot did not include the last decision: %s" % JSON.stringify(debug_snapshot))
+		return
+	main_debug._on_companion_console_command({
+		"command": "set_adaptation",
+		"payload": {"enabled": true, "strength": "subtle"},
+	})
+	var updated_adaptation = config_store.app_config().get("behavior_adaptation", {})
+	if not bool(updated_adaptation.get("enabled", false)) or str(updated_adaptation.get("strength", "")) != "subtle":
+		_fail("Main console adaptation command did not update config: %s" % JSON.stringify(config_store.get_config()))
+		return
+	main_debug._on_companion_console_command({"command": "set_behavior_mode", "payload": {"mode": "捣乱"}})
+	if main_debug.behavior_mode != "捣乱":
+		_fail("Main console mode command did not change behavior mode.")
+		return
+	main_debug._on_companion_console_command({
+		"command": "set_adaptation",
+		"payload": {"enabled": true, "strength": "visible"},
+	})
+	var events_before_scenario = event_store.all_events().size()
+	var scenario_result = main_debug._run_companion_scenarios("all")
+	if bool(scenario_result.get("mutated_events", true)) or event_store.all_events().size() != events_before_scenario:
+		_fail("Main companion scenario replay mutated events: %s" % JSON.stringify(scenario_result))
+		return
+	var scenarios = scenario_result.get("scenarios", [])
+	if typeof(scenarios) != TYPE_ARRAY or scenarios.size() != 6:
+		_fail("Main companion scenario replay did not return all scenarios: %s" % JSON.stringify(scenario_result))
+		return
+	for scenario in scenarios:
+		if typeof(scenario) != TYPE_DICTIONARY or not bool(scenario.get("passed", false)):
+			_fail("Main companion scenario failed: %s" % JSON.stringify(scenario_result))
+			return
+	var scenario_file = _load_json(main_debug.companion_scenario_result_path)
+	if scenario_file.get("scenarios", []).size() != 6:
+		_fail("Main companion scenario result file was not written: %s" % JSON.stringify(scenario_file))
+		return
+	main_debug.physics.free()
+	main_debug.mini_games.free()
+	main_debug.brain.free()
+	main_debug.free()
 
 	var pet_sprite = PetSpriteScript.new()
 	root_node.add_child(pet_sprite)

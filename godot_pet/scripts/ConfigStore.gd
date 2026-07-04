@@ -9,6 +9,10 @@ const DEFAULT_CONFIG := {
 		"display_scale": 1.0,
 		"gravity_enabled": true,
 		"skin_id": "classic_shinchan",
+		"behavior_adaptation": {
+			"enabled": true,
+			"strength": "visible",
+		},
 	},
 	"shortcuts": {
 		"screenshot": "F1",
@@ -80,7 +84,13 @@ func set_app_config(values: Dictionary) -> void:
 	if values.has("skin_id"):
 		var skin_id = str(values["skin_id"]).strip_edges()
 		config["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
+	if values.has("behavior_adaptation"):
+		config["app"]["behavior_adaptation"] = _merged_behavior_adaptation(values["behavior_adaptation"])
 	save_config()
+
+
+func set_behavior_adaptation_config(values: Dictionary) -> void:
+	set_app_config({"behavior_adaptation": values})
 
 
 func set_screenshot_pins_config(values: Dictionary) -> void:
@@ -107,6 +117,8 @@ func _merged_config(source: Dictionary) -> Dictionary:
 		if source["app"].has("skin_id"):
 			var skin_id = str(source["app"]["skin_id"]).strip_edges()
 			merged["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
+		if source["app"].has("behavior_adaptation"):
+			merged["app"]["behavior_adaptation"] = _merged_behavior_adaptation(source["app"]["behavior_adaptation"])
 
 	if source.has("shortcuts") and typeof(source["shortcuts"]) == TYPE_DICTIONARY:
 		for key in merged["shortcuts"].keys():
@@ -122,6 +134,18 @@ func _merged_config(source: Dictionary) -> Dictionary:
 		if source["pins"].has("max_count"):
 			merged["pins"]["max_count"] = clampi(int(source["pins"]["max_count"]), 1, 3)
 
+	return merged
+
+
+func _merged_behavior_adaptation(source) -> Dictionary:
+	var merged = DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true)
+	if typeof(source) != TYPE_DICTIONARY:
+		return merged
+	if source.has("enabled"):
+		merged["enabled"] = bool(source["enabled"])
+	if source.has("strength"):
+		var strength = str(source["strength"])
+		merged["strength"] = strength if strength in ["subtle", "visible", "bold"] else "visible"
 	return merged
 
 

@@ -210,6 +210,19 @@ def run_skin_store(args: argparse.Namespace) -> int:
     ))
 
 
+def run_companion_console(args: argparse.Namespace) -> int:
+    module = load_skin_store_module()
+    if module is None:
+        return 2
+    return int(module.serve_companion_console(
+        args.repo_root,
+        args.config_dir,
+        open_browser=args.open_browser,
+        idle_timeout=args.idle_timeout,
+        port=args.port,
+    ))
+
+
 def copy_image_windows(path: Path) -> int:
     powershell = shutil.which("powershell.exe") or shutil.which("powershell")
     if not powershell:
@@ -527,6 +540,13 @@ def parse_args() -> argparse.Namespace:
     skin_store.add_argument("--open-browser", action="store_true")
     skin_store.add_argument("--idle-timeout", type=float, default=900.0)
     skin_store.add_argument("--port", type=int, default=0)
+
+    companion_console = subparsers.add_parser("companion-console")
+    companion_console.add_argument("--repo-root", type=Path, required=True)
+    companion_console.add_argument("--config-dir", type=Path, required=True)
+    companion_console.add_argument("--open-browser", action="store_true")
+    companion_console.add_argument("--idle-timeout", type=float, default=900.0)
+    companion_console.add_argument("--port", type=int, default=0)
     return parser.parse_args()
 
 
@@ -545,6 +565,8 @@ def main() -> int:
             return fetch_cachomon_index(args)
         if args.command == "skin-store":
             return run_skin_store(args)
+        if args.command == "companion-console":
+            return run_companion_console(args)
     except Exception as exc:
         print(f"pet_helper.py: {exc}", file=sys.stderr)
         return 1

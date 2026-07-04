@@ -28,6 +28,10 @@ from import_shimeji_skin import install_skin_source
 CONFIG_DIR_NAME = "mascotmate-desktop"
 MAX_IMPORT_BYTES = 100 * 1024 * 1024
 INSTALLABLE_SOURCE_TYPES = {"curated_package", "local_package"}
+COMPANION_COMMANDS = {"set_behavior_mode", "set_adaptation", "rebuild_memory", "run_scenario"}
+COMPANION_MODES = {"安静", "活泼", "捣乱"}
+COMPANION_STRENGTHS = {"subtle", "visible", "bold"}
+COMPANION_SCENARIOS = {"all", "work_focus", "hungry_care", "low_mood_play", "rest_boundary", "busy_guard", "mischief_forced"}
 
 
 def default_config_dir() -> Path:
@@ -48,6 +52,19 @@ def is_subpath(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value).strip().lower()
+    if text in {"0", "false", "off", "no"}:
+        return False
+    if text in {"1", "true", "on", "yes"}:
+        return True
+    return bool(value)
 
 
 def _friendly_import_error(message: str) -> str:
@@ -119,9 +136,13 @@ class SkinStoreApp:
         self.config_dir = config_dir.resolve()
         self.catalog_dir = self.repo_root / "skin_catalog"
         self.static_dir = self.repo_root / "skin_store"
+        self.companion_static_dir = self.repo_root / "companion_console"
         self.user_skin_root = self.config_dir / "skins"
         self.config_path = self.config_dir / "config.json"
         self.command_path = self.config_dir / "skin_store_command.json"
+        self.companion_command_path = self.config_dir / "companion_console_command.json"
+        self.companion_snapshot_path = self.config_dir / "companion_debug_snapshot.json"
+        self.companion_scenario_result_path = self.config_dir / "companion_scenario_result.json"
 
     def catalog_payload(self, token: str) -> dict[str, Any]:
         curated = []
@@ -317,6 +338,56 @@ class SkinStoreApp:
             raise FileNotFoundError(relative)
         return target
 
+    def companion_static_file(self, relative: str) -> Path:
+        target = (self.companion_static_dir / relative).resolve()
+        if not is_subpath(target, self.companion_static_dir) or not target.is_file():
+            raise FileNotFoundError(relative)
+        return target
+
+    def companion_snapshot(self) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "exists": self.companion_snapshot_path.is_file(),
+            "snapshot": self._load_json(self.companion_snapshot_path),
+        }
+
+    def companion_scenario_result(self) -> dict[str, Any]:
+        return {
+            "ok": True,
+            "exists": self.companion_scenario_result_path.is_file(),
+            "result": self._load_json(self.companion_scenario_result_path),
+        }
+
+    def write_companion_command(self, body: dict[str, Any]) -> dict[str, Any]:
+        command = str(body.get("command", "")).strip()
+        if command not in COMPANION_COMMANDS:
+            raise ValueError("未知控制台命令。")
+        payload = body.get("payload", {})
+        if not isinstance(payload, dict):
+            payload = {}
+        if command == "set_behavior_mode":
+            mode = str(payload.get("mode", body.get("mode", ""))).strip()
+            if mode not in COMPANION_MODES:
+                raise ValueError("行为模式不合法。")
+            payload = {"mode": mode}
+        elif command == "set_adaptation":
+            strength = str(payload.get("strength", body.get("strength", "visible"))).strip()
+            if strength not in COMPANION_STRENGTHS:
+                raise ValueError("适配强度不合法。")
+            payload = {
+                "enabled": _coerce_bool(payload.get("enabled", body.get("enabled", True))),
+                "strength": strength,
+            }
+        elif command == "run_scenario":
+            scenario_id = str(payload.get("scenario_id", body.get("scenario_id", "all"))).strip() or "all"
+            if scenario_id not in COMPANION_SCENARIOS:
+                raise ValueError("回放场景不合法。")
+            payload = {"scenario_id": scenario_id}
+        else:
+            payload = {}
+        self._write_companion_command(command, payload)
+        return {"ok": True, "command": command, "payload": payload, "message": "命令已发送。"}
+
     def asset_file(self, relative: str) -> Path:
         target = (self.repo_root / relative).resolve()
         if not is_subpath(target, self.repo_root) or not target.is_file():
@@ -429,6 +500,18 @@ class SkinStoreApp:
         temp.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
         temp.replace(self.command_path)
 
+    def _write_companion_command(self, command: str, payload: dict[str, Any]) -> None:
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        body = {
+            "command": command,
+            "payload": payload,
+            "nonce": secrets.token_hex(8),
+            "created_at": time.time(),
+        }
+        temp = self.companion_command_path.with_suffix(".tmp")
+        temp.write_text(json.dumps(body, ensure_ascii=False) + "\n", encoding="utf-8")
+        temp.replace(self.companion_command_path)
+
     def _load_json(self, path: Path) -> dict[str, Any]:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -454,6 +537,18 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         self.server.last_request_at = time.monotonic()
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/companion/snapshot":
+            if not self._authorized(parsed):
+                self._json({"ok": False, "error": "unauthorized"}, 403)
+                return
+            self._json(self.server.app.companion_snapshot())
+            return
+        if parsed.path == "/api/companion/scenario-result":
+            if not self._authorized(parsed):
+                self._json({"ok": False, "error": "unauthorized"}, 403)
+                return
+            self._json(self.server.app.companion_scenario_result())
+            return
         if parsed.path == "/api/catalog":
             if not self._authorized(parsed):
                 self._json({"ok": False, "error": "unauthorized"}, 403)
@@ -491,6 +586,19 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
             except FileNotFoundError:
                 self.send_error(404)
             return
+        if parsed.path in ("/companion", "/companion/"):
+            try:
+                self._send_file(self.server.app.companion_static_file("index.html"))
+            except FileNotFoundError:
+                self.send_error(404)
+            return
+        if parsed.path.startswith("/companion/"):
+            relative = urllib.parse.unquote(parsed.path.removeprefix("/companion/"))
+            try:
+                self._send_file(self.server.app.companion_static_file(relative))
+            except FileNotFoundError:
+                self.send_error(404)
+            return
         relative = urllib.parse.unquote(parsed.path.lstrip("/"))
         try:
             self._send_file(self.server.app.static_file(relative))
@@ -520,6 +628,9 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/open-source":
                 self._json(self.server.app.open_source(str(body.get("id", ""))))
+                return
+            if parsed.path == "/api/companion/command":
+                self._json(self.server.app.write_companion_command(body))
                 return
             self._json({"ok": False, "error": "not found"}, 404)
         except ValueError as exc:
@@ -588,10 +699,12 @@ def serve_skin_store(
     open_browser: bool = False,
     idle_timeout: float = 900.0,
     port: int = 0,
+    open_path: str = "/",
 ) -> int:
     server = make_server(repo_root, config_dir, port=port)
     host, actual_port = server.server_address
-    url = f"http://{host}:{actual_port}/?token={urllib.parse.quote(server.token)}"
+    clean_path = open_path if open_path.startswith("/") else "/" + open_path
+    url = f"http://{host}:{actual_port}{clean_path}?token={urllib.parse.quote(server.token)}"
     print(json.dumps({"url": url, "port": actual_port}, ensure_ascii=False), flush=True)
     if open_browser:
         webbrowser.open(url)
@@ -602,3 +715,21 @@ def serve_skin_store(
     finally:
         server.server_close()
     return 0
+
+
+def serve_companion_console(
+    repo_root: Path,
+    config_dir: Path,
+    *,
+    open_browser: bool = False,
+    idle_timeout: float = 900.0,
+    port: int = 0,
+) -> int:
+    return serve_skin_store(
+        repo_root,
+        config_dir,
+        open_browser=open_browser,
+        idle_timeout=idle_timeout,
+        port=port,
+        open_path="/companion/",
+    )

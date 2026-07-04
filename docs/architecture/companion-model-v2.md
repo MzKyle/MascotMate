@@ -30,6 +30,7 @@ v2 的目标是把当前规则系统升级成“本地优先、可解释、低�
 - `SkinManager.gd` 会为皮肤归一化可选 `personality`，缺失时使用默认人格。
 - `CompanionExpressionBank.gd` 负责互动和自动提示气泡的本地表达选择，可读取记忆、人格 tone 和最近文案。
 - 行为适配 v1 已让记忆和皮肤人格影响主动提示阈值、自动行为权重和非工作时段冷却，并在 decision 中附带 `adaptation` 元数据。
+- 本地陪伴控制台 v1 已提供浏览器观测、行为适配开关/强度调参和固定场景回放；运行时会写入 `companion_debug_snapshot.json` 和 `companion_scenario_result.json` 供排查。
 - AI sidecar、长期历史迁移和更细粒度的长期行为画像仍是后续阶段。
 
 ## 设计原则

@@ -18,6 +18,7 @@ const MENU_TOGGLE_GRAVITY := 40
 const MENU_EXIT_PEEK := 41
 const MENU_SCREENSHOT_SETTINGS := 50
 const MENU_SKINS := 60
+const MENU_COMPANION_CONSOLE := 61
 const MENU_EXIT := 99
 
 var popup: PopupMenu
@@ -47,6 +48,7 @@ func show_menu(gravity_enabled: bool, peek_mode: bool, behavior_mode: String) ->
 	if peek_mode:
 		popup.add_item("出来", MENU_EXIT_PEEK)
 	popup.add_item("皮肤商店", MENU_SKINS)
+	popup.add_item("陪伴控制台", MENU_COMPANION_CONSOLE)
 	popup.add_item("截图贴图设置", MENU_SCREENSHOT_SETTINGS)
 	popup.add_separator()
 	popup.add_check_item("安静模式", MENU_QUIET)
@@ -84,6 +86,7 @@ func _on_menu_id_pressed(id: int) -> void:
 		MENU_TOGGLE_GRAVITY: "toggle_gravity",
 		MENU_EXIT_PEEK: "exit_peek",
 		MENU_SKINS: "skins",
+		MENU_COMPANION_CONSOLE: "companion_console",
 		MENU_SCREENSHOT_SETTINGS: "screenshot_settings",
 		MENU_QUIET: "mode_quiet",
 		MENU_ACTIVE: "mode_active",
