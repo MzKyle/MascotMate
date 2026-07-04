@@ -79,7 +79,7 @@ python3 scripts/pet_helper.py install-skin /path/to/my-skin.zip --output-root ~/
 }
 ```
 
-当前版本只使用 `tone` 和 `dialogue_style` 辅助表达选择；`traits` 为后续行为适配保留，不能绕过全局冷却、忙碌判断或能力边界。
+当前版本会使用 `tone` 和 `dialogue_style` 辅助表达选择，并使用 `traits` 参与行为适配。`traits` 可以影响自动行为倾向、主动提示阈值和非工作时段冷却，但不能绕过全局冷却下限、忙碌判断、暂停状态、休息限制或能力边界。
 
 ## 能力标签
 

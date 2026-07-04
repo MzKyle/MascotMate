@@ -14,6 +14,8 @@ const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
 const CompanionExpressionBankScript = preload("res://scripts/CompanionExpressionBank.gd")
 
 const FIXED_ENTERTAINMENT_TIME := 1761998400
+const FIXED_WORK_TIME := 1762164000
+const FIXED_REST_TIME := 1762038000
 
 
 func _init() -> void:
@@ -171,6 +173,139 @@ func _run() -> void:
 	var hungry_intent = decision.get("intent", {})
 	if typeof(hungry_intent) != TYPE_DICTIONARY or str(hungry_intent.get("type", "")) != "care_request" or str(hungry_intent.get("name", "")) != "hungry" or str(hungry_intent.get("reason", "")) == "":
 		_fail("BehaviorBrain hungry prompt did not include the expected intent: %s" % JSON.stringify(decision))
+		return
+
+	var adaptive_brain = BehaviorBrainScript.new()
+	root_node.add_child(adaptive_brain)
+	await process_frame
+	adaptive_brain.configure({
+		"modes": {
+			"活泼": {
+				"interval": [1.0, 1.0],
+				"actions": [{"type": "action", "name": "invite", "weight": 1.0}],
+			},
+		},
+	})
+	adaptive_brain.set_mode("活泼")
+	var adaptive_state = _calm_state(FIXED_ENTERTAINMENT_TIME)
+	adaptive_state["memory"]["last_action_at"] = FIXED_ENTERTAINMENT_TIME - 80
+	var adaptive_context = {
+		"busy": false,
+		"state": adaptive_state,
+		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
+		"personality": _adaptive_personality(95, 25, 20, 90),
+	}
+	var adaptive_decision = adaptive_brain.decide(adaptive_context, FIXED_ENTERTAINMENT_TIME)
+	if str(adaptive_decision.get("type", "")) != "action" or str(adaptive_decision.get("name", "")) != "invite":
+		_fail("BehaviorBrain adaptation did not shorten active cooldown enough for invite: %s" % JSON.stringify(adaptive_decision))
+		return
+	var adaptation_meta = adaptive_decision.get("adaptation", {})
+	var adaptive_intent = adaptive_decision.get("intent", {})
+	if typeof(adaptation_meta) != TYPE_DICTIONARY or not bool(adaptation_meta.get("enabled", false)) or float(adaptation_meta.get("cooldown_multiplier", 1.0)) >= 1.0:
+		_fail("BehaviorBrain adaptation metadata was missing or ineffective: %s" % JSON.stringify(adaptive_decision))
+		return
+	if typeof(adaptive_intent) != TYPE_DICTIONARY or str(adaptive_intent.get("reason", "")).find("adaptation") < 0:
+		_fail("BehaviorBrain adaptive invite intent did not explain adaptation: %s" % JSON.stringify(adaptive_decision))
+		return
+	var work_state = _calm_state(FIXED_WORK_TIME)
+	work_state["memory"]["last_action_at"] = FIXED_WORK_TIME - 80
+	var work_decision = adaptive_brain.decide({
+		"busy": false,
+		"state": work_state,
+		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
+		"personality": _adaptive_personality(95, 25, 20, 90),
+	}, FIXED_WORK_TIME)
+	if str(work_decision.get("type", "")) != "none":
+		_fail("BehaviorBrain adaptation bypassed work cooldown: %s" % JSON.stringify(work_decision))
+		return
+
+	var threshold_brain = BehaviorBrainScript.new()
+	root_node.add_child(threshold_brain)
+	await process_frame
+	threshold_brain.configure({
+		"modes": {
+			"活泼": {
+				"interval": [1.0, 1.0],
+				"actions": [],
+			},
+		},
+	})
+	threshold_brain.set_mode("活泼")
+	var plain_hungry_state = _calm_state(FIXED_ENTERTAINMENT_TIME)
+	plain_hungry_state["hunger"] = 76
+	var plain_hungry_decision = threshold_brain.decide({"busy": false, "state": plain_hungry_state}, FIXED_ENTERTAINMENT_TIME)
+	if str(plain_hungry_decision.get("type", "")) == "prompt" and str(plain_hungry_decision.get("name", "")) == "hungry":
+		_fail("BehaviorBrain plain hunger threshold should not trigger at 76: %s" % JSON.stringify(plain_hungry_decision))
+		return
+	var adapted_hungry_decision = threshold_brain.decide({
+		"busy": false,
+		"state": plain_hungry_state,
+		"memory": _adaptive_memory(["feed_success"], 85, 80, 10),
+		"personality": _adaptive_personality(70, 20, 25, 60),
+	}, FIXED_ENTERTAINMENT_TIME)
+	if str(adapted_hungry_decision.get("type", "")) != "prompt" or str(adapted_hungry_decision.get("name", "")) != "hungry":
+		_fail("BehaviorBrain adaptive hunger threshold did not trigger at 76: %s" % JSON.stringify(adapted_hungry_decision))
+		return
+	var adapted_hungry_intent = adapted_hungry_decision.get("intent", {})
+	if typeof(adapted_hungry_intent) != TYPE_DICTIONARY or str(adapted_hungry_intent.get("reason", "")).find("adaptation") < 0:
+		_fail("BehaviorBrain adaptive hunger intent did not explain adaptation: %s" % JSON.stringify(adapted_hungry_decision))
+		return
+
+	var plain_mood_state = _calm_state(FIXED_ENTERTAINMENT_TIME)
+	plain_mood_state["mood"] = 45
+	var plain_mood_decision = threshold_brain.decide({"busy": false, "state": plain_mood_state}, FIXED_ENTERTAINMENT_TIME)
+	if str(plain_mood_decision.get("type", "")) == "prompt" and str(plain_mood_decision.get("name", "")) == "play":
+		_fail("BehaviorBrain plain mood threshold should not trigger at 45: %s" % JSON.stringify(plain_mood_decision))
+		return
+	var adapted_mood_decision = threshold_brain.decide({
+		"busy": false,
+		"state": plain_mood_state,
+		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
+		"personality": _adaptive_personality(95, 25, 20, 90),
+	}, FIXED_ENTERTAINMENT_TIME)
+	if str(adapted_mood_decision.get("type", "")) != "prompt" or str(adapted_mood_decision.get("name", "")) != "play":
+		_fail("BehaviorBrain adaptive mood threshold did not trigger at 45: %s" % JSON.stringify(adapted_mood_decision))
+		return
+
+	adaptive_brain.set_mode("安静")
+	var quiet_decision = adaptive_brain.decide({
+		"busy": false,
+		"state": _calm_state(FIXED_ENTERTAINMENT_TIME),
+		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
+		"personality": _adaptive_personality(95, 80, 20, 90),
+	}, FIXED_ENTERTAINMENT_TIME)
+	if str(quiet_decision.get("type", "")) != "none":
+		_fail("BehaviorBrain adaptation should not add quiet mode actions: %s" % JSON.stringify(quiet_decision))
+		return
+	adaptive_brain.set_mode("活泼")
+	var busy_decision = adaptive_brain.decide({
+		"busy": true,
+		"state": _calm_state(FIXED_ENTERTAINMENT_TIME),
+		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
+		"personality": _adaptive_personality(95, 25, 20, 90),
+	}, FIXED_ENTERTAINMENT_TIME)
+	if str(busy_decision.get("type", "")) != "none":
+		_fail("BehaviorBrain adaptation should not bypass busy state: %s" % JSON.stringify(busy_decision))
+		return
+	adaptive_brain.set_paused(true)
+	var paused_decision = adaptive_brain.decide({
+		"busy": false,
+		"state": _calm_state(FIXED_ENTERTAINMENT_TIME),
+		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
+		"personality": _adaptive_personality(95, 25, 20, 90),
+	}, FIXED_ENTERTAINMENT_TIME)
+	if str(paused_decision.get("type", "")) != "none":
+		_fail("BehaviorBrain adaptation should not bypass paused state: %s" % JSON.stringify(paused_decision))
+		return
+	adaptive_brain.set_paused(false)
+	var rest_decision = adaptive_brain.decide({
+		"busy": false,
+		"state": _calm_state(FIXED_REST_TIME),
+		"memory": _adaptive_memory(["tease_success"], 85, 10, 80),
+		"personality": _adaptive_personality(95, 25, 20, 90),
+	}, FIXED_REST_TIME)
+	if str(rest_decision.get("type", "")) != "action" or str(rest_decision.get("name", "")) != "sleep":
+		_fail("BehaviorBrain adaptation should preserve rest behavior: %s" % JSON.stringify(rest_decision))
 		return
 
 	var effect_brain = BehaviorBrainScript.new()
@@ -415,6 +550,46 @@ func _calm_state(now_unix: int) -> Dictionary:
 			"last_prompt_at": 0,
 			"last_action_at": 0,
 			"interaction_counts": {},
+		},
+	}
+
+
+func _adaptive_memory(favorites: Array, familiarity: int, care_score: int, play_score: int) -> Dictionary:
+	return {
+		"version": 1,
+		"preferences": {
+			"favorite_interactions": favorites,
+			"favorite_mode": "活泼",
+			"favorite_period": "entertainment",
+		},
+		"relationship": {
+			"level": "close" if familiarity >= 70 else "familiar",
+			"familiarity": familiarity,
+			"care_score": care_score,
+			"play_score": play_score,
+		},
+		"short_term": {
+			"counts": {},
+			"recent_kinds": favorites,
+		},
+	}
+
+
+func _adaptive_personality(playfulness: int, mischief: int, patience: int, clinginess: int) -> Dictionary:
+	return {
+		"version": 1,
+		"archetype": "playful",
+		"tone": "short_cute",
+		"traits": {
+			"playfulness": playfulness,
+			"mischief": mischief,
+			"patience": patience,
+			"clinginess": clinginess,
+		},
+		"dialogue_style": {
+			"max_chars": 28,
+			"use_status_numbers": false,
+			"avoid_repeating_recent": true,
 		},
 	}
 
