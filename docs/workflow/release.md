@@ -86,6 +86,6 @@ dist/MascotMateDesktop/MascotMateDesktop
 - 不提交 `dist/`、`tools/`、`godot_pet/.godot/` 等本地产物
 - 不提交 IDE 工程文件、虚拟环境和本地构建缓存
 - 不提交个人配置目录中的 `state.json`、`config.json` 或截图历史
-- 确认 `LICENSE` 为 MIT
+- 确认 `LICENSE` 为 Apache License 2.0
 - 确认第三方素材 `NOTICE.md` 仍在对应目录
 - 确认 README 中的仓库链接、文档链接和命令可用

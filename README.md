@@ -159,7 +159,7 @@ python3 -m unittest discover tests
 
 ## License and Assets
 
-Code is released under the [MIT License](LICENSE). Character-related assets in
-this fan project are intended for learning, research, and personal local desktop
-use. Replace them with original or properly licensed assets before public
-distribution.
+Code is released under the [Apache License 2.0](LICENSE). Character-related
+assets in this fan project are intended for learning, research, and personal
+local desktop use. Replace them with original or properly licensed assets before
+public distribution.

@@ -24,5 +24,5 @@
   <text x="974" y="254" fill="#374151" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="600">Godot 透明桌宠 / 物理互动</text>
   <text x="974" y="298" fill="#374151" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="600">截图贴图 / Linux 打包</text>
   <rect x="972" y="334" width="156" height="44" rx="22" fill="#EF4444"/>
-  <text x="1000" y="364" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">MIT License</text>
+  <text x="994" y="364" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700">Apache-2.0</text>
 </svg>
