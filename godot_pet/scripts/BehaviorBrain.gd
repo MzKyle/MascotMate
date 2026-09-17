@@ -200,7 +200,7 @@ func _record_automatic_event(decision: Dictionary, context: Dictionary, now: int
 		intent = {}
 	var event_context = context.duplicate(true)
 	if not event_context.has("period"):
-		event_context["period"] = _period_for(now)
+		event_context["period"] = period_for(now)
 	var store = context.get("state_store", null)
 	if store != null and store.has_method("snapshot"):
 		event_context["state"] = store.snapshot()
@@ -224,8 +224,12 @@ func _intent_key(intent: Dictionary) -> String:
 	return "%s:%s" % [intent_type, intent_name]
 
 
-func _period_for(now: int) -> String:
+func period_for(now: int) -> String:
 	return behavior_policy.period_for(now)
+
+
+func _period_for(now: int) -> String:
+	return period_for(now)
 
 
 func _interval_for_mode(target_mode: String) -> Vector2:

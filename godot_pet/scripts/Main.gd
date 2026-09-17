@@ -96,7 +96,7 @@ func _ready() -> void:
 	display_scale = clamp(float(app_config.get("display_scale", 1.0)), 1.0, 1.5)
 	gravity_enabled = bool(app_config.get("gravity_enabled", true))
 	configured_skin_id = str(app_config.get("skin_id", "classic_shinchan"))
-	dialogue_tone = _sanitize_dialogue_tone(app_config.get("dialogue_tone", "gentle"))
+	dialogue_tone = str(app_config.get("dialogue_tone", "gentle"))
 
 	_configure_window()
 	_create_nodes()
@@ -840,18 +840,23 @@ func _set_behavior_mode(value: String, announce := true) -> void:
 
 
 func _set_dialogue_tone(value: String, announce := true) -> void:
-	dialogue_tone = _sanitize_dialogue_tone(value)
 	if config_store != null and config_store.has_method("set_dialogue_tone"):
-		config_store.set_dialogue_tone(dialogue_tone)
+		config_store.set_dialogue_tone(value)
+		dialogue_tone = str(config_store.app_config().get("dialogue_tone", "gentle"))
+	else:
+		dialogue_tone = str(ConfigStoreScript.DEFAULT_CONFIG["app"]["dialogue_tone"])
 	if announce:
 		show_bubble("文案语气：%s。" % _dialogue_tone_label(dialogue_tone), 1.8)
 	_write_companion_debug_snapshot()
 
 
 func _set_behavior_adaptation(values: Dictionary, announce := true) -> void:
-	var next_config = _sanitize_behavior_adaptation(values)
+	var next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true)
 	if config_store != null and config_store.has_method("set_behavior_adaptation_config"):
-		config_store.set_behavior_adaptation_config(next_config)
+		config_store.set_behavior_adaptation_config(values)
+		next_config = config_store.app_config().get("behavior_adaptation", next_config)
+		if typeof(next_config) != TYPE_DICTIONARY:
+			next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true)
 	_apply_behavior_configuration()
 	if announce:
 		var strength_label = {
@@ -864,9 +869,12 @@ func _set_behavior_adaptation(values: Dictionary, announce := true) -> void:
 
 
 func _set_ai_expression_config(values: Dictionary, announce := true) -> void:
-	var next_config = _sanitize_ai_expression(values)
+	var next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_expression"].duplicate(true)
 	if config_store != null and config_store.has_method("set_ai_expression_config"):
-		config_store.set_ai_expression_config(next_config)
+		config_store.set_ai_expression_config(values)
+		next_config = config_store.app_config().get("ai_expression", next_config)
+		if typeof(next_config) != TYPE_DICTIONARY:
+			next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_expression"].duplicate(true)
 	if companion_ai_expression_client != null and companion_ai_expression_client.has_method("configure"):
 		companion_ai_expression_client.configure(next_config)
 	if announce:
@@ -875,9 +883,12 @@ func _set_ai_expression_config(values: Dictionary, announce := true) -> void:
 
 
 func _set_ai_memory_summary_config(values: Dictionary, announce := true) -> void:
-	var next_config = _sanitize_ai_memory_summary(values)
+	var next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true)
 	if config_store != null and config_store.has_method("set_ai_memory_summary_config"):
-		config_store.set_ai_memory_summary_config(next_config)
+		config_store.set_ai_memory_summary_config(values)
+		next_config = config_store.app_config().get("ai_memory_summary", next_config)
+		if typeof(next_config) != TYPE_DICTIONARY:
+			next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true)
 	if companion_ai_expression_client != null and companion_ai_expression_client.has_method("configure_memory_summary"):
 		companion_ai_expression_client.configure_memory_summary(next_config)
 	if announce:
@@ -1248,7 +1259,10 @@ func _selected_personality() -> Dictionary:
 	if typeof(result) != TYPE_DICTIONARY:
 		result = {}
 	result = result.duplicate(true)
-	result["tone"] = _sanitize_dialogue_tone(dialogue_tone)
+	if config_store != null and config_store.has_method("normalize_dialogue_tone"):
+		result["tone"] = config_store.normalize_dialogue_tone(dialogue_tone)
+	else:
+		result["tone"] = str(ConfigStoreScript.DEFAULT_CONFIG["app"]["dialogue_tone"])
 	return result
 
 
@@ -1513,7 +1527,9 @@ func _event_kind_for_interaction(legacy_kind: String) -> String:
 
 func _maybe_summarize_memory(force := false):
 	var app_config = config_store.app_config() if config_store != null and config_store.has_method("app_config") else {}
-	var summary_config = _sanitize_ai_memory_summary(app_config.get("ai_memory_summary", {}))
+	var summary_config = app_config.get("ai_memory_summary", ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true))
+	if typeof(summary_config) != TYPE_DICTIONARY:
+		summary_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true)
 	if not bool(summary_config.get("enabled", false)):
 		return {"source": "fallback", "fallback_reason": "disabled", "summary": {}}
 	if companion_ai_expression_client == null or not companion_ai_expression_client.has_method("summarize_memory"):
@@ -1592,9 +1608,9 @@ func _companion_debug_snapshot() -> Dictionary:
 		},
 		"config": {
 			"dialogue_tone": dialogue_tone,
-			"behavior_adaptation": _sanitize_behavior_adaptation(app_config.get("behavior_adaptation", {})),
-			"ai_expression": _sanitize_ai_expression(app_config.get("ai_expression", {})),
-			"ai_memory_summary": _sanitize_ai_memory_summary(app_config.get("ai_memory_summary", {})),
+			"behavior_adaptation": app_config.get("behavior_adaptation", ConfigStoreScript.DEFAULT_CONFIG["app"]["behavior_adaptation"]).duplicate(true) if typeof(app_config.get("behavior_adaptation", {})) == TYPE_DICTIONARY else ConfigStoreScript.DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true),
+			"ai_expression": app_config.get("ai_expression", ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_expression"]).duplicate(true) if typeof(app_config.get("ai_expression", {})) == TYPE_DICTIONARY else ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_expression"].duplicate(true),
+			"ai_memory_summary": app_config.get("ai_memory_summary", ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_memory_summary"]).duplicate(true) if typeof(app_config.get("ai_memory_summary", {})) == TYPE_DICTIONARY else ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true),
 			"gravity_enabled": gravity_enabled,
 			"display_scale": display_scale,
 		},
@@ -1654,8 +1670,8 @@ func _compact_behavior_context(context: Dictionary) -> Dictionary:
 
 
 func _current_behavior_period(now_unix: int) -> String:
-	if brain != null and brain.has_method("_period_for"):
-		return str(brain._period_for(now_unix))
+	if brain != null and brain.has_method("period_for"):
+		return str(brain.period_for(now_unix))
 	return ""
 
 
@@ -1703,7 +1719,9 @@ func _load_json(path: String) -> Dictionary:
 func _behavior_config_with_app_overrides() -> Dictionary:
 	var result = behavior_manifest.duplicate(true)
 	var app_config = config_store.app_config() if config_store != null and config_store.has_method("app_config") else {}
-	var adaptation = _sanitize_behavior_adaptation(app_config.get("behavior_adaptation", {}))
+	var adaptation = app_config.get("behavior_adaptation", ConfigStoreScript.DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true))
+	if typeof(adaptation) != TYPE_DICTIONARY:
+		adaptation = ConfigStoreScript.DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true)
 	var companion = result.get("companion", {})
 	if typeof(companion) != TYPE_DICTIONARY:
 		companion = {}
@@ -1712,75 +1730,13 @@ func _behavior_config_with_app_overrides() -> Dictionary:
 	return result
 
 
-func _sanitize_dialogue_tone(value) -> String:
-	var tone = str(value).strip_edges()
-	return tone if tone in ["gentle", "short_cute", "calm"] else "gentle"
-
-
 func _dialogue_tone_label(value: String) -> String:
 	var labels = {
 		"gentle": "温柔",
 		"short_cute": "元气",
 		"calm": "安静",
 	}
-	return str(labels.get(_sanitize_dialogue_tone(value), "温柔"))
-
-
-func _sanitize_behavior_adaptation(value) -> Dictionary:
-	var result := {
-		"enabled": true,
-		"strength": "visible",
-	}
-	if typeof(value) != TYPE_DICTIONARY:
-		return result
-	if value.has("enabled"):
-		result["enabled"] = bool(value["enabled"])
-	if value.has("strength"):
-		var strength = str(value["strength"])
-		result["strength"] = strength if strength in ["subtle", "visible", "bold"] else "visible"
-	return result
-
-
-func _sanitize_ai_expression(value) -> Dictionary:
-	var result := {
-		"enabled": false,
-		"provider": "local_stub",
-		"timeout_ms": 800,
-	}
-	if typeof(value) != TYPE_DICTIONARY:
-		return result
-	if value.has("enabled"):
-		result["enabled"] = bool(value["enabled"])
-	if value.has("provider"):
-		var provider = str(value["provider"])
-		result["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
-	if value.has("timeout_ms"):
-		result["timeout_ms"] = clampi(int(value["timeout_ms"]), 100, 5000)
-	return result
-
-
-func _sanitize_ai_memory_summary(value) -> Dictionary:
-	var result := {
-		"enabled": false,
-		"provider": "local_stub",
-		"timeout_ms": 1500,
-		"min_events": 12,
-		"min_interval_seconds": 86400,
-	}
-	if typeof(value) != TYPE_DICTIONARY:
-		return result
-	if value.has("enabled"):
-		result["enabled"] = bool(value["enabled"])
-	if value.has("provider"):
-		var provider = str(value["provider"])
-		result["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
-	if value.has("timeout_ms"):
-		result["timeout_ms"] = clampi(int(value["timeout_ms"]), 100, 5000)
-	if value.has("min_events"):
-		result["min_events"] = clampi(int(value["min_events"]), 1, 200)
-	if value.has("min_interval_seconds"):
-		result["min_interval_seconds"] = clampi(int(value["min_interval_seconds"]), 60, 30 * 24 * 60 * 60)
-	return result
+	return str(labels.get(value, "温柔"))
 
 
 func _has_resource_root(path: String) -> bool:

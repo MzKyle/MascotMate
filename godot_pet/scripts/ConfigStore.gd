@@ -79,6 +79,55 @@ func app_config() -> Dictionary:
 	return config.get("app", {}).duplicate(true)
 
 
+func normalize_dialogue_tone(value) -> String:
+	var tone = str(value).strip_edges()
+	return tone if tone in ["gentle", "short_cute", "calm"] else "gentle"
+
+
+func normalize_behavior_adaptation(value) -> Dictionary:
+	var merged = DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true)
+	if typeof(value) != TYPE_DICTIONARY:
+		return merged
+	if value.has("enabled"):
+		merged["enabled"] = bool(value["enabled"])
+	if value.has("strength"):
+		var strength = str(value["strength"])
+		merged["strength"] = strength if strength in ["subtle", "visible", "bold"] else "visible"
+	return merged
+
+
+func normalize_ai_expression(value) -> Dictionary:
+	var merged = DEFAULT_CONFIG["app"]["ai_expression"].duplicate(true)
+	if typeof(value) != TYPE_DICTIONARY:
+		return merged
+	if value.has("enabled"):
+		merged["enabled"] = bool(value["enabled"])
+	if value.has("provider"):
+		var provider = str(value["provider"])
+		merged["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
+	if value.has("timeout_ms"):
+		merged["timeout_ms"] = clampi(int(value["timeout_ms"]), 100, 5000)
+	return merged
+
+
+func normalize_ai_memory_summary(value) -> Dictionary:
+	var merged = DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true)
+	if typeof(value) != TYPE_DICTIONARY:
+		return merged
+	if value.has("enabled"):
+		merged["enabled"] = bool(value["enabled"])
+	if value.has("provider"):
+		var provider = str(value["provider"])
+		merged["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
+	if value.has("timeout_ms"):
+		merged["timeout_ms"] = clampi(int(value["timeout_ms"]), 100, 5000)
+	if value.has("min_events"):
+		merged["min_events"] = clampi(int(value["min_events"]), 1, 200)
+	if value.has("min_interval_seconds"):
+		merged["min_interval_seconds"] = clampi(int(value["min_interval_seconds"]), 60, 30 * 24 * 60 * 60)
+	return merged
+
+
 func screenshot_pins_config() -> Dictionary:
 	return {
 		"shortcuts": config.get("shortcuts", {}).duplicate(true),
@@ -98,13 +147,13 @@ func set_app_config(values: Dictionary) -> void:
 		var skin_id = str(values["skin_id"]).strip_edges()
 		config["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
 	if values.has("dialogue_tone"):
-		config["app"]["dialogue_tone"] = _sanitize_dialogue_tone(values["dialogue_tone"])
+		config["app"]["dialogue_tone"] = normalize_dialogue_tone(values["dialogue_tone"])
 	if values.has("behavior_adaptation"):
-		config["app"]["behavior_adaptation"] = _merged_behavior_adaptation(values["behavior_adaptation"])
+		config["app"]["behavior_adaptation"] = normalize_behavior_adaptation(values["behavior_adaptation"])
 	if values.has("ai_expression"):
-		config["app"]["ai_expression"] = _merged_ai_expression(values["ai_expression"])
+		config["app"]["ai_expression"] = normalize_ai_expression(values["ai_expression"])
 	if values.has("ai_memory_summary"):
-		config["app"]["ai_memory_summary"] = _merged_ai_memory_summary(values["ai_memory_summary"])
+		config["app"]["ai_memory_summary"] = normalize_ai_memory_summary(values["ai_memory_summary"])
 	save_config()
 
 
@@ -149,13 +198,13 @@ func _merged_config(source: Dictionary) -> Dictionary:
 			var skin_id = str(source["app"]["skin_id"]).strip_edges()
 			merged["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
 		if source["app"].has("dialogue_tone"):
-			merged["app"]["dialogue_tone"] = _sanitize_dialogue_tone(source["app"]["dialogue_tone"])
+			merged["app"]["dialogue_tone"] = normalize_dialogue_tone(source["app"]["dialogue_tone"])
 		if source["app"].has("behavior_adaptation"):
-			merged["app"]["behavior_adaptation"] = _merged_behavior_adaptation(source["app"]["behavior_adaptation"])
+			merged["app"]["behavior_adaptation"] = normalize_behavior_adaptation(source["app"]["behavior_adaptation"])
 		if source["app"].has("ai_expression"):
-			merged["app"]["ai_expression"] = _merged_ai_expression(source["app"]["ai_expression"])
+			merged["app"]["ai_expression"] = normalize_ai_expression(source["app"]["ai_expression"])
 		if source["app"].has("ai_memory_summary"):
-			merged["app"]["ai_memory_summary"] = _merged_ai_memory_summary(source["app"]["ai_memory_summary"])
+			merged["app"]["ai_memory_summary"] = normalize_ai_memory_summary(source["app"]["ai_memory_summary"])
 
 	if source.has("shortcuts") and typeof(source["shortcuts"]) == TYPE_DICTIONARY:
 		for key in merged["shortcuts"].keys():
@@ -171,55 +220,6 @@ func _merged_config(source: Dictionary) -> Dictionary:
 		if source["pins"].has("max_count"):
 			merged["pins"]["max_count"] = clampi(int(source["pins"]["max_count"]), 1, 3)
 
-	return merged
-
-
-func _sanitize_dialogue_tone(value) -> String:
-	var tone = str(value).strip_edges()
-	return tone if tone in ["gentle", "short_cute", "calm"] else "gentle"
-
-
-func _merged_behavior_adaptation(source) -> Dictionary:
-	var merged = DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true)
-	if typeof(source) != TYPE_DICTIONARY:
-		return merged
-	if source.has("enabled"):
-		merged["enabled"] = bool(source["enabled"])
-	if source.has("strength"):
-		var strength = str(source["strength"])
-		merged["strength"] = strength if strength in ["subtle", "visible", "bold"] else "visible"
-	return merged
-
-
-func _merged_ai_expression(source) -> Dictionary:
-	var merged = DEFAULT_CONFIG["app"]["ai_expression"].duplicate(true)
-	if typeof(source) != TYPE_DICTIONARY:
-		return merged
-	if source.has("enabled"):
-		merged["enabled"] = bool(source["enabled"])
-	if source.has("provider"):
-		var provider = str(source["provider"])
-		merged["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
-	if source.has("timeout_ms"):
-		merged["timeout_ms"] = clampi(int(source["timeout_ms"]), 100, 5000)
-	return merged
-
-
-func _merged_ai_memory_summary(source) -> Dictionary:
-	var merged = DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true)
-	if typeof(source) != TYPE_DICTIONARY:
-		return merged
-	if source.has("enabled"):
-		merged["enabled"] = bool(source["enabled"])
-	if source.has("provider"):
-		var provider = str(source["provider"])
-		merged["provider"] = provider if provider in ["local_stub", "openai_compatible"] else "local_stub"
-	if source.has("timeout_ms"):
-		merged["timeout_ms"] = clampi(int(source["timeout_ms"]), 100, 5000)
-	if source.has("min_events"):
-		merged["min_events"] = clampi(int(source["min_events"]), 1, 200)
-	if source.has("min_interval_seconds"):
-		merged["min_interval_seconds"] = clampi(int(source["min_interval_seconds"]), 60, 30 * 24 * 60 * 60)
 	return merged
 
 

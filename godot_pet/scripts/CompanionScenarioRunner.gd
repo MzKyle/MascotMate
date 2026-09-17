@@ -133,7 +133,7 @@ func _run_scenario(scenario_id: String) -> Dictionary:
 	if scenario_id == "mischief_forced":
 		scenario_brain.request_forced_mischief("grab", 0.0, 6.0, now)
 	var decision = scenario_brain.decide(context, now)
-	var period = scenario_brain._period_for(now)
+	var period = scenario_brain.period_for(now)
 	scenario_brain.free()
 	var passed = _scenario_passed(scenario_id, decision)
 	return {

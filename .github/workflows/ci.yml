@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Validate Python syntax
+        run: python -c "import pathlib, py_compile; [py_compile.compile(str(p), doraise=True) for p in pathlib.Path('scripts').glob('*.py')]"
+
+      - name: Run Python tests
+        run: python -m unittest discover tests
+
+      - name: Check Godot manifest
+        run: python scripts/generate_godot_manifest.py --check
+
+      - name: Validate resources
+        run: python scripts/validate_resources.py
+
+      - name: Validate skin catalog
+        run: python scripts/validate_skin_catalog.py --check
+
+      - name: Set up Godot
+        id: godot
+        run: python scripts/setup_godot_ci.py --github-output
+
+      - name: Godot runtime smoke test
+        env:
+          GODOT_BIN: ${{ steps.godot.outputs.godot_bin }}
+        run: python scripts/run_godot_smoke.py
