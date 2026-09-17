@@ -2,6 +2,7 @@ extends SceneTree
 
 const StateStoreScript = preload("res://scripts/StateStore.gd")
 const BehaviorBrainScript = preload("res://scripts/BehaviorBrain.gd")
+const CompanionBehaviorPolicyScript = preload("res://scripts/CompanionBehaviorPolicy.gd")
 const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const PetSpriteScript = preload("res://scripts/PetSprite.gd")
 const PetPhysicsScript = preload("res://scripts/PetPhysics.gd")
@@ -347,6 +348,26 @@ func _run() -> void:
 	if typeof(hungry_intent) != TYPE_DICTIONARY or str(hungry_intent.get("type", "")) != "care_request" or str(hungry_intent.get("name", "")) != "hungry" or str(hungry_intent.get("reason", "")) == "":
 		_fail("BehaviorBrain hungry prompt did not include the expected intent: %s" % JSON.stringify(decision))
 		return
+	var delegate_brain = BehaviorBrainScript.new()
+	root_node.add_child(delegate_brain)
+	delegate_brain.configure(behavior_config)
+	delegate_brain.set_mode("活泼")
+	var delegate_context = {"busy": true, "state": _calm_state(FIXED_ENTERTAINMENT_TIME)}
+	var brain_delegate_decision = delegate_brain.decide(delegate_context, FIXED_ENTERTAINMENT_TIME)
+	var policy = CompanionBehaviorPolicyScript.new()
+	policy.configure(behavior_config)
+	policy.set_mode("活泼")
+	var policy_delegate_decision = policy.decide(
+		delegate_context,
+		FIXED_ENTERTAINMENT_TIME,
+		{"last_interaction_at": 0, "last_prompt_at": 0, "last_action_at": 0},
+		{"kind": "", "ready_at": 0.0, "expires_at": 0.0},
+		false
+	)
+	if str(brain_delegate_decision.get("type", "")) != str(policy_delegate_decision.get("type", "")) or str(brain_delegate_decision.get("reason", "")) != "busy" or str(policy_delegate_decision.get("reason", "")) != "busy":
+		_fail("BehaviorBrain did not delegate busy decisions to CompanionBehaviorPolicy: brain=%s policy=%s" % [JSON.stringify(brain_delegate_decision), JSON.stringify(policy_delegate_decision)])
+		return
+	delegate_brain.free()
 	var emitted_intent := {"intent": {}}
 	brain.intent_requested.connect(func(intent, _decision): emitted_intent["intent"] = intent)
 	brain._emit_decision(decision, {"busy": false, "state": state_store.snapshot(), "state_store": state_store})

@@ -1,5 +1,7 @@
 extends Node
 
+const HelperProcessLauncherScript = preload("res://scripts/HelperProcessLauncher.gd")
+
 signal skin_requested(skin_id)
 signal notify(message)
 
@@ -9,12 +11,14 @@ var command_path := ""
 var helper_pid := -1
 var handled_nonce := ""
 var poll_timer: Timer
+var helper_launcher = HelperProcessLauncherScript.new()
 
 
 func configure(root: String, user_config_dir: String) -> void:
 	repo_root = root
 	config_dir = user_config_dir
 	command_path = config_dir.path_join("skin_store_command.json")
+	helper_launcher.configure(repo_root)
 	if poll_timer == null:
 		poll_timer = Timer.new()
 		poll_timer.wait_time = 0.5
@@ -34,12 +38,10 @@ func open_store() -> bool:
 		"--idle-timeout",
 		"900",
 	])
-	var command = _helper_command(args)
-	if command.is_empty():
+	helper_pid = helper_launcher.launch(args)
+	if helper_pid <= 0 and helper_launcher.last_error == "not_found":
 		emit_signal("notify", "找不到皮肤商店 helper。")
 		return false
-	var process_args: PackedStringArray = command["args"]
-	helper_pid = OS.create_process(str(command["program"]), process_args, false)
 	if helper_pid <= 0:
 		emit_signal("notify", "皮肤商店启动失败。")
 		return false
@@ -48,9 +50,8 @@ func open_store() -> bool:
 
 
 func stop() -> void:
-	if helper_pid > 0:
-		OS.kill(helper_pid)
-		helper_pid = -1
+	helper_launcher.stop()
+	helper_pid = helper_launcher.helper_pid
 
 
 func _poll_command() -> void:
@@ -73,51 +74,3 @@ func _poll_command() -> void:
 		if skin_id != "":
 			DirAccess.remove_absolute(command_path)
 			emit_signal("skin_requested", skin_id)
-
-
-func _helper_command(args: PackedStringArray) -> Dictionary:
-	var helper = _helper_path()
-	if helper != "":
-		return {"program": helper, "args": args}
-	var helper_script = _helper_script_path()
-	if helper_script == "":
-		return {}
-	var python = _find_python()
-	if python == "":
-		return {}
-	var script_args = PackedStringArray([helper_script])
-	script_args.append_array(args)
-	return {"program": python, "args": script_args}
-
-
-func _helper_path() -> String:
-	var helper_name = "pet_helper.exe" if OS.get_name() == "Windows" else "pet_helper"
-	var candidates = [
-		repo_root.path_join("scripts").path_join(helper_name),
-		OS.get_executable_path().get_base_dir().path_join("scripts").path_join(helper_name),
-	]
-	for path in candidates:
-		if FileAccess.file_exists(path):
-			return path
-	return ""
-
-
-func _helper_script_path() -> String:
-	var candidates = [
-		repo_root.path_join("scripts").path_join("pet_helper.py"),
-		OS.get_executable_path().get_base_dir().path_join("scripts").path_join("pet_helper.py"),
-		OS.get_executable_path().get_base_dir().path_join("..").path_join("scripts").path_join("pet_helper.py").simplify_path(),
-	]
-	for path in candidates:
-		if FileAccess.file_exists(path):
-			return path
-	return ""
-
-
-func _find_python() -> String:
-	for candidate in ["python3", "python"]:
-		var output := []
-		var code = OS.execute(candidate, ["--version"], output, true, true)
-		if code == 0:
-			return candidate
-	return ""
