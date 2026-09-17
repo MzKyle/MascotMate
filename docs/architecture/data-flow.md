@@ -31,6 +31,7 @@ sequenceDiagram
   participant Input as InteractionController
   participant Main as Main.gd
   participant Physics as PetPhysics.gd
+  participant WindowController as PetWindowController.gd
   participant Window as Godot Window
 
   User->>Input: 左键按下 350ms
@@ -44,10 +45,11 @@ sequenceDiagram
   Main->>Physics: release(velocity, flinging)
   Main->>Main: _physics_needs_tick()
   Physics-->>Main: 运动状态更新 position
-  Main->>Window: 位置变化后写入 window.position
+  Main->>WindowController: apply_position(physics.position)
+  WindowController->>Window: 位置变化后写入 window.position
 ```
 
-空闲或不需要物理推进的状态不会每帧调用 `PetPhysics.tick()`，窗口位置也会先比较再写入。这样保持窗口坐标即物理坐标的模型，同时降低空闲 CPU 和窗口系统调用。
+空闲或不需要物理推进的状态不会每帧调用 `PetPhysics.tick()`，窗口位置由 `PetWindowController.gd` 先比较再写入。这样保持窗口坐标即物理坐标的模型，同时降低空闲 CPU 和窗口系统调用。
 
 ## 资源加载
 

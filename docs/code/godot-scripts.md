@@ -4,18 +4,18 @@
 
 核心职责：
 
-- 读取环境变量并配置窗口
+- 创建 `PetWindowController.gd`，由它读取环境变量并配置 Godot 窗口
 - 创建并连接所有运行时模块
 - 每帧更新动画，并只在运动状态推进物理和窗口位置
 - 处理右键菜单命令
 - 控制偷看、捣乱、轻互动和状态气泡
 - 把行为 intent 执行为气泡、动作、特效或状态变化
 - 把当前文案语气、皮肤人格、记忆和画像合并为表达上下文
-- 更新并去重鼠标穿透多边形
+- 计算鼠标穿透多边形，并交给 `PetWindowController.gd` 去重后提交
 
 `_input()` 的处理顺序很重要。截图贴图、捣乱停按钮、轻互动和普通交互都有自己的输入优先级。
 
-主循环会用 `_physics_needs_tick()` 跳过空闲状态的物理计算，用 `_apply_window_position()` 避免重复写入相同窗口坐标。透明窗口的 `mouse_passthrough_polygon` 也会缓存上一次值，只有变化时才提交给 Godot `Window`。
+主循环会用 `_physics_needs_tick()` 跳过空闲状态的物理计算；窗口位置、尺寸和透明窗口的 `mouse_passthrough_polygon` 由 `PetWindowController.gd` 先比较再提交给 Godot `Window`。
 
 ## `PetSprite.gd`
 

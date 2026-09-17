@@ -24,16 +24,17 @@ const CompanionAIExpressionClientScript = preload("res://scripts/CompanionAIExpr
 const CompanionIntentScript = preload("res://scripts/CompanionIntent.gd")
 const CompanionExpressionResolverScript = preload("res://scripts/CompanionExpressionResolver.gd")
 const CompanionScenarioRunnerScript = preload("res://scripts/CompanionScenarioRunner.gd")
+const PetWindowControllerScript = preload("res://scripts/PetWindowController.gd")
 
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
 const COMPANION_DEBUG_REFRESH_SECONDS := 1.0
-const INITIAL_WINDOW_MARGIN := 40
 
 var repo_root := ""
 var manifest := {}
 var behavior_manifest := {}
 var config_store
+var window_controller
 var pet_sprite
 var physics
 var interaction
@@ -59,8 +60,6 @@ var display_scale := 1.0
 var drag_offset := Vector2.ZERO
 var landing_squash := 0.0
 var rng := RandomNumberGenerator.new()
-var transparent_window := false
-var mouse_passthrough_enabled := false
 var gravity_enabled := true
 var peek_mode := false
 var peek_edge := ""
@@ -78,7 +77,6 @@ var companion_scenario_result_path := ""
 var last_behavior_decision := {}
 var last_behavior_context := {}
 var last_expression := {}
-var last_mouse_passthrough_polygon := PackedVector2Array()
 
 
 func _ready() -> void:
@@ -98,14 +96,16 @@ func _ready() -> void:
 	configured_skin_id = str(app_config.get("skin_id", "classic_shinchan"))
 	dialogue_tone = str(app_config.get("dialogue_tone", "gentle"))
 
-	_configure_window()
+	window_controller = PetWindowControllerScript.new()
+	add_child(window_controller)
+	window_controller.configure(get_window(), get_viewport())
 	_create_nodes()
 	_play_capability("resting")
 	_sync_window_size(true)
-	_place_window_on_screen_if_needed()
-	physics.set_position_from_window(Vector2(get_window().position))
+	window_controller.ensure_on_screen()
+	physics.set_position_from_window(Vector2(window_controller.position()))
 	physics.set_gravity_enabled(gravity_enabled)
-	if transparent_window:
+	if window_controller.is_transparent():
 		show_bubble("透明桌宠模式启动：%s。" % skin_manager.selected_skin_name())
 	else:
 		show_bubble("Godot 安全窗口模式启动：%s。" % skin_manager.selected_skin_name())
@@ -128,16 +128,16 @@ func _process(delta: float) -> void:
 	pet_sprite.update_animation(delta)
 	_update_feedback_window_state()
 	if mischief_grab_active:
-		mischief_controller.tick(delta, get_window())
+		mischief_controller.tick(delta, Vector2(window_controller.size()))
 		_update_pet_pose(delta)
 		_update_mouse_passthrough()
 		return
 	mini_games.tick(delta)
 	_decay_tease_nudge(delta)
 	if _physics_needs_tick():
-		physics.tick(delta, _play_area(), Vector2(get_window().size), _movement_contact_rect())
+		physics.tick(delta, window_controller.play_area(), Vector2(window_controller.size()), _movement_contact_rect())
 		_sync_walk_animation_to_velocity()
-		_apply_window_position(physics.position)
+		window_controller.apply_position(physics.position)
 	_update_pet_pose(delta)
 
 
@@ -157,22 +157,6 @@ func _notification(what: int) -> void:
 		if companion_console_bridge != null:
 			companion_console_bridge.stop()
 		get_tree().quit()
-
-
-func _configure_window() -> void:
-	var window = get_window()
-	var safe_window = _env_flag("CRAYON_PET_SAFE_WINDOW", false)
-	transparent_window = _env_flag("CRAYON_PET_TRANSPARENT", true) and not safe_window
-	mouse_passthrough_enabled = _env_flag("CRAYON_PET_MOUSE_PASSTHROUGH", true)
-	window.borderless = _env_flag("CRAYON_PET_BORDERLESS", transparent_window)
-	window.always_on_top = _env_flag("CRAYON_PET_ALWAYS_ON_TOP", transparent_window)
-	window.transparent = transparent_window
-	window.unresizable = true
-	get_viewport().transparent_bg = transparent_window
-	if transparent_window:
-		RenderingServer.set_default_clear_color(Color(0, 0, 0, 0))
-	else:
-		RenderingServer.set_default_clear_color(Color(0.96, 0.94, 0.88, 1))
 
 
 func _create_nodes() -> void:
@@ -264,7 +248,7 @@ func _create_nodes() -> void:
 
 	mischief_controller = MischiefControllerScript.new()
 	add_child(mischief_controller)
-	mischief_controller.configure(pet_sprite, physics, Callable(self, "_play_area"), animation_resolver)
+	mischief_controller.configure(pet_sprite, physics, Callable(window_controller, "play_area"), Callable(window_controller, "apply_position"), animation_resolver)
 	mischief_controller.stop_requested.connect(_stop_mischief_grab)
 
 	feedback = FeedbackEffectsScript.new()
@@ -294,20 +278,18 @@ func _create_nodes() -> void:
 
 
 func _sync_window_size(keep_position := false) -> void:
-	var window = get_window()
-	var old_center = Vector2(window.position) + Vector2(window.size) * 0.5
+	var old_center = Vector2(window_controller.position()) + Vector2(window_controller.size()) * 0.5
 	var desired = _desired_window_size()
-	if window.size != desired:
-		window.size = desired
+	window_controller.set_size(desired)
 	if keep_position:
-		_apply_window_position(old_center - Vector2(desired) * 0.5)
+		window_controller.apply_position(old_center - Vector2(desired) * 0.5)
 		if physics != null:
-			physics.set_position_from_window(Vector2(window.position))
+			physics.set_position_from_window(Vector2(window_controller.position()))
 	pet_sprite.position = _pet_default_position(Vector2(desired))
 	mini_games.position = Vector2.ZERO
 	feedback.set_window_size(Vector2(desired))
 	feedback.set_bubble_position(_feedback_bubble_position(Vector2(desired)))
-	mischief_controller.position_stop_button(window.size)
+	mischief_controller.position_stop_button(window_controller.size())
 	_update_mouse_passthrough()
 
 
@@ -315,7 +297,7 @@ func _desired_window_size() -> Vector2i:
 	if peek_mode:
 		return PEEK_WINDOW_SIZE
 	if pet_sprite == null:
-		return get_window().size
+		return window_controller.size() if window_controller != null else Vector2i.ZERO
 	if mini_games != null and mini_games.active == "feed":
 		var desired = pet_sprite.padded_window_size()
 		desired.x = max(desired.x, 420)
@@ -347,13 +329,6 @@ func _physics_needs_tick() -> bool:
 	return physics.state in ["Grabbed", "Flinging", "Falling", "Walk", "WallAttached", "EdgeWalk"]
 
 
-func _apply_window_position(position: Vector2) -> void:
-	var window = get_window()
-	var next_position = Vector2i(round(position.x), round(position.y))
-	if window.position != next_position:
-		window.position = next_position
-
-
 func _feedback_bubble_position(window_size: Vector2) -> Vector2:
 	if peek_mode:
 		return Vector2(8, 8)
@@ -363,68 +338,33 @@ func _feedback_bubble_position(window_size: Vector2) -> Vector2:
 
 
 func _update_pet_pose(delta: float) -> void:
+	var window_size = Vector2(window_controller.size())
 	if peek_mode:
 		_apply_peek_pose()
 		return
 	if mischief_grab_active:
-		mischief_controller.apply_pose(Vector2(get_window().size))
+		mischief_controller.apply_pose(window_size)
 		feedback.set_bubble_position(Vector2(16, 48))
 		return
 	if landing_squash > 0.0:
-		pet_sprite.position = _pet_pose_position(Vector2(get_window().size))
+		pet_sprite.position = _pet_pose_position(window_size)
 		landing_squash = max(0.0, landing_squash - delta * 3.2)
 		pet_sprite.squash(landing_squash)
 	elif physics.state == "Flinging" or physics.state == "Falling":
-		pet_sprite.position = _pet_pose_position(Vector2(get_window().size))
+		pet_sprite.position = _pet_pose_position(window_size)
 		pet_sprite.lean_from_velocity(physics.velocity)
 	elif physics.state == "Grabbed":
-		pet_sprite.position = _pet_pose_position(Vector2(get_window().size))
+		pet_sprite.position = _pet_pose_position(window_size)
 		pet_sprite.sprite.rotation = sin(Time.get_ticks_msec() / 90.0) * 0.10
 	elif physics.state == "WallAttached" or physics.state == "EdgeWalk":
 		_apply_wall_walk_pose()
 	else:
-		pet_sprite.position = _pet_pose_position(Vector2(get_window().size))
+		pet_sprite.position = _pet_pose_position(window_size)
 		pet_sprite.reset_transform()
 
 
-func _play_area() -> Rect2:
-	var screen = DisplayServer.window_get_current_screen()
-	return Rect2(
-		Vector2(DisplayServer.screen_get_position(screen)),
-		Vector2(DisplayServer.screen_get_size(screen))
-	)
-
-
-func _place_window_on_screen_if_needed() -> void:
-	var window = get_window()
-	var window_rect = Rect2(Vector2(window.position), Vector2(window.size))
-	if _window_rect_is_on_screen(window_rect):
-		return
-	var area = _play_area()
-	var min_pos = area.position + Vector2(INITIAL_WINDOW_MARGIN, INITIAL_WINDOW_MARGIN)
-	var max_pos = area.position + area.size - Vector2(window.size) - Vector2(INITIAL_WINDOW_MARGIN, INITIAL_WINDOW_MARGIN)
-	if max_pos.x < min_pos.x:
-		max_pos.x = area.position.x
-		min_pos.x = area.position.x
-	if max_pos.y < min_pos.y:
-		max_pos.y = area.position.y
-		min_pos.y = area.position.y
-	_apply_window_position(Vector2(max_pos.x, max_pos.y))
-
-
-func _window_rect_is_on_screen(rect: Rect2) -> bool:
-	for screen in range(DisplayServer.get_screen_count()):
-		var screen_rect = Rect2(
-			Vector2(DisplayServer.screen_get_position(screen)),
-			Vector2(DisplayServer.screen_get_size(screen))
-		)
-		if screen_rect.intersects(rect, true):
-			return true
-	return false
-
-
 func _movement_contact_rect() -> Rect2:
-	var window_size = Vector2(get_window().size)
+	var window_size = Vector2(window_controller.size())
 	if peek_mode or pet_sprite == null:
 		return Rect2(Vector2.ZERO, window_size)
 	if mini_games != null and mini_games.active == "feed":
@@ -1070,7 +1010,7 @@ func _start_mischief_grab() -> bool:
 	brain.set_paused(true)
 	mischief_controller.start()
 	_sync_window_size(true)
-	mischief_controller.tick(0.0, get_window())
+	mischief_controller.tick(0.0, Vector2(window_controller.size()))
 	show_bubble("嘿嘿，鼠标借我一下。", 1.25)
 	_update_mouse_passthrough()
 	return true
@@ -1082,7 +1022,7 @@ func _stop_mischief_grab(announce := true) -> void:
 	mischief_grab_active = false
 	mischief_controller.stop()
 	brain.set_paused(false)
-	physics.set_position_from_window(Vector2(get_window().position))
+	physics.set_position_from_window(Vector2(window_controller.position()))
 	physics.idle()
 	_play_capability("resting")
 	pet_sprite.reset_transform()
@@ -1122,7 +1062,7 @@ func _apply_wall_walk_pose() -> void:
 	pet_sprite.sprite.scale = pet_sprite._base_sprite_scale()
 	pet_sprite.sprite.rotation = _wall_pose_rotation()
 	var rect = _pet_visible_rect_for_physics()
-	pet_sprite.position = _pet_anchor_position_for_physics(Vector2(get_window().size), rect)
+	pet_sprite.position = _pet_anchor_position_for_physics(Vector2(window_controller.size()), rect)
 
 
 func _wall_walk_action() -> String:
@@ -1291,27 +1231,23 @@ func _update_feedback_window_state() -> void:
 
 
 func _update_mouse_passthrough() -> void:
-	var window = get_window()
-	if not transparent_window or not mouse_passthrough_enabled:
-		_set_mouse_passthrough_polygon(PackedVector2Array())
+	if window_controller == null:
 		return
+	var window_size = Vector2(window_controller.size())
 	if mischief_grab_active:
-		var size = Vector2(window.size)
-		_set_mouse_passthrough_polygon(_rect_polygon(Rect2(Vector2.ZERO, size)))
+		window_controller.set_mouse_passthrough_polygon(_rect_polygon(Rect2(Vector2.ZERO, window_size)))
 		return
 	if mini_games != null and mini_games.active != "":
 		if mini_games.active == "tease":
 			var visible_rect = pet_sprite.visible_rect()
 			var rect = Rect2(pet_sprite.position + visible_rect.position, visible_rect.size).grow(10.0)
-			rect = rect.intersection(Rect2(Vector2.ZERO, Vector2(window.size)))
-			_set_mouse_passthrough_polygon(_rect_polygon(rect) if rect.size.x > 1.0 and rect.size.y > 1.0 else PackedVector2Array())
+			rect = rect.intersection(Rect2(Vector2.ZERO, window_size))
+			window_controller.set_mouse_passthrough_polygon(_rect_polygon(rect) if rect.size.x > 1.0 and rect.size.y > 1.0 else PackedVector2Array())
 			return
-		var size = Vector2(window.size)
-		_set_mouse_passthrough_polygon(_rect_polygon(Rect2(Vector2.ZERO, size)))
+		window_controller.set_mouse_passthrough_polygon(_rect_polygon(Rect2(Vector2.ZERO, window_size)))
 		return
 	if peek_mode:
-		var size = Vector2(window.size)
-		_set_mouse_passthrough_polygon(_rect_polygon(Rect2(Vector2.ZERO, size)))
+		window_controller.set_mouse_passthrough_polygon(_rect_polygon(Rect2(Vector2.ZERO, window_size)))
 		return
 
 	var visible_rect = pet_sprite.visible_rect()
@@ -1319,12 +1255,12 @@ func _update_mouse_passthrough() -> void:
 	var bubble_rect = _feedback_bubble_rect()
 	if bubble_rect.size.x > 1.0 and bubble_rect.size.y > 1.0:
 		rect = rect.merge(bubble_rect.grow(12.0))
-	rect = rect.intersection(Rect2(Vector2.ZERO, Vector2(window.size)))
+	rect = rect.intersection(Rect2(Vector2.ZERO, window_size))
 	if rect.size.x <= 1.0 or rect.size.y <= 1.0:
-		_set_mouse_passthrough_polygon(PackedVector2Array())
+		window_controller.set_mouse_passthrough_polygon(PackedVector2Array())
 		return
 	var cut = min(rect.size.x, rect.size.y) * 0.22
-	_set_mouse_passthrough_polygon(PackedVector2Array([
+	window_controller.set_mouse_passthrough_polygon(PackedVector2Array([
 		rect.position + Vector2(cut, 0),
 		rect.position + Vector2(rect.size.x - cut, 0),
 		rect.position + Vector2(rect.size.x, cut),
@@ -1351,24 +1287,8 @@ func _feedback_bubble_rect() -> Rect2:
 	return Rect2(feedback.bubble.position, feedback.bubble.size)
 
 
-func _set_mouse_passthrough_polygon(polygon: PackedVector2Array) -> void:
-	if _polygons_equal(last_mouse_passthrough_polygon, polygon):
-		return
-	last_mouse_passthrough_polygon = polygon
-	get_window().mouse_passthrough_polygon = polygon
-
-
-func _polygons_equal(left: PackedVector2Array, right: PackedVector2Array) -> bool:
-	if left.size() != right.size():
-		return false
-	for i in range(left.size()):
-		if left[i] != right[i]:
-			return false
-	return true
-
-
 func _hide_edge_for_release(global_pos: Vector2) -> String:
-	return peek_controller.edge_for_release(global_pos, _play_area(), HIDE_EDGE_THRESHOLD)
+	return peek_controller.edge_for_release(global_pos, window_controller.play_area(), HIDE_EDGE_THRESHOLD)
 
 
 func _enter_peek_mode(edge: String) -> void:
@@ -1382,7 +1302,7 @@ func _enter_peek_mode(edge: String) -> void:
 	pet_sprite.visible = false
 	_sync_window_size(false)
 	physics.position = _peek_window_position(edge, DisplayServer.mouse_get_position())
-	_apply_window_position(physics.position)
+	window_controller.apply_position(physics.position)
 	_apply_peek_pose()
 	_update_mouse_passthrough()
 
@@ -1398,8 +1318,8 @@ func _exit_peek_mode(show_message: bool) -> void:
 	pet_sprite.visible = true
 	_play_capability("resting")
 	_sync_window_size(false)
-	var area = _play_area()
-	var size = Vector2(get_window().size)
+	var area = window_controller.play_area()
+	var size = Vector2(window_controller.size())
 	physics.position = Vector2(
 		clamp(physics.position.x, area.position.x, area.position.x + area.size.x - size.x),
 		clamp(physics.position.y, area.position.y, area.position.y + area.size.y - size.y)
@@ -1417,7 +1337,7 @@ func _exit_peek_mode(show_message: bool) -> void:
 
 
 func _peek_window_position(edge: String, global_pos: Vector2) -> Vector2:
-	return peek_controller.window_position(edge, global_pos, _play_area(), Vector2(get_window().size))
+	return peek_controller.window_position(edge, global_pos, window_controller.play_area(), Vector2(window_controller.size()))
 
 
 func _apply_peek_pose() -> void:
@@ -1599,7 +1519,7 @@ func _companion_debug_snapshot() -> Dictionary:
 			"mischief_grab_active": mischief_grab_active,
 			"auto_behavior_lock_remaining": max(0.0, auto_behavior_lock_until - tick_now),
 		},
-		"window": _window_debug_state(),
+		"window": window_controller.debug_state() if window_controller != null else {},
 		"state": state_snapshot,
 		"skin": {
 			"id": skin_manager.selected_skin_id() if skin_manager != null and skin_manager.has_method("selected_skin_id") else "",
@@ -1625,32 +1545,6 @@ func _companion_debug_snapshot() -> Dictionary:
 		"last_expression": last_expression.duplicate(true),
 		"scenario_result_path": companion_scenario_result_path,
 	}
-
-
-func _window_debug_state() -> Dictionary:
-	var result := {
-		"transparent_window": transparent_window,
-		"mouse_passthrough_enabled": mouse_passthrough_enabled,
-		"borderless": false,
-		"always_on_top": false,
-		"window_transparent": false,
-		"viewport_transparent_bg": false,
-		"position": [],
-		"size": [],
-	}
-	if not is_inside_tree():
-		return result
-	var window = get_window()
-	if window != null:
-		result["borderless"] = window.borderless
-		result["always_on_top"] = window.always_on_top
-		result["window_transparent"] = window.transparent
-		result["position"] = [window.position.x, window.position.y]
-		result["size"] = [window.size.x, window.size.y]
-	var viewport = get_viewport()
-	if viewport != null:
-		result["viewport_transparent_bg"] = viewport.transparent_bg
-	return result
 
 
 func _compact_behavior_context(context: Dictionary) -> Dictionary:
@@ -1758,10 +1652,3 @@ func _resolve_repo_root() -> String:
 		if _has_resource_root(candidate):
 			return candidate
 	return ProjectSettings.globalize_path("res://..").simplify_path()
-
-
-func _env_flag(name: String, default_value: bool) -> bool:
-	var value = OS.get_environment(name).strip_edges().to_lower()
-	if value == "":
-		return default_value
-	return value in ["1", "true", "yes", "on"]

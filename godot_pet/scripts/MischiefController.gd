@@ -9,6 +9,7 @@ var pet_sprite
 var physics
 var animation_resolver
 var play_area_source: Callable
+var window_position_sink: Callable
 var active := false
 var elapsed := 0.0
 var cursor_local := Vector2.ZERO
@@ -30,10 +31,11 @@ func _ready() -> void:
 	add_child(stop_button)
 
 
-func configure(pet, pet_physics, play_area_callable: Callable, resolver = null) -> void:
+func configure(pet, pet_physics, play_area_callable: Callable, window_position_callable: Callable, resolver = null) -> void:
 	pet_sprite = pet
 	physics = pet_physics
 	play_area_source = play_area_callable
+	window_position_sink = window_position_callable
 	animation_resolver = resolver
 
 
@@ -63,20 +65,18 @@ func stop() -> void:
 	queue_redraw()
 
 
-func tick(delta: float, window: Window) -> void:
+func tick(delta: float, window_size: Vector2) -> void:
 	if not active:
 		return
 	elapsed += delta
-	var window_size = Vector2(window.size)
 	var mouse = Vector2(DisplayServer.mouse_get_position())
 	var offset = Vector2(-window_size.x * 0.28, window_size.y * 0.22)
 	var shake = Vector2(sin(elapsed * 34.0) * 4.0, cos(elapsed * 29.0) * 3.0)
 	physics.position = _clamp_window_position(mouse - window_size * 0.5 + offset + shake, window_size)
-	var next_position = Vector2i(round(physics.position.x), round(physics.position.y))
-	if window.position != next_position:
-		window.position = next_position
+	if window_position_sink.is_valid():
+		window_position_sink.call(physics.position)
 	cursor_local = mouse - physics.position
-	position_stop_button(window.size)
+	position_stop_button(Vector2i(round(window_size.x), round(window_size.y)))
 	queue_redraw()
 
 
