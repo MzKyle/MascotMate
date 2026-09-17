@@ -104,7 +104,7 @@ python3 scripts/build_portable.py --target linux --private-skins-dir private_ski
 
 `private_skins/` 应该包含若干皮肤目录，每个目录都有自己的 `skin.json`。
 
-GitHub Actions 工作流 `.github/workflows/package.yml` 支持手动触发，也会在推送 `v*` 标签时构建三平台 zip artifact。每个平台在打包前都会运行 Python 校验和 Godot headless runtime smoke test。
+GitHub Actions 工作流 `.github/workflows/package.yml` 支持手动触发，也会在推送 `v*` 标签时构建三平台 zip artifact。每个平台在打包前都会运行 Python 校验和 Godot headless domain tests/runtime smoke。
 
 ## desktop entry
 

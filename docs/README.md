@@ -36,7 +36,7 @@ MascotMate Desktop 是一个 Godot 4 桌面宠物运行时。Godot 负责透明�
 | `companion_console/` | 浏览器陪伴控制台静态页面 |
 | `skin_catalog/` | 精选皮肤 catalog、预览、ZIP 和 notice |
 | `tests/` | Python 单测 |
-| `godot_pet/tests/runtime_smoke.gd` | Godot headless smoke test |
+| `godot_pet/tests/*.gd` | Godot headless tests grouped by domain; `scripts/run_godot_smoke.py` runs all entries |
 | `docs/` | 本文档站 |
 
 ## 运行时结构

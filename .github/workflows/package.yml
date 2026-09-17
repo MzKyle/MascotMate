@@ -48,7 +48,7 @@ jobs:
         id: godot
         run: python scripts/setup_godot_ci.py --github-output
 
-      - name: Godot runtime smoke test
+      - name: Godot headless tests
         env:
           GODOT_BIN: ${{ steps.godot.outputs.godot_bin }}
         run: python scripts/run_godot_smoke.py
