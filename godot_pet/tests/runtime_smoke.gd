@@ -8,6 +8,7 @@ const PetPhysicsScript = preload("res://scripts/PetPhysics.gd")
 const MainScript = preload("res://scripts/Main.gd")
 const PetWindowControllerScript = preload("res://scripts/PetWindowController.gd")
 const ConfigStoreScript = preload("res://scripts/ConfigStore.gd")
+const PetMenuControllerScript = preload("res://scripts/PetMenuController.gd")
 const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
 const MiniGamesScript = preload("res://scripts/MiniGames.gd")
 const SkinCatalogClientScript = preload("res://scripts/SkinCatalogClient.gd")
@@ -165,6 +166,28 @@ func _run() -> void:
 	root_node.add_child(config_store)
 	config_store.configure()
 	config_store.set_dialogue_tone("calm")
+
+	var menu_probe = PetMenuControllerScript.new()
+	var menu_command := {"value": ""}
+	menu_probe.command_requested.connect(func(command): menu_command["value"] = str(command))
+	menu_probe._on_menu_id_pressed(PetMenuControllerScript.MENU_HELP)
+	if str(menu_command["value"]) != "help":
+		_fail("PetMenuController help item did not emit help command: %s" % JSON.stringify(menu_command))
+		return
+	menu_probe.free()
+
+	var onboarding_probe = MainScript.new()
+	var onboarding_messages = onboarding_probe._onboarding_messages()
+	if onboarding_messages.size() < 3:
+		_fail("Main onboarding did not provide enough first-run tips.")
+		return
+	for step in onboarding_messages:
+		var text = str(step.get("text", ""))
+		if text.find("Godot") >= 0 or text.find("透明桌宠模式") >= 0 or text.find("安全窗口模式") >= 0:
+			_fail("Main onboarding leaked technical startup text: %s" % text)
+			return
+	onboarding_probe.free()
+
 	var behavior_config = TestSupport.load_json("res://assets/behavior.json")
 	var state_store = StateStoreScript.new()
 	root_node.add_child(state_store)

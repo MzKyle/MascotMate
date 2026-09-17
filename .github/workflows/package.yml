@@ -78,7 +78,29 @@ jobs:
           pattern: mascotmate-desktop-*
           merge-multiple: true
 
+      - name: Write release notes header
+        shell: bash
+        run: |
+          release_base="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          cat > release-body.md <<EOF
+          # MascotMate Desktop ${GITHUB_REF_NAME}
+
+          Download a portable package for your system, extract the entire ZIP, and run the app from the extracted folder. There is no installer.
+
+          | Platform | Download |
+          | --- | --- |
+          | Windows x86_64 | [MascotMateDesktop-windows-x86_64.zip](${release_base}/MascotMateDesktop-windows-x86_64.zip) |
+          | macOS universal | [MascotMateDesktop-macos-universal.zip](${release_base}/MascotMateDesktop-macos-universal.zip) |
+          | Linux x86_64 | [MascotMateDesktop-linux-x86_64.zip](${release_base}/MascotMateDesktop-linux-x86_64.zip) |
+
+          Keep the extracted folder intact. On macOS, keep `MascotMateDesktop.app` inside the extracted folder instead of moving the app bundle by itself.
+
+          Each package includes a `README.txt` with first-run controls and troubleshooting notes.
+          EOF
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: release-body.md
+          generate_release_notes: true
           files: release-assets/MascotMateDesktop-*.zip

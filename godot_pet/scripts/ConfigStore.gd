@@ -10,6 +10,7 @@ const DEFAULT_CONFIG := {
 		"gravity_enabled": true,
 		"skin_id": "classic_shinchan",
 		"dialogue_tone": "gentle",
+		"onboarding_version": 0,
 		"behavior_adaptation": {
 			"enabled": true,
 			"strength": "visible",
@@ -84,6 +85,10 @@ func normalize_dialogue_tone(value) -> String:
 	return tone if tone in ["gentle", "short_cute", "calm"] else "gentle"
 
 
+func normalize_onboarding_version(value) -> int:
+	return max(0, int(value))
+
+
 func normalize_behavior_adaptation(value) -> Dictionary:
 	var merged = DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true)
 	if typeof(value) != TYPE_DICTIONARY:
@@ -136,6 +141,10 @@ func screenshot_pins_config() -> Dictionary:
 	}
 
 
+func onboarding_version() -> int:
+	return normalize_onboarding_version(app_config().get("onboarding_version", 0))
+
+
 func set_app_config(values: Dictionary) -> void:
 	if not config.has("app") or typeof(config["app"]) != TYPE_DICTIONARY:
 		config["app"] = DEFAULT_CONFIG["app"].duplicate(true)
@@ -148,6 +157,8 @@ func set_app_config(values: Dictionary) -> void:
 		config["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
 	if values.has("dialogue_tone"):
 		config["app"]["dialogue_tone"] = normalize_dialogue_tone(values["dialogue_tone"])
+	if values.has("onboarding_version"):
+		config["app"]["onboarding_version"] = normalize_onboarding_version(values["onboarding_version"])
 	if values.has("behavior_adaptation"):
 		config["app"]["behavior_adaptation"] = normalize_behavior_adaptation(values["behavior_adaptation"])
 	if values.has("ai_expression"):
@@ -171,6 +182,10 @@ func set_ai_memory_summary_config(values: Dictionary) -> void:
 
 func set_dialogue_tone(value: String) -> void:
 	set_app_config({"dialogue_tone": value})
+
+
+func set_onboarding_version(value: int) -> void:
+	set_app_config({"onboarding_version": value})
 
 
 func set_screenshot_pins_config(values: Dictionary) -> void:
@@ -199,6 +214,8 @@ func _merged_config(source: Dictionary) -> Dictionary:
 			merged["app"]["skin_id"] = skin_id if skin_id != "" else "classic_shinchan"
 		if source["app"].has("dialogue_tone"):
 			merged["app"]["dialogue_tone"] = normalize_dialogue_tone(source["app"]["dialogue_tone"])
+		if source["app"].has("onboarding_version"):
+			merged["app"]["onboarding_version"] = normalize_onboarding_version(source["app"]["onboarding_version"])
 		if source["app"].has("behavior_adaptation"):
 			merged["app"]["behavior_adaptation"] = normalize_behavior_adaptation(source["app"]["behavior_adaptation"])
 		if source["app"].has("ai_expression"):

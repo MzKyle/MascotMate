@@ -29,6 +29,7 @@ const PetWindowControllerScript = preload("res://scripts/PetWindowController.gd"
 const HIDE_EDGE_THRESHOLD := 52.0
 const PEEK_WINDOW_SIZE := Vector2i(112, 140)
 const COMPANION_DEBUG_REFRESH_SECONDS := 1.0
+const CURRENT_ONBOARDING_VERSION := 1
 
 var repo_root := ""
 var manifest := {}
@@ -77,6 +78,7 @@ var companion_scenario_result_path := ""
 var last_behavior_decision := {}
 var last_behavior_context := {}
 var last_expression := {}
+var onboarding_playing := false
 
 
 func _ready() -> void:
@@ -105,10 +107,7 @@ func _ready() -> void:
 	window_controller.ensure_on_screen()
 	physics.set_position_from_window(Vector2(window_controller.position()))
 	physics.set_gravity_enabled(gravity_enabled)
-	if window_controller.is_transparent():
-		show_bubble("透明桌宠模式启动：%s。" % skin_manager.selected_skin_name())
-	else:
-		show_bubble("Godot 安全窗口模式启动：%s。" % skin_manager.selected_skin_name())
+	call_deferred("_maybe_play_first_run_onboarding")
 
 
 func _input(event: InputEvent) -> void:
@@ -701,6 +700,48 @@ func _on_screenshot_pins_notify(text: String) -> void:
 	show_bubble(text, 2.2)
 
 
+func _maybe_play_first_run_onboarding() -> void:
+	if config_store == null or not config_store.has_method("onboarding_version"):
+		return
+	if int(config_store.onboarding_version()) >= CURRENT_ONBOARDING_VERSION:
+		return
+	if onboarding_playing:
+		return
+	var played = await _play_onboarding_sequence()
+	if played and config_store != null and config_store.has_method("set_onboarding_version"):
+		config_store.set_onboarding_version(CURRENT_ONBOARDING_VERSION)
+
+
+func _replay_onboarding() -> void:
+	call_deferred("_play_onboarding_sequence")
+
+
+func _play_onboarding_sequence():
+	if onboarding_playing:
+		return false
+	onboarding_playing = true
+	await get_tree().process_frame
+	if feedback == null:
+		onboarding_playing = false
+		return false
+	for step in _onboarding_messages():
+		var text = str(step.get("text", ""))
+		var seconds = float(step.get("seconds", 2.4))
+		if text != "":
+			show_bubble(text, seconds)
+		await get_tree().create_timer(float(step.get("pause", seconds + 0.25))).timeout
+	onboarding_playing = false
+	return true
+
+
+func _onboarding_messages() -> Array:
+	return [
+		{"text": "嗨，我是 MascotMate。右键点我可以打开菜单。", "seconds": 2.6, "pause": 2.8},
+		{"text": "按住我可以抱起来，慢慢松手就放下，拖到屏幕边缘会偷看。", "seconds": 3.0, "pause": 3.2},
+		{"text": "双击可以逗一逗，滚轮能看状态；菜单里的“怎么玩？”可以随时重播。", "seconds": 3.2, "pause": 3.3},
+	]
+
+
 func _show_menu() -> void:
 	menu_controller.show_menu(gravity_enabled, peek_mode, behavior_mode, dialogue_tone)
 
@@ -757,6 +798,8 @@ func _on_menu_command(command: String) -> void:
 			_set_dialogue_tone("calm")
 		"clear_mischief":
 			feedback.clear_mischief()
+		"help":
+			_replay_onboarding()
 		"exit":
 			get_tree().quit()
 

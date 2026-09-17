@@ -36,6 +36,91 @@ TARGETS = {
 }
 
 
+def format_size(size: int) -> str:
+    units = ("B", "KiB", "MiB", "GiB")
+    value = float(max(0, size))
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024
+    return f"{size} B"
+
+
+def path_size(path: Path) -> int:
+    if path.is_file():
+        return path.stat().st_size
+    total = 0
+    for item in path.rglob("*"):
+        if item.is_file():
+            total += item.stat().st_size
+    return total
+
+
+def top_level_size_report(package_dir: Path) -> list[tuple[str, int]]:
+    entries = [(path.name, path_size(path)) for path in package_dir.iterdir()]
+    return sorted(entries, key=lambda item: item[1], reverse=True)
+
+
+def print_package_size_report(package_dir: Path, zip_path: Path) -> None:
+    print("Package size report:")
+    print(f"  archive: {format_size(zip_path.stat().st_size)}")
+    for name, size in top_level_size_report(package_dir):
+        print(f"  {name}: {format_size(size)}")
+
+
+def portable_readme_text(target: str) -> str:
+    if target == "windows":
+        run_hint = "Double-click MascotMateDesktop.exe."
+    elif target == "macos":
+        run_hint = "Open MascotMateDesktop.app from this extracted folder."
+    else:
+        run_hint = "Run ./MascotMateDesktop from this extracted folder."
+    macos_note = (
+        "\nmacOS note: keep MascotMateDesktop.app inside this extracted folder. "
+        "Moving only the .app can break skins, helper tools, and bundled assets.\n"
+        if target == "macos"
+        else ""
+    )
+    artifact = TARGETS[target]["artifact"]
+    return f"""MascotMate Desktop Portable
+
+Package: {artifact}.zip
+
+Quick start
+1. Extract the entire ZIP file.
+2. Keep every file and folder together in the extracted directory.
+3. {run_hint}
+4. Right-click the pet and choose "怎么玩？" any time to replay the basic tips.
+
+Do not move only the executable or app bundle out of this folder. MascotMate uses
+the bundled resource_hd, assets, skin_catalog, skin_store, companion_console, and
+scripts folders at runtime.{macos_note}
+
+Basic controls
+- Left-click the head to pet it; left-click the body to poke it.
+- Hold the pet to pick it up, then release gently or fling it.
+- Drag it near a screen edge and release to enter peek mode.
+- Double-click to play the tease interaction.
+- Use the mouse wheel to show local pet state.
+- Right-click to open the menu for feeding, sleep, skins, screenshots, settings,
+  help, and exit.
+
+中文快速说明
+1. 请完整解压 ZIP，不要只拖走可执行文件或 .app。
+2. 在解压目录中运行应用。
+3. 右键桌宠选择 "怎么玩？" 可以重播基础提示。
+4. 双击可以逗一逗，长按可以抱起，滚轮可以查看状态。
+
+Project and updates
+https://github.com/MzKyle/MascotMate
+https://github.com/MzKyle/MascotMate/releases
+"""
+
+
+def write_portable_readme(package_dir: Path, target: str) -> None:
+    (package_dir / "README.txt").write_text(portable_readme_text(target), encoding="utf-8")
+
+
 def current_target() -> str:
     system = platform.system()
     if system == "Windows":
@@ -195,7 +280,9 @@ def main() -> int:
 
     export_project(args.target, package_dir)
     copy_external_assets(package_dir, helper_path, args.private_skins_dir)
+    write_portable_readme(package_dir, args.target)
     zip_path = zip_package(package_dir, target_info["artifact"])
+    print_package_size_report(package_dir, zip_path)
     print(f"Built {zip_path}")
     return 0
 

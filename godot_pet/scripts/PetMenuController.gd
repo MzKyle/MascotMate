@@ -22,6 +22,7 @@ const MENU_EXIT_PEEK := 41
 const MENU_SCREENSHOT_SETTINGS := 50
 const MENU_SKINS := 60
 const MENU_COMPANION_CONSOLE := 61
+const MENU_HELP := 70
 const MENU_EXIT := 99
 
 var popup: PopupMenu
@@ -44,6 +45,7 @@ func show_menu(gravity_enabled: bool, peek_mode: bool, behavior_mode: String, di
 	popup.add_item("睡觉", MENU_SLEEP)
 	popup.add_item("唤醒", MENU_WAKE)
 	popup.add_item("逗一逗", MENU_TEASE)
+	popup.add_item("怎么玩？", MENU_HELP)
 	popup.add_separator()
 	popup.add_item("显示大小 100%", MENU_SCALE_100)
 	popup.add_item("显示大小 125%", MENU_SCALE_125)
@@ -117,6 +119,7 @@ func _on_menu_id_pressed(id: int) -> void:
 		MENU_TONE_SHORT_CUTE: "tone_short_cute",
 		MENU_TONE_CALM: "tone_calm",
 		MENU_CLEAR: "clear_mischief",
+		MENU_HELP: "help",
 		MENU_EXIT: "exit",
 	}
 	if commands.has(id):

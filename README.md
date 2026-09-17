@@ -5,64 +5,40 @@
 ![MascotMate Desktop](docs/assets/cover.png)
 
 MascotMate Desktop is a local desktop pet app. It puts an animated companion on
-your desktop, lets you interact with it directly, and adds a few small utilities
+your desktop, lets you interact with it directly, and adds small local utilities
 for screenshots, sticky image pins, skins, and low-pressure companion prompts.
 
 It is built for personal desktop use: no account, no cloud backend, and no
 always-on chat requirement. The pet runs locally through Godot.
 
-## What It Does
+## Download
 
-- Shows an animated desktop pet in a transparent, always-on-top window.
-- Lets you pet, poke, pick up, drop, throw, or hide the pet on a screen edge.
-- Provides quiet, active, and mischief behavior modes.
-- Shows gentle interaction bubbles, with selectable dialogue tone: gentle,
-  cheerful, or calm.
-- Supports feeding and cursor-teasing mini interactions.
-- Lets you capture a screen region, paste recent captures as desktop pins, and
-  close pins with shortcuts.
-- Includes a browser skin shop for bundled skins and assisted Shimeji-ee imports.
-- Can be built as a local Linux portable bundle with a desktop launcher.
+Portable builds are published on GitHub Releases. There is no installer:
+download the ZIP for your system, extract the whole ZIP, and run the app from
+the extracted folder.
+
+| System | Download | Run |
+| --- | --- | --- |
+| Windows x86_64 | [MascotMateDesktop-windows-x86_64.zip](https://github.com/MzKyle/MascotMate/releases/latest/download/MascotMateDesktop-windows-x86_64.zip) | `MascotMateDesktop.exe` |
+| macOS universal | [MascotMateDesktop-macos-universal.zip](https://github.com/MzKyle/MascotMate/releases/latest/download/MascotMateDesktop-macos-universal.zip) | `MascotMateDesktop.app` |
+| Linux x86_64 | [MascotMateDesktop-linux-x86_64.zip](https://github.com/MzKyle/MascotMate/releases/latest/download/MascotMateDesktop-linux-x86_64.zip) | `MascotMateDesktop` |
+
+[View all releases](https://github.com/MzKyle/MascotMate/releases)
+
+Keep every extracted file and folder together. MascotMate uses the bundled
+`resource_hd`, `assets`, `skin_catalog`, `skin_store`, `companion_console`, and
+`scripts` folders at runtime. On macOS, keep `MascotMateDesktop.app` inside the
+extracted folder instead of moving only the app bundle elsewhere.
 
 ## Quick Start
 
-From the project root:
+1. Download the package for your system from the table above.
+2. Extract the ZIP file.
+3. Run the app from the extracted folder.
+4. Right-click the pet and choose **怎么玩？** any time to replay the basic tips.
 
-```bash
-python3 scripts/setup_dev_environment.py
-scripts/setup_godot.sh
-python3 scripts/generate_godot_manifest.py
-scripts/run_godot_pet.sh
-```
-
-If transparent windows do not behave correctly on your desktop, start in safe
-window mode:
-
-```bash
-CRAYON_PET_SAFE_WINDOW=1 scripts/run_godot_pet.sh
-```
-
-## Install on Linux
-
-Build the portable runtime bundle and install a user-level launcher:
-
-```bash
-scripts/build_godot_linux.sh
-scripts/install_desktop_entry.sh
-```
-
-Then launch **MascotMate Desktop** from your app launcher, or run:
-
-```bash
-dist/MascotMateDesktop/MascotMateDesktop
-```
-
-The launcher is installed under your home directory:
-
-```text
-~/.local/share/applications/mascotmate-desktop.desktop
-~/.local/share/icons/hicolor/256x256/apps/mascotmate-desktop.png
-```
+Windows may show a SmartScreen prompt for unsigned local builds. macOS may ask
+you to confirm opening the app the first time.
 
 ## How to Use It
 
@@ -79,9 +55,21 @@ The launcher is installed under your home directory:
 | Mouse wheel | Show mood, hunger, energy, and affection |
 | Right-click | Open the menu |
 
-The right-click menu includes walking, feeding, sleep/wake, tease, display size,
-gravity, skin shop, companion console, screenshot settings, behavior mode,
+The right-click menu includes walking, feeding, sleep/wake, tease, help, display
+size, gravity, skin shop, companion console, screenshot settings, behavior mode,
 dialogue tone, cleanup, and exit.
+
+## What It Does
+
+- Shows an animated desktop pet in a transparent, always-on-top window.
+- Lets you pet, poke, pick up, drop, throw, or hide the pet on a screen edge.
+- Provides quiet, active, and mischief behavior modes.
+- Shows gentle interaction bubbles, with selectable dialogue tone: gentle,
+  cheerful, or calm.
+- Supports feeding and cursor-teasing mini interactions.
+- Lets you capture a screen region, paste recent captures as desktop pins, and
+  close pins with shortcuts.
+- Includes a browser skin shop for bundled skins and assisted Shimeji-ee imports.
 
 ## Screenshot Pins
 
@@ -105,7 +93,7 @@ Behavior stays local and bounded:
 
 - Quiet mode avoids spontaneous movement except low-frequency care prompts.
 - Active mode can walk, idle, peek at the edge, invite play, or show small effects.
-- Mischief mode plays a visual “grab” performance; it does not move or lock your
+- Mischief mode plays a visual "grab" performance; it does not move or lock your
   real mouse.
 - Optional AI expression support is off by default and only affects bubble text.
 
@@ -121,7 +109,7 @@ Imported user skins are stored under:
 ~/.config/mascotmate-desktop/skins/
 ```
 
-## User Data
+## Local Data
 
 Runtime data is written to:
 
@@ -132,9 +120,51 @@ Runtime data is written to:
 This includes app config, state, screenshot history, companion memory summaries,
 diagnostic snapshots, and imported skins.
 
-## Developer Docs
+## Troubleshooting
 
-The detailed docs are written for maintainers and contributors:
+- If the pet cannot find skins or assets, make sure you are running it from the
+  extracted portable folder and did not move only the executable or app bundle.
+- If transparent windows do not behave correctly on Linux, developers can run
+  from source with `CRAYON_PET_SAFE_WINDOW=1`.
+- If a release download link is unavailable, open the
+  [releases page](https://github.com/MzKyle/MascotMate/releases) and download the
+  newest matching package.
+
+## For Developers
+
+Run from source:
+
+```bash
+python3 scripts/setup_dev_environment.py
+scripts/setup_godot.sh
+python3 scripts/generate_godot_manifest.py
+scripts/run_godot_pet.sh
+```
+
+Safe window mode:
+
+```bash
+CRAYON_PET_SAFE_WINDOW=1 scripts/run_godot_pet.sh
+```
+
+Build a local Linux portable bundle and install a user-level launcher:
+
+```bash
+scripts/build_godot_linux.sh
+scripts/install_desktop_entry.sh
+```
+
+Useful checks:
+
+```bash
+python3 scripts/generate_godot_manifest.py --check
+python3 scripts/validate_resources.py
+python3 scripts/validate_skin_catalog.py --check
+python3 scripts/run_godot_smoke.py
+python3 -m unittest discover tests
+```
+
+Detailed docs:
 
 - [Developer documentation](docs/README.md)
 - [Run from source](docs/guide/run-app.md)
@@ -144,18 +174,6 @@ The detailed docs are written for maintainers and contributors:
 - [Screenshot pins](docs/modules/screenshot-pins.md)
 - [Skin package spec](docs/sdk/skin-package-spec.md)
 - [Troubleshooting](docs/faq/troubleshooting.md)
-
-## Checks
-
-Useful developer checks:
-
-```bash
-python3 scripts/generate_godot_manifest.py --check
-python3 scripts/validate_resources.py
-python3 scripts/validate_skin_catalog.py --check
-python3 scripts/run_godot_smoke.py
-python3 -m unittest discover tests
-```
 
 ## License and Assets
 

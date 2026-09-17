@@ -18,6 +18,9 @@ func _run() -> void:
 	var config_store = ConfigStoreScript.new()
 	root_node.add_child(config_store)
 	config_store.configure()
+	if config_store.onboarding_version() != 0:
+		_fail("ConfigStore default onboarding version was not zero: %s" % JSON.stringify(config_store.get_config()))
+		return
 	for tone in ["gentle", "short_cute", "calm"]:
 		if config_store.normalize_dialogue_tone(tone) != tone:
 			_fail("ConfigStore rejected valid dialogue tone: %s" % tone)
@@ -85,6 +88,33 @@ func _run() -> void:
 	config_store.set_dialogue_tone("calm")
 	if str(config_store.app_config().get("dialogue_tone", "")) != "calm":
 		_fail("ConfigStore did not persist dialogue tone config: %s" % JSON.stringify(config_store.get_config()))
+		return
+	var old_config_file = FileAccess.open(config_dir.path_join("config.json"), FileAccess.WRITE)
+	if old_config_file == null:
+		_fail("ConfigStore old config fixture could not be written.")
+		return
+	old_config_file.store_string(JSON.stringify({
+		"version": 1,
+		"app": {
+			"display_scale": 1.25,
+			"dialogue_tone": "calm",
+		},
+	}))
+	old_config_file = null
+	config_store.configure()
+	if config_store.onboarding_version() != 0 or int(config_store.app_config().get("onboarding_version", -1)) != 0:
+		_fail("ConfigStore did not default missing onboarding version: %s" % JSON.stringify(config_store.get_config()))
+		return
+	if float(config_store.app_config().get("display_scale", 0.0)) != 1.25 or str(config_store.app_config().get("dialogue_tone", "")) != "calm":
+		_fail("ConfigStore old config migration changed unrelated app config: %s" % JSON.stringify(config_store.get_config()))
+		return
+	config_store.set_onboarding_version(1)
+	if config_store.onboarding_version() != 1:
+		_fail("ConfigStore did not persist onboarding version: %s" % JSON.stringify(config_store.get_config()))
+		return
+	config_store.set_onboarding_version(-5)
+	if config_store.onboarding_version() != 0:
+		_fail("ConfigStore did not clamp negative onboarding version: %s" % JSON.stringify(config_store.get_config()))
 		return
 	config_store.set_ai_expression_config({"enabled": true, "provider": "local_stub", "timeout_ms": 1200})
 	var ai_config = config_store.app_config().get("ai_expression", {})
