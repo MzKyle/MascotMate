@@ -1,10 +1,10 @@
 # 安装与打包
 
-本文说明当前仓库支持的本地打包方式。默认推荐 Linux portable runtime bundle；Godot export 和跨平台 zip 是补充发布路径。
+本文说明当前仓库支持的打包方式。GitHub Release 使用跨平台 portable zip；`build_godot_linux.sh` 是 Linux 本地开发/验收用的 portable runtime bundle；Godot export 是可选路径。
 
 ## Linux portable bundle
 
-默认打包方式不依赖 Godot export templates。脚本会把 Godot runtime、Godot 项目、资源目录、皮肤商店、陪伴控制台和 helper 放到 `dist/MascotMateDesktop/`。
+这个 Linux 本地 bundle 不依赖 Godot export templates。脚本会把 Godot runtime、Godot 项目、资源目录、皮肤商店、陪伴控制台和 helper 放到 `dist/MascotMateDesktop/`。
 
 ```bash
 scripts/build_godot_linux.sh
@@ -101,11 +101,15 @@ python3 scripts/build_portable.py --target macos
 
 本地通常只构建当前系统对应的 target；三平台产物由 CI 在对应 runner 上构建。
 
-产物位于：
+产物目录和 ZIP 位于：
 
-```text
-dist/MascotMateDesktop-<platform>.zip
-```
+| target | 目录 | ZIP |
+| --- | --- | --- |
+| `linux` | `dist/MascotMateDesktop-linux-x86_64/` | `dist/MascotMateDesktop-linux-x86_64.zip` |
+| `windows` | `dist/MascotMateDesktop-windows-x86_64/` | `dist/MascotMateDesktop-windows-x86_64.zip` |
+| `macos` | `dist/MascotMateDesktop-macos-universal/` | `dist/MascotMateDesktop-macos-universal.zip` |
+
+每个 zip 根目录会包含 `README.txt`。脚本打包完成后会打印 ZIP 大小和顶层目录大小报告，便于检查体积来源。
 
 ## portable bundle 内容
 
@@ -121,6 +125,8 @@ dist/MascotMateDesktop-<platform>.zip
 | `companion_console/` | 陪伴控制台静态页面 |
 | `scripts/pet_helper` | 全局快捷键、截图和剪贴板辅助程序 |
 | `scripts/companion_ai_sidecar.py` | 可选 AI 表达 sidecar |
+
+跨平台 portable zip 与上面的 Linux runtime bundle 不完全相同：zip 使用 Godot export preset 输出平台应用，包内还包含 `LICENSE`、`README.txt` 和打包后的 `scripts/pet_helper` / `pet_helper.exe`。macOS target 会先导出 Godot 生成的 `MascotMateDesktop.zip`，再解出 `.app` 到 `dist/MascotMateDesktop-macos-universal/`，所以发布说明要求用户保留整个解压目录，不要只移动 `.app`。
 
 ## 发布前检查
 

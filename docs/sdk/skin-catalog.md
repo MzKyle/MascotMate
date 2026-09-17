@@ -73,13 +73,13 @@ python3 scripts/pet_helper.py fetch-cachomon-index --safe --json
 
 ## 精选皮肤源
 
-项目维护的精选源地址：
+当前代码默认的远端精选源地址：
 
 ```text
 https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_catalog/catalog.json
 ```
 
-网络不可用或远端格式错误时，运行时会回退到随包复制的本地 `skin_catalog/catalog.json`。远端 `curated_package` 只收录明确允许再分发的皮肤；本机验收包可以使用 `local_package` 放入用户本地提供的 ZIP 转换结果。当前本地直装精选包含 `Omen` 和 `Xenom`，由 `resource/Omen the Growlithe Shimeji [SFW].zip` 转换生成，说明文件位于 `skin_catalog/notices/omen_xenom/`。
+这是 `SkinCatalogClient.gd` 里的 legacy 默认值；要迁移远端精选源，需要同步代码默认值、文档和相关测试。网络不可用或远端格式错误时，运行时会回退到随包复制的本地 `skin_catalog/catalog.json`。远端 `curated_package` 只收录明确允许再分发的皮肤；本机验收包可以使用 `local_package` 放入用户本地提供的 ZIP 转换结果。当前本地直装精选包含 `Omen` 和 `Xenom`，说明文件位于 `skin_catalog/notices/omen_xenom/`。
 
 `local_package` 条目字段：
 

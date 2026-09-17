@@ -11,7 +11,7 @@
 3. [行为系统](behavior.md)：理解安静、活泼、捣乱三种模式，以及表达文案如何选择。
 4. [截图贴图](screenshot-pins.md)：理解跨平台快捷键、截图后端和贴图窗口。
 5. [素材与动作](assets.md)：理解资源目录、图标、皮肤和 `actions.json`。
-6. [打包模块](packaging.md)：理解 portable bundle、launcher 图标与 Godot export。
+6. [打包模块](packaging.md)：理解发布 ZIP、Linux portable bundle、launcher 图标与 Godot export。
 
 第三方皮肤作者应优先阅读 [皮肤包规范](../sdk/skin-package-spec.md) 和 [Shimeji-ee 导入](../sdk/shimeji-import.md)。
 

@@ -47,7 +47,7 @@
 | `auto` | Godot `DisplayServer` | 捕获鼠标所在屏幕，弹出区域选择窗口，保存 PNG |
 | 兜底 | KDE Spectacle / ImageMagick `import` | Linux 上 Godot 截图不可用时自动尝试 |
 
-截图前，主窗口和已有贴图窗口会短暂隐藏，避免截到桌宠本身。旧配置里的 `spectacle` / `import` 偏好会在启动时重置为 `auto`。
+截图前，主窗口和已有贴图窗口会短暂隐藏，避免截到桌宠本身。配置仍接受 `auto`、`godot`、`spectacle` 和 `import`；无效后端会在启动合并配置时回退为 `auto`。
 
 ## 图片剪贴板
 

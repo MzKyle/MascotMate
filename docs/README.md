@@ -12,12 +12,12 @@ MascotMate Desktop 是一个 Godot 4 桌面宠物运行时。Godot 负责透明�
 
 - 桌宠窗口：透明、置顶、无边框，可按可见区域配置鼠标穿透。
 - 用户互动：摸头、戳身体、抱起、轻放、甩飞、贴边偷看、双击逗一逗、滚轮状态查看。
-- 右键菜单：动作、投喂、睡眠、显示大小、重力、皮肤商店、陪伴控制台、截图设置、行为模式、文案语气、清理和退出。
+- 右键菜单：动作、投喂、睡眠、怎么玩、显示大小、重力、皮肤商店、陪伴控制台、截图设置、行为模式、文案语气、清理和退出。
 - 陪伴行为：安静、活泼、捣乱三种模式，结合状态、时间段、互动记忆和长期画像做低打扰决策。
 - 表达系统：本地表达库按 key、tone、关系等级、偏好互动、最近文案选择气泡；可选 AI sidecar 只允许生成气泡文本。
 - 截图贴图：`F1` 区域截图，`F3` 贴出或轮换最近截图，`F4` 关闭当前贴图。
 - 皮肤系统：内置默认皮肤、用户导入皮肤、浏览器皮肤商店、Shimeji-ee ZIP/目录导入。
-- 打包：Linux portable runtime bundle、可选 Godot export、跨平台 portable zip 脚本。
+- 打包：面向发布的跨平台 portable zip、Linux 本地 portable runtime bundle、可选 Godot export。
 
 ## 代码地图
 
@@ -108,7 +108,7 @@ scripts/install_desktop_entry.sh
 
 关键文件：
 
-- `config.json`：显示大小、重力、当前皮肤、文案语气、行为适配、AI 表达、截图贴图设置。
+- `config.json`：显示大小、重力、当前皮肤、文案语气、首次引导版本、行为适配、AI 表达、AI 记忆总结、截图贴图设置。
 - `state.json`：心情、饥饿、体力、亲密度和旧版互动记忆。
 - `companion_events.json`：最近 200 条结构化陪伴事件。
 - `companion_memory.json`：从事件日志聚合的短期记忆。
@@ -122,5 +122,5 @@ scripts/install_desktop_entry.sh
 - 用户 README 只解释“软件做什么、怎么用”；实现细节放 docs。
 - Godot 脚本承担运行时 UI 和状态编排；Python 脚本承担离线生成、系统桥接和本地服务。
 - 表达文案、AI 表达、记忆画像只能影响气泡和低打扰权重，不应绕过忙碌判断或直接改核心状态。
-- 默认可运行路径是 Linux portable bundle；Godot export 和跨平台 zip 是补充发布路径。
+- 发布路径以 GitHub Actions 构建的跨平台 portable zip 为准；`build_godot_linux.sh` 保留为 Linux 本地开发/验收 bundle，Godot export 是可选路径。
 - 公开发布前应替换未授权角色素材，保留原创或授权资产。

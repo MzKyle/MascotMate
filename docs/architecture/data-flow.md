@@ -8,6 +8,7 @@ sequenceDiagram
   participant Setup as setup_godot.sh
   participant Godot as Godot Runtime
   participant Main as Main.gd
+  participant WindowController as PetWindowController.gd
   participant Sprite as PetSprite.gd
   participant State as StateStore.gd
 
@@ -15,8 +16,9 @@ sequenceDiagram
   Setup-->>Shell: 返回 GODOT_BIN_PATH
   Shell->>Godot: --path godot_pet
   Godot->>Main: 加载 Main.tscn
-  Main->>Main: 解析 CRAYON_PET_* 环境变量
-  Main->>Sprite: configure(repo_root, actions.json)
+  Main->>Main: 解析 CRAYON_PET_ROOT 并加载配置
+  Main->>WindowController: 读取窗口相关 CRAYON_PET_* 环境变量
+  Main->>Sprite: configure_skin(current_skin, frame_root)
   Main->>State: load_state()
   Main->>Main: 配置透明窗口并同步尺寸
 ```

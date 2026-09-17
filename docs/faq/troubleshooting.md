@@ -100,6 +100,8 @@ sudo apt-get install -y kde-spectacle imagemagick
 ```text
 dist/MascotMateDesktop/scripts/pet_helper.py
 dist/MascotMateDesktop/scripts/pet_helper
+dist/MascotMateDesktop-<target>/scripts/pet_helper.py
+dist/MascotMateDesktop-<target>/scripts/pet_helper 或 pet_helper.exe
 ```
 
 并且可执行：
@@ -107,6 +109,8 @@ dist/MascotMateDesktop/scripts/pet_helper
 ```bash
 chmod +x dist/MascotMateDesktop/scripts/pet_helper.py
 chmod +x dist/MascotMateDesktop/scripts/pet_helper
+chmod +x dist/MascotMateDesktop-linux-x86_64/scripts/pet_helper.py
+chmod +x dist/MascotMateDesktop-linux-x86_64/scripts/pet_helper
 ```
 
 当前构建脚本会自动复制并设置权限。

@@ -93,6 +93,7 @@ Godot 会在启动、配置/状态变化、场景回放和退出时主动写入�
 | `app.gravity_enabled` | 是否开启重力 |
 | `app.skin_id` | 当前启用皮肤 ID |
 | `app.dialogue_tone` | 气泡文案语气：`gentle`、`short_cute`、`calm` |
+| `app.onboarding_version` | 已播放的首次引导版本；旧配置缺失时默认为 `0` |
 | `app.behavior_adaptation.enabled` | 是否启用本地行为适配 |
 | `app.behavior_adaptation.strength` | 适配强度：`subtle`、`visible`、`bold` |
 | `app.ai_expression.enabled` | 是否启用可选 AI 气泡文案 |
@@ -109,7 +110,7 @@ Godot 会在启动、配置/状态变化、场景回放和退出时主动写入�
 | `screenshot.backend` | 截图后端，默认 `auto` |
 | `pins.max_count` | 最大贴图数量，范围 1-3 |
 
-右键菜单中的显示大小、重力开关、皮肤选择、文案语气和“截图贴图设置”会写入这个文件。
+右键菜单中的显示大小、重力开关、皮肤选择、文案语气和“截图贴图设置”会写入这个文件。首次启动引导播放完成后会写入 `app.onboarding_version`；右键“怎么玩？”只重播引导，不改变版本。
 
 截图现在默认使用 Godot 内置截图，Linux 上仅在 Godot 截图不可用时自动兜底到 Spectacle 或 ImageMagick。无效字段会在启动时合并回默认值。
 

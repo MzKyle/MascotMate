@@ -7,7 +7,7 @@
 | 依赖 | 推荐版本 | 说明 |
 | --- | --- | --- |
 | Windows / macOS / Linux | 当前桌面系统 | 跨平台截图贴图和 portable zip 打包 |
-| Godot | 4.6.x | `scripts/setup_godot.sh` 可自动寻找或下载 portable 版本 |
+| Godot | 4.6.x | `scripts/setup_godot.sh` 会查找 `GODOT_BIN`、PATH 或本地 `tools/godot/`；自动下载只覆盖 Linux portable runtime |
 | Python | 3.10+ | 资源处理脚本、开发模式 helper 和打包 |
 | Bash | 系统自带 | 运行、打包、安装 desktop entry |
 | pip | 最新稳定版 | 安装图片处理依赖 |
@@ -22,12 +22,14 @@ python3 -m pip install -r requirements.txt
 
 ## Godot 准备
 
-项目会按下面顺序寻找 Godot：
+`scripts/setup_godot.sh` 会按下面顺序寻找 Godot：
 
 1. `GODOT_BIN` 环境变量指定的可执行文件
 2. 系统 PATH 中的 `godot4` 或 `godot`
 3. `tools/godot/` 下已经下载的 Godot portable 二进制
-4. 从 Godot GitHub Release 下载 `GODOT_VERSION` 指定版本
+4. 在 Linux 下从 Godot GitHub Release 下载 `GODOT_VERSION` 指定版本
+
+Windows/macOS 本地打包通常需要先把 Godot 放入 PATH，或显式设置 `GODOT_BIN`。GitHub Actions 的跨平台打包使用 `scripts/setup_godot_ci.py` 准备对应 runner 的 Godot。
 
 手动准备：
 
@@ -62,7 +64,7 @@ sudo apt-get install -y kde-spectacle imagemagick
 
 ## 可选打包依赖
 
-portable bundle 不需要 Godot export templates，会直接复制 Godot runtime 和项目资源。
+Linux 本地 portable runtime bundle 不需要 Godot export templates，会直接复制 Godot runtime 和项目资源。发布用跨平台 portable zip 走 Godot export preset，因此需要对应平台的 export templates；CI 会在 runner 上准备。
 
 如果要使用 Godot 正式 export：
 

@@ -5,7 +5,7 @@ MascotMate Desktop 由四层组成：
 1. **Godot 运行层**：窗口、渲染、输入、物理、行为、表达、轻互动、截图贴图和本地状态。
 2. **本地数据层**：`config.json`、`state.json`、陪伴事件、短期记忆、长期画像、截图历史和用户皮肤。
 3. **工具与服务层**：资源生成、Godot 准备、皮肤导入、皮肤商店服务、陪伴控制台、AI sidecar、全局快捷键 helper。
-4. **打包与系统集成层**：Linux portable bundle、desktop entry、hicolor 图标、可选 Godot export 和跨平台 zip。
+4. **打包与系统集成层**：跨平台 portable zip、Linux 本地 portable bundle、desktop entry、hicolor 图标和可选 Godot export。
 
 ## 运行时结构
 
@@ -64,7 +64,7 @@ flowchart LR
 - 所有运行时用户数据写入 `~/.config/mascotmate-desktop/`。
 - 默认皮肤动作帧位于 `resource_hd/`，运行清单由脚本生成。
 - 应用图标是独立资产：`godot_pet/assets/app_icon.png` 和 `packaging/icons/mascotmate-desktop.png`。
-- Linux portable bundle 是默认可用打包路径；Godot export 是可选路径。
+- 发布包由 `.github/workflows/package.yml` 调用 `scripts/build_portable.py` 生成三平台 portable zip；`scripts/build_godot_linux.sh` 是 Linux 本地开发/验收 bundle；Godot export 是可选路径。
 
 ## 系统约束
 

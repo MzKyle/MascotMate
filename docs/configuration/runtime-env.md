@@ -5,7 +5,7 @@
 | 变量 | 说明 |
 | --- | --- |
 | `GODOT_BIN` | 指定 Godot 可执行文件。设置后 `setup_godot.sh` 会优先使用它 |
-| `GODOT_VERSION` | 指定下载 Godot runtime 或 export templates 的版本 |
+| `GODOT_VERSION` | 指定 Linux 下载 Godot runtime 或 export templates 的版本 |
 | `GODOT_EXPORT` | 设为 `1` 时，`build_godot_linux.sh` 走 Godot export |
 | `GODOT_EXPORT_TEMPLATE_DIR` | 自定义 export templates 安装目录 |
 
@@ -56,7 +56,7 @@ CRAYON_PET_ENABLE_GLOBAL_HOTKEYS=0 scripts/run_godot_pet.sh
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `MASCOTMATE_SKIN_CATALOG_URL` | GitHub raw 精选源 | 覆盖皮肤商店读取的在线 `catalog.json` |
+| `MASCOTMATE_SKIN_CATALOG_URL` | `https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_catalog/catalog.json` | 覆盖皮肤商店读取的在线 `catalog.json`；当前代码默认仍使用这个 legacy raw 地址 |
 | `CRAYON_PET_SKIN_CATALOG_URL` | 空 | 旧变量名兼容，优先级低于 `MASCOTMATE_SKIN_CATALOG_URL` |
 
 正式远端必须使用 HTTPS。开发调试时允许 `http://127.0.0.1` 或 `http://localhost`：

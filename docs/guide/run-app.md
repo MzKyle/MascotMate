@@ -16,7 +16,7 @@ scripts/run_godot_pet.sh
 关键步骤：
 
 - `setup_dev_environment.py` 准备 Python 依赖和 helper 构建环境。
-- `setup_godot.sh` 查找或下载 Godot runtime。
+- `setup_godot.sh` 查找 Godot runtime；Linux 下找不到时会按版本下载 portable runtime。
 - `generate_godot_manifest.py` 扫描 `resource_hd/`，生成 `godot_pet/assets/actions.json` 和内置默认皮肤清单。
 - `run_godot_pet.sh` 设置 `CRAYON_PET_ROOT`、透明窗口和鼠标穿透相关环境变量，然后启动 Godot 项目。
 
@@ -61,6 +61,7 @@ CRAYON_PET_SAFE_WINDOW=1 scripts/run_godot_pet.sh
 ## 右键菜单当前功能
 
 - 散步、饭团投喂、睡觉、唤醒、逗一逗。
+- 怎么玩？用于重播首次上手提示。
 - 显示大小 `100% / 125% / 150%`。
 - 重力开启/关闭。
 - 偷看状态下显示“出来”。
@@ -69,7 +70,7 @@ CRAYON_PET_SAFE_WINDOW=1 scripts/run_godot_pet.sh
 - 文案语气：温柔、元气、安静。
 - 清理捣乱物、退出。
 
-显示大小、重力、当前皮肤、文案语气和截图贴图设置会写入 `config.json`；行为模式每次启动默认回到安静。
+显示大小、重力、当前皮肤、文案语气和截图贴图设置会写入 `config.json`；首次上手提示播放完成后会写入 `app.onboarding_version`，右键“怎么玩？”只重播提示，不重置版本。行为模式每次启动默认回到安静。
 
 ## 截图贴图快捷键
 

@@ -32,7 +32,8 @@ godot_pet/scripts/Main.gd
 | 改全局快捷键或图片剪贴板 | `scripts/pet_helper.py` |
 | 改资源动作 | `scripts/generate_godot_manifest.py` |
 | 改应用/launcher 图标 | `godot_pet/assets/app_icon.png`、`packaging/icons/mascotmate-desktop.png`、`godot_pet/project.godot` |
-| 改打包 | `scripts/build_godot_linux.sh` |
+| 改发布打包 | `scripts/build_portable.py`、`.github/workflows/package.yml` |
+| 改 Linux 本地 bundle 或 desktop entry | `scripts/build_godot_linux.sh`、`scripts/install_desktop_entry.sh` |
 
 ## 信号风格
 
@@ -51,5 +52,7 @@ CRAYON_PET_ROOT=<repo root>
 ```bash
 CRAYON_PET_ROOT=<dist/MascotMateDesktop>
 ```
+
+跨平台 portable zip 里的 Godot export 可执行文件会从自身目录及其上级目录查找 `resource_hd/` 等运行时资源，因此不要把可执行文件或 macOS `.app` 单独移出解压目录。
 
 因此资源加载代码要优先基于 `repo_root` 拼接路径，而不是假设当前工作目录。

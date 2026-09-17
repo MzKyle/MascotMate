@@ -2,19 +2,12 @@
 
 ## 行为调度器
 
-`BehaviorBrain.gd` 是一个轻量定时器驱动的陪伴决策器。它不直接移动角色，只发出请求：
+`BehaviorBrain.gd` 是一个轻量定时器驱动的陪伴决策器。它不直接移动角色。当前 `Main.gd` 连接的主路径是：
 
-- `action_requested("walk")`
-- `action_requested("idle")`
-- `action_requested("edge")`
-- `action_requested("invite")`
-- `action_requested("sleep")`
-- `mischief_requested("grab")`
-- `effect_requested("footprint")`
-- `prompt_requested("hungry", "...")`
 - `decision_observed(decision, context)`
+- `intent_requested(intent, decision)`
 
-`Main.gd` 接到请求后，会判断当前是否忙碌，再决定是否执行或只显示气泡。
+`decision_observed` 用于调试快照和观测；`intent_requested` 交给 `CompanionExpressionResolver.gd` 统一解析为气泡、动作、特效、轻互动或捣乱演出。`BehaviorBrain.gd` 中仍保留 `action_requested`、`prompt_requested`、`effect_requested`、`mischief_requested` 兼容信号，但当前 `Main.gd` 不再把它们作为执行主路径。
 
 `decide()` 的返回字典会保留原有 `type`、`name` 和 `retry_after` 字段，并附带可选 `intent` 元数据：
 
@@ -25,9 +18,9 @@
 - `interruption_level`：打扰等级
 - `source`：规则、权重选择或强制触发
 
-这些元数据不会改变现有执行信号接口。`BehaviorBrain.gd` 现在把规则决策委托给 `CompanionBehaviorPolicy.gd`，并额外发出 `intent_requested`，供 `Main.gd` 通过 `CompanionExpressionResolver.gd` 统一执行 bubble、action、effect、mischief 和状态变化。行为适配 v1 会额外附带可选 `adaptation` 元数据，用于说明本次决策使用的提示阈值、冷却倍率、权重倍率和适配原因。`decision_observed` 是只读观测信号，也会暴露 `none` 决策的原因，例如忙碌、冷却、暂停或安静模式。自动提示、自动动作和自动特效会同步写入 `companion_events.json`，用于 Companion Model v2 后续记忆聚合。
+这些元数据不会改变当前 intent 执行边界。`BehaviorBrain.gd` 把规则决策委托给 `CompanionBehaviorPolicy.gd`，并发出 `intent_requested`，供 `Main.gd` 通过 `CompanionExpressionResolver.gd` 统一执行 bubble、capability、effect、mischief、mini_game 和状态变化。行为适配 v1 会额外附带可选 `adaptation` 元数据，用于说明本次决策使用的提示阈值、冷却倍率、权重倍率和适配原因。`decision_observed` 是只读观测信号，也会暴露 `none` 决策的原因，例如忙碌、冷却、暂停或安静模式。自动提示、自动动作和自动特效会同步写入 `companion_events.json`，用于 Companion Model v2 后续记忆聚合。
 
-自动提示气泡会先经过 `CompanionExpressionBank.gd` 解析；如果没有匹配表达，则继续使用 `BehaviorBrain.gd` 信号里的原始 message。表达库只影响气泡文本，不改变决策、动画或状态数值。
+自动提示气泡会先经过 `CompanionExpressionResolver.gd` 和 `CompanionExpressionBank.gd` 解析；如果没有匹配表达，则继续使用 intent 中的原始 fallback 文案。表达库只影响气泡文本，不改变决策、动画或状态数值。
 
 表达库当前覆盖手动互动和自动提示：
 

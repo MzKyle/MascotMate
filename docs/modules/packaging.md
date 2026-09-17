@@ -2,13 +2,7 @@
 
 ## 打包入口
 
-Linux runtime bundle 入口是：
-
-```text
-scripts/build_godot_linux.sh
-```
-
-跨平台 portable zip 入口是：
+面向发布的跨平台 portable zip 入口是：
 
 ```bash
 python3 scripts/build_portable.py --target linux
@@ -18,7 +12,13 @@ python3 scripts/build_portable.py --target macos
 
 本地通常只构建当前系统对应的 target；三平台产物由 GitHub Actions 在对应 runner 上构建。
 
-它会先执行：
+Linux 本地开发/验收 runtime bundle 入口是：
+
+```bash
+scripts/build_godot_linux.sh
+```
+
+两个打包入口都会先执行：
 
 ```bash
 python3 scripts/generate_godot_manifest.py
@@ -39,7 +39,7 @@ python scripts/run_godot_smoke.py
 
 资源缺失、动作清单过期、PNG 损坏、精选皮肤源校验失败或 Godot 核心脚本 smoke 失败都会阻断打包。
 
-## portable bundle 流程
+## Linux runtime bundle 流程
 
 默认流程：
 
@@ -93,8 +93,17 @@ scripts/setup_godot_export_templates.sh
 2. 生成默认皮肤 `godot_pet/assets/skins/classic_shinchan/skin.json`
 3. 用 PyInstaller 构建 `pet_helper`
 4. 调用 Godot export preset 导出 Linux、Windows 或 macOS
-5. 复制 `resource_hd/`、`assets/`、`skin_catalog/`、`skin_store/`、`companion_console/`、helper、`companion_ai_sidecar.py`、`import_shimeji_skin.py`、`cachomon_catalog.py`、`skin_store_server.py` 和 `skin_sdk.py`
-6. 输出 `dist/MascotMateDesktop-<platform>.zip`
+5. 复制 `LICENSE`、`resource_hd/`、`assets/`、`skin_catalog/`、`skin_store/`、`companion_console/`、helper、`pet_helper.py`、`companion_ai_sidecar.py`、`import_shimeji_skin.py`、`cachomon_catalog.py`、`skin_store_server.py`、`fetch_featured_skins.py` 和 `skin_sdk.py`
+6. 写入包内 `README.txt`
+7. 输出平台目录和 ZIP：
+
+| target | 目录 | ZIP |
+| --- | --- | --- |
+| `linux` | `dist/MascotMateDesktop-linux-x86_64/` | `dist/MascotMateDesktop-linux-x86_64.zip` |
+| `windows` | `dist/MascotMateDesktop-windows-x86_64/` | `dist/MascotMateDesktop-windows-x86_64.zip` |
+| `macos` | `dist/MascotMateDesktop-macos-universal/` | `dist/MascotMateDesktop-macos-universal.zip` |
+
+脚本最后会打印 ZIP 大小和顶层目录大小报告。macOS target 会把 Godot 导出的 `.app` 从临时 ZIP 解到包目录，运行时资源仍放在 `.app` 旁边，因此发布说明需要提醒用户保留整个解压目录。
 
 本地私用皮肤只在显式传参时复制，不会进入公开 CI/release：
 
@@ -104,7 +113,7 @@ python3 scripts/build_portable.py --target linux --private-skins-dir private_ski
 
 `private_skins/` 应该包含若干皮肤目录，每个目录都有自己的 `skin.json`。
 
-GitHub Actions 工作流 `.github/workflows/package.yml` 支持手动触发，也会在推送 `v*` 标签时构建三平台 zip artifact。每个平台在打包前都会运行 Python 校验和 Godot headless domain tests/runtime smoke。
+GitHub Actions 工作流 `.github/workflows/package.yml` 支持手动触发，也会在推送 `v*` 标签时构建三平台 zip artifact。每个平台在打包前都会运行 Python 校验和 Godot headless domain tests/runtime smoke。推送 `v*` 标签时，release job 会下载三平台 artifact，写入固定下载/解压说明，并启用 GitHub 自动生成 release notes。
 
 ## desktop entry
 

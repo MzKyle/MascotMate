@@ -28,7 +28,7 @@
 
 | 脚本 | 职责 |
 | --- | --- |
-| `scripts/setup_godot.sh` | 寻找或下载 Godot portable |
+| `scripts/setup_godot.sh` | 寻找 Godot；Linux 下可下载 portable runtime |
 | `scripts/run_godot_pet.sh` | 设置运行环境并启动 Godot 项目 |
 | `scripts/generate_godot_manifest.py` | 根据资源帧生成动作清单和默认皮肤 |
 | `scripts/import_shimeji_skin.py` | 把 Shimeji-ee zip/目录导入为皮肤包 |
@@ -40,9 +40,10 @@
 | `scripts/generate_peek_assets.py` | 生成贴边偷看图 |
 | `scripts/generate_mischief_grab_assets.py` | 生成捣乱动作帧 |
 | `scripts/download_effect_assets.sh` | 下载 Noto Emoji 互动素材 |
-| `scripts/build_godot_linux.sh` | 打包 portable bundle 或 Godot export |
+| `scripts/build_portable.py` | 构建三平台发布用 portable zip，写入 `README.txt` 并打印包体大小报告 |
+| `scripts/build_godot_linux.sh` | 构建 Linux 本地 portable runtime bundle 或 Godot export |
 | `scripts/install_desktop_entry.sh` | 安装 Linux 桌面启动器 |
-| `scripts/pet_helper.py` | 全局快捷键和图片剪贴板桥接 |
+| `scripts/pet_helper.py` | 全局快捷键、图片剪贴板、皮肤商店、陪伴控制台、AI sidecar 和 Cachomon 索引入口 |
 
 ## 模块通信方式
 
@@ -50,7 +51,7 @@ Godot 运行层主要通过信号通信：
 
 - `InteractionController.gd` 发出 `single_clicked`、`double_clicked`、`grab_started`、`grab_released`
 - `PetPhysics.gd` 发出 `landed`、`bounced`、`attached_to_wall`
-- `BehaviorBrain.gd` 发出 `action_requested`、`effect_requested`、`mischief_requested`
+- `BehaviorBrain.gd` 发出 `decision_observed` 和 `intent_requested` 供 `Main.gd` 当前主路径使用；`action_requested`、`effect_requested`、`prompt_requested`、`mischief_requested` 仍作为兼容信号保留
 - `MiniGames.gd` 发出 `feed_success`、`tease_success`、`game_finished`
 - `ScreenshotPins.gd` 发出 `notify`
 
