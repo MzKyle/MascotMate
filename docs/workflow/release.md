@@ -15,7 +15,7 @@ python scripts/run_godot_smoke.py
 
 ## 构建与验收候选包
 
-在 GitHub Actions 手动运行 **Package candidates**（`.github/workflows/package.yml`）。推送 `v*` tag 也只构建候选包，不直接发布。
+主分支推送或手动运行 **Package candidates**（`.github/workflows/package.yml`）都会构建并验收候选包。推送与项目版本一致的 `v*` tag 时，工作流在 Windows/Linux 最终 ZIP 都通过验收后，直接发布同一批文件并标记为 Latest。
 
 Windows/Linux 任务先检查源码，再导出公开 ZIP；对最终 ZIP 重新解压，使用独立的中文、空格目录和全新数据目录验收。检查包内文件哈希、皮肤分发标记、冻结 helper、皮肤导入、商店/控制台 HTTP 服务，以及实际桌面上的透明窗口、菜单、拖拽、甩飞、四方向偷看、设置持久化、截图选区、剪贴板与贴图窗口。Linux 使用 Xvfb、Openbox、picom 与 xclip；Windows 使用 runner 的桌面会话。此自动验收不覆盖系统级全局快捷键与人工视觉检查。
 
@@ -36,7 +36,7 @@ macOS 通过独立的 **Build macOS candidate (unverified)** 工作流（`macos-
 
 ## 发布已经验收的同一批文件
 
-在 GitHub Actions 运行 **Publish accepted release**（`.github/workflows/promote-release.yml`），填写上述成功构建的 `candidate_run_id`。
+除了标签构建自动发布，也可在 GitHub Actions 运行 **Publish accepted release**（`.github/workflows/promote-release.yml`），填写上述成功构建的 `candidate_run_id`。
 
 工作流验证候选来自本仓库的 Package 工作流、执行成功，随后检出候选提交并下载其原始 artifact。`prepare_release.py` 校验两个平台的版本、提交、SHA-256、公开标记和成品验收报告；拒绝工作区不干净的构建、macOS/私用包、缺失验收、额外 ZIP 或哈希不匹配。
 

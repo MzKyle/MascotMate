@@ -76,7 +76,7 @@ jobs:
           RELEASE_TAG: ${{ steps.notes.outputs.tag }}
           CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
         run: |
-          gh release create "$RELEASE_TAG" --target "$CANDIDATE_COMMIT" --title "MascotMate Desktop $RELEASE_TAG" --notes-file release-body.md --generate-notes \
+          gh release create "$RELEASE_TAG" --target "$CANDIDATE_COMMIT" --latest --title "MascotMate Desktop $RELEASE_TAG" --notes-file release-body.md --generate-notes \
             release-assets/MascotMateDesktop-windows-x86_64.zip \
             release-assets/MascotMateDesktop-linux-x86_64.zip \
             release-assets/SHA256SUMS.txt \

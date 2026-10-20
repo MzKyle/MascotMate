@@ -3,6 +3,8 @@ name: Package candidates
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -74,3 +76,45 @@ jobs:
             dist/MascotMateDesktop-${{ matrix.target }}-x86_64.zip
             dist/MascotMateDesktop-${{ matrix.target }}-x86_64.zip.sha256
             dist/acceptance-${{ matrix.target }}.json
+
+  release:
+    name: Publish accepted tag
+    needs: package
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: stable-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mascotmate-desktop-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify original accepted artifacts
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python scripts/release_version.py --tag "$RELEASE_TAG"
+          python scripts/prepare_release.py release-assets --commit "$GITHUB_SHA" --notes release-body.md
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+      - name: Publish latest release without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --latest --title "MascotMate Desktop $RELEASE_TAG" --notes-file release-body.md --generate-notes \
+            release-assets/MascotMateDesktop-windows-x86_64.zip \
+            release-assets/MascotMateDesktop-linux-x86_64.zip \
+            release-assets/SHA256SUMS.txt \
+            release-assets/acceptance-windows.json \
+            release-assets/acceptance-linux.json

@@ -47,15 +47,26 @@ def prepare(directory: Path, version: str, commit: str) -> str:
     base = f"https://github.com/MzKyle/MascotMate/releases/download/v{version}"
     notes = f"""# MascotMate Desktop v{version}
 
-包含主分支的窗口管理重构、配置规范化和首次上手改进，并修复长期统计与公开打包可靠性。
+## 下载后直接使用
+
+这是已经打包好的桌面软件，**不需要安装 Python、Godot，也不需要下载源码或运行构建命令**。
 
 | Platform | Download |
 | --- | --- |
-| Windows x86_64 | [Windows ZIP]({base}/{STABLE_ARCHIVES['windows']}) |
-| Linux x86_64 | [Linux ZIP]({base}/{STABLE_ARCHIVES['linux']}) |
+| Windows 64 位 | **[点击下载 Windows 便携版]({base}/{STABLE_ARCHIVES['windows']})** |
+| Linux x86_64 | **[点击下载 Linux 便携版]({base}/{STABLE_ARCHIVES['linux']})** |
 
-Extract the entire ZIP and keep all files together. There is no installer.
-请完整解压并保留整个目录，再运行其中的程序。包内含 README.txt。
+1. 点击上方对应系统的下载链接，保存 ZIP 文件。
+2. **先完整解压**，不要直接在压缩包内运行，也不要只取出单个程序。
+3. Windows 双击解压目录内的 **`MascotMateDesktop.exe`**；Linux 运行 **`MascotMateDesktop`**。
+4. 看到桌宠后，右键选择 **“怎么玩？”** 查看操作提示。
+
+便携版没有安装向导。请保留解压目录中的所有文件和文件夹，包内 `README.txt` 提供详细说明。
+下方 GitHub 自动提供的 `Source code` 是开发源码，普通用户请选择上方软件包。
+
+## 本次更新
+
+包含主分支的窗口管理重构、配置规范化和首次上手改进，并修复长期统计与公开打包可靠性。
 
 - 日聚合长期保留；明细保留最近 200 条。3/7/30 天统计采用包含今天的本地自然日。
 - 配置、状态、截图、皮肤和缓存统一到系统应用数据目录。
