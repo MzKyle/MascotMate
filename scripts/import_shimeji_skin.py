@@ -21,6 +21,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from app_paths import data_dir
+
+
 from skin_sdk import (
     CORE_CAPABILITIES,
     SCHEMA_VERSION,
@@ -29,7 +32,6 @@ from skin_sdk import (
 )
 
 
-CONFIG_DIR_NAME = "mascotmate-desktop"
 SHIMEJI_DURATION_MS = 40
 SAFE_ID_RE = re.compile(r"[^a-z0-9_-]+")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -64,7 +66,7 @@ def safe_id(value: str) -> str:
 
 
 def output_root_default() -> Path:
-    return Path.home() / ".config" / CONFIG_DIR_NAME / "skins"
+    return data_dir() / "skins"
 
 
 def safe_zip_member_path(name: str) -> Path | None:

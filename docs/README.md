@@ -103,7 +103,7 @@ scripts/install_desktop_entry.sh
 运行时默认写入：
 
 ```text
-~/.config/mascotmate-desktop/
+~/.local/share/mascotmate-desktop/
 ```
 
 关键文件：

@@ -4,14 +4,24 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import plistlib
+import importlib.metadata
 import os
 import platform
 import shutil
 import subprocess
 import sys
-import zipfile
 from pathlib import Path
 
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+from catalog_policy import stage_public_catalog
+from package_archive import create_archive, extract_archive
+from release_version import check_versions
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
@@ -31,7 +41,7 @@ TARGETS = {
     "macos": {
         "preset": "macOS",
         "export": "MascotMateDesktop.zip",
-        "artifact": "MascotMateDesktop-macos-universal",
+        "artifact": f"MascotMateDesktop-macos-{platform.machine().lower()}-candidate",
     },
 }
 
@@ -85,6 +95,14 @@ def portable_readme_text(target: str) -> str:
     return f"""MascotMate Desktop Portable
 
 Package: {artifact}.zip
+Version: {check_versions()}
+
+Local data
+Windows: %APPDATA%\\mascotmate-desktop
+macOS: ~/Library/Application Support/mascotmate-desktop
+Linux: ${{XDG_DATA_HOME:-~/.local/share}}/mascotmate-desktop
+v1.3 does not load or migrate old data folders. Existing files remain untouched.
+Daily aggregates are retained independently of the latest 200 raw events.
 
 Quick start
 1. Extract the entire ZIP file.
@@ -149,19 +167,26 @@ def find_godot() -> str:
     raise RuntimeError("Godot was not found. Set GODOT_BIN before packaging.")
 
 
+def helper_fingerprint() -> str:
+    sources = sorted((ROOT / "scripts").glob("*.py")) + [ROOT / "requirements.txt"]
+    digest = hashlib.sha256()
+    digest.update(f"{sys.version}|{platform.system()}|{platform.machine()}".encode())
+    for distribution in sorted(importlib.metadata.distributions(), key=lambda item: item.metadata["Name"].lower()):
+        digest.update(f"{distribution.metadata['Name']}=={distribution.version}".encode())
+    for path in sources:
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
 def build_helper() -> Path:
-    dist_dir = ROOT / "build" / "helper"
+    dist_dir = ROOT / "build" / "helper" / platform.machine().lower()
     work_dir = ROOT / "build" / "pyinstaller"
     spec_dir = ROOT / "build" / "spec"
     helper_path = dist_dir / HELPER_NAME
-    helper_sources = [
-        ROOT / "scripts" / "pet_helper.py",
-        ROOT / "scripts" / "import_shimeji_skin.py",
-        ROOT / "scripts" / "skin_sdk.py",
-        ROOT / "scripts" / "cachomon_catalog.py",
-        ROOT / "scripts" / "skin_store_server.py",
-    ]
-    if helper_path.exists() and helper_path.stat().st_mtime >= max(path.stat().st_mtime for path in helper_sources if path.exists()):
+    fingerprint_path = dist_dir / "fingerprint.txt"
+    fingerprint = helper_fingerprint()
+    if helper_path.exists() and fingerprint_path.exists() and fingerprint_path.read_text() == fingerprint:
         return helper_path
     pyinstaller = shutil.which("pyinstaller")
     if not pyinstaller:
@@ -175,10 +200,17 @@ def build_helper() -> Path:
                 break
     if not pyinstaller:
         raise RuntimeError("PyInstaller is required to build the packaged helper.")
+    architecture_args = ["--target-arch", platform.machine().lower()] if platform.system() == "Darwin" else []
     run([
         pyinstaller,
+        *architecture_args,
         "--onefile",
         "--clean",
+        "--hidden-import", "skin_store_server",
+        "--hidden-import", "import_shimeji_skin",
+        "--hidden-import", "skin_sdk",
+        "--hidden-import", "cachomon_catalog",
+        "--hidden-import", "companion_ai_sidecar",
         "--name",
         "pet_helper",
         "--distpath",
@@ -191,19 +223,23 @@ def build_helper() -> Path:
     ])
     if not helper_path.exists():
         raise FileNotFoundError(helper_path)
+    fingerprint_path.write_text(fingerprint)
     return helper_path
 
 
 def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir: Path | None = None) -> None:
     shutil.copy2(ROOT / "LICENSE", package_dir / "LICENSE")
-    for name in ("resource_hd", "assets", "skin_catalog", "skin_store", "companion_console"):
+    for name in ("resource_hd", "assets", "skin_store", "companion_console"):
         source = ROOT / name
         if source.exists():
             shutil.copytree(source, package_dir / name, dirs_exist_ok=True)
+    stage_public_catalog(ROOT / "skin_catalog", package_dir / "skin_catalog")
     scripts_dir = package_dir / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(helper_path, scripts_dir / helper_path.name)
     shutil.copy2(ROOT / "scripts" / "pet_helper.py", scripts_dir / "pet_helper.py")
+    for name in ("app_paths.py", "catalog_policy.py"):
+        shutil.copy2(ROOT / "scripts" / name, scripts_dir / name)
     importer = ROOT / "scripts" / "import_shimeji_skin.py"
     if importer.exists():
         shutil.copy2(importer, scripts_dir / "import_shimeji_skin.py")
@@ -242,9 +278,13 @@ def export_project(target: str, package_dir: Path) -> None:
         str(export_path),
     ])
     if target == "macos":
-        with zipfile.ZipFile(export_path) as zf:
-            zf.extractall(package_dir)
+        extract_archive(export_path, package_dir)
         export_path.unlink()
+        app = package_dir / "MascotMateDesktop.app"
+        with (app / "Contents" / "Info.plist").open("rb") as handle:
+            executable = plistlib.load(handle)["CFBundleExecutable"]
+        program = app / "Contents" / "MacOS" / executable
+        program.chmod(program.stat().st_mode | 0o755)
     elif target != "windows" and export_path.exists():
         export_path.chmod(export_path.stat().st_mode | 0o755)
 
@@ -253,7 +293,9 @@ def zip_package(package_dir: Path, artifact_name: str) -> Path:
     zip_path = DIST / f"{artifact_name}.zip"
     if zip_path.exists():
         zip_path.unlink()
-    shutil.make_archive(str(zip_path.with_suffix("")), "zip", package_dir)
+    create_archive(package_dir, zip_path)
+    digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+    zip_path.with_suffix(".zip.sha256").write_text(f"{digest}  {zip_path.name}\n", encoding="utf-8")
     return zip_path
 
 
@@ -269,6 +311,9 @@ def main() -> int:
     if args.target != current_target() and os.environ.get("CRAYON_PET_ALLOW_CROSS_PACKAGE") != "1":
         raise SystemExit("Build each portable target on its matching OS, or set CRAYON_PET_ALLOW_CROSS_PACKAGE=1.")
 
+    if args.target in ("windows", "linux") and platform.machine().lower() not in ("amd64", "x86_64"):
+        raise SystemExit("Stable Windows/Linux packages require an x86_64 build host and helper.")
+    version = check_versions()
     target_info = TARGETS[args.target]
     run([sys.executable, str(ROOT / "scripts" / "generate_godot_manifest.py")])
     helper_path = build_helper()
@@ -281,6 +326,15 @@ def main() -> int:
     export_project(args.target, package_dir)
     copy_external_assets(package_dir, helper_path, args.private_skins_dir)
     write_portable_readme(package_dir, args.target)
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    info = {"version": version, "commit": commit, "target": args.target,
+            "architecture": platform.machine().lower(), "public": args.private_skins_dir is None,
+            "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()),
+            "candidate": args.target == "macos", "files": {}}
+    for path in sorted(package_dir.rglob("*")):
+        if path.is_file() and not path.is_symlink():
+            info["files"][path.relative_to(package_dir).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    (package_dir / "BUILD_INFO.json").write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     zip_path = zip_package(package_dir, target_info["artifact"])
     print_package_size_report(package_dir, zip_path)
     print(f"Built {zip_path}")

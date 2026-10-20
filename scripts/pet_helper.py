@@ -21,6 +21,15 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from app_paths import data_dir
+
+
 try:
     from PIL import Image as _PIL_IMAGE_FOR_SHIMEJI_IMPORT  # noqa: F401
 except Exception:
@@ -255,6 +264,10 @@ def run_companion_ai_sidecar(args: argparse.Namespace) -> int:
 def copy_image_windows(path: Path) -> int:
     powershell = shutil.which("powershell.exe") or shutil.which("powershell")
     if not powershell:
+        native = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        if native.is_file():
+            powershell = str(native)
+    if not powershell:
         print("PowerShell was not found.", file=sys.stderr)
         return 1
     script = r"""
@@ -277,7 +290,7 @@ exit 1
     env = os.environ.copy()
     env["CRAYON_PET_CLIPBOARD_IMAGE"] = str(path)
     proc = subprocess.run(
-        [powershell, "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-Command", script],
+        [powershell, "-NoProfile", "-STA", "-Command", script],
         env=env,
         text=True,
     )
@@ -544,14 +557,14 @@ def parse_args() -> argparse.Namespace:
 
     import_skin = subparsers.add_parser("import-shimeji")
     import_skin.add_argument("source", type=Path)
-    import_skin.add_argument("--output-root", type=Path, required=True)
+    import_skin.add_argument("--output-root", type=Path, default=data_dir() / "skins")
     import_skin.add_argument("--id", dest="skin_id")
     import_skin.add_argument("--name", dest="skin_name")
     import_skin.add_argument("--json-report", action="store_true")
 
     install_skin_parser = subparsers.add_parser("install-skin")
     install_skin_parser.add_argument("source", type=Path)
-    install_skin_parser.add_argument("--output-root", type=Path, required=True)
+    install_skin_parser.add_argument("--output-root", type=Path, default=data_dir() / "skins")
     install_skin_parser.add_argument("--id", dest="skin_id")
     install_skin_parser.add_argument("--name", dest="skin_name")
     install_skin_parser.add_argument("--json-report", action="store_true")
@@ -559,20 +572,20 @@ def parse_args() -> argparse.Namespace:
     cachomon = subparsers.add_parser("fetch-cachomon-index")
     cachomon.add_argument("--safe", action="store_true", default=True)
     cachomon.add_argument("--json", dest="json_report", action="store_true")
-    cachomon.add_argument("--cache-root", type=Path, default=Path.home() / ".config" / "mascotmate-desktop" / "catalog_cache" / "cachomon")
+    cachomon.add_argument("--cache-root", type=Path, default=data_dir() / "catalog_cache" / "cachomon")
     cachomon.add_argument("--timeout", type=float, default=12.0)
     cachomon.add_argument("--html-fixture", type=Path)
 
     skin_store = subparsers.add_parser("skin-store")
     skin_store.add_argument("--repo-root", type=Path, required=True)
-    skin_store.add_argument("--config-dir", type=Path, required=True)
+    skin_store.add_argument("--config-dir", type=Path, default=data_dir())
     skin_store.add_argument("--open-browser", action="store_true")
     skin_store.add_argument("--idle-timeout", type=float, default=900.0)
     skin_store.add_argument("--port", type=int, default=0)
 
     companion_console = subparsers.add_parser("companion-console")
     companion_console.add_argument("--repo-root", type=Path, required=True)
-    companion_console.add_argument("--config-dir", type=Path, required=True)
+    companion_console.add_argument("--config-dir", type=Path, default=data_dir())
     companion_console.add_argument("--open-browser", action="store_true")
     companion_console.add_argument("--idle-timeout", type=float, default=900.0)
     companion_console.add_argument("--port", type=int, default=0)

@@ -61,7 +61,7 @@ flowchart LR
 
 - Godot 内保留桌宠运行逻辑，不承担离线素材转换。
 - Python 脚本负责资源生成、导入、helper、本地 HTTP 服务和打包辅助。
-- 所有运行时用户数据写入 `~/.config/mascotmate-desktop/`。
+- 所有运行时用户数据写入 `~/.local/share/mascotmate-desktop/`。
 - 默认皮肤动作帧位于 `resource_hd/`，运行清单由脚本生成。
 - 应用图标是独立资产：`godot_pet/assets/app_icon.png` 和 `packaging/icons/mascotmate-desktop.png`。
 - 发布包由 `.github/workflows/package.yml` 调用 `scripts/build_portable.py` 生成三平台 portable zip；`scripts/build_godot_linux.sh` 是 Linux 本地开发/验收 bundle；Godot export 是可选路径。

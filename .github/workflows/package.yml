@@ -1,4 +1,4 @@
-name: Package
+name: Package candidates
 
 on:
   workflow_dispatch:
@@ -7,11 +7,11 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   package:
-    name: ${{ matrix.target }}
+    name: Accept ${{ matrix.target }} ZIP
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -21,86 +21,56 @@ jobs:
             target: linux
           - os: windows-latest
             target: windows
-          - os: macos-latest
-            target: macos
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install Python dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
-
-      - name: Validate scripts and resources
+        run: python -m pip install -r requirements.txt
+      - name: Validate source and version
+        shell: bash
         run: |
           python -c "import pathlib, py_compile; [py_compile.compile(str(p), doraise=True) for p in pathlib.Path('scripts').glob('*.py')]"
           python -m unittest discover tests
+          python scripts/release_version.py
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then python scripts/release_version.py --tag "$GITHUB_REF_NAME"; fi
           python scripts/generate_godot_manifest.py --check
           python scripts/validate_resources.py
           python scripts/validate_skin_catalog.py --check
-
       - name: Set up Godot
         id: godot
         run: python scripts/setup_godot_ci.py --github-output
-
-      - name: Godot headless tests
+      - name: Godot tests
         env:
           GODOT_BIN: ${{ steps.godot.outputs.godot_bin }}
         run: python scripts/run_godot_smoke.py
-
-      - name: Build portable package
+      - name: Build public ZIP
         env:
           GODOT_BIN: ${{ steps.godot.outputs.godot_bin }}
         run: python scripts/build_portable.py --target ${{ matrix.target }}
-
-      - name: Upload package
-        uses: actions/upload-artifact@v4
+      - name: Install Linux desktop acceptance tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb openbox picom xclip libgl1-mesa-dri
+      - name: Accept extracted Linux ZIP on a desktop
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          xvfb-run -a -s "-screen 0 1280x800x24 +extension COMPOSITE" bash -c '
+            openbox >/tmp/openbox.log 2>&1 &
+            picom --backend xrender >/tmp/picom.log 2>&1 &
+            sleep 2
+            python scripts/verify_package.py dist/MascotMateDesktop-linux-x86_64.zip --report dist/acceptance-linux.json
+          '
+      - name: Accept extracted Windows ZIP on a desktop
+        if: runner.os == 'Windows'
+        run: python scripts/verify_package.py dist/MascotMateDesktop-windows-x86_64.zip --report dist/acceptance-windows.json
+      - uses: actions/upload-artifact@v4
         with:
           name: mascotmate-desktop-${{ matrix.target }}
-          path: dist/MascotMateDesktop-*.zip
-
-  release:
-    name: Release
-    needs: package
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download packages
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          pattern: mascotmate-desktop-*
-          merge-multiple: true
-
-      - name: Write release notes header
-        shell: bash
-        run: |
-          release_base="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
-          cat > release-body.md <<EOF
-          # MascotMate Desktop ${GITHUB_REF_NAME}
-
-          Download a portable package for your system, extract the entire ZIP, and run the app from the extracted folder. There is no installer.
-
-          | Platform | Download |
-          | --- | --- |
-          | Windows x86_64 | [MascotMateDesktop-windows-x86_64.zip](${release_base}/MascotMateDesktop-windows-x86_64.zip) |
-          | macOS universal | [MascotMateDesktop-macos-universal.zip](${release_base}/MascotMateDesktop-macos-universal.zip) |
-          | Linux x86_64 | [MascotMateDesktop-linux-x86_64.zip](${release_base}/MascotMateDesktop-linux-x86_64.zip) |
-
-          Keep the extracted folder intact. On macOS, keep `MascotMateDesktop.app` inside the extracted folder instead of moving the app bundle by itself.
-
-          Each package includes a `README.txt` with first-run controls and troubleshooting notes.
-          EOF
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: release-body.md
-          generate_release_notes: true
-          files: release-assets/MascotMateDesktop-*.zip
+          if-no-files-found: error
+          path: |
+            dist/MascotMateDesktop-${{ matrix.target }}-x86_64.zip
+            dist/MascotMateDesktop-${{ matrix.target }}-x86_64.zip.sha256
+            dist/acceptance-${{ matrix.target }}.json

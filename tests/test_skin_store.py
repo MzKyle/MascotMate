@@ -144,10 +144,25 @@ class SkinStoreTests(unittest.TestCase):
         self.assertTrue((catalog_root / "packages" / "omen.zip").is_file())
         self.assertTrue((catalog_root / "previews" / "xenom.png").is_file())
 
+    def test_restricted_catalog_is_hidden_but_manual_import_still_works(self) -> None:
+        repo = self.root / "restricted-repo"
+        self.featured.generate_catalog(self.source_zip, repo / "skin_catalog")
+        app = self.server_module.SkinStoreApp(repo, self.root / "private-data")
+        self.assertEqual(app.catalog_payload("token")["featured"], [])
+        with self.assertRaises(ValueError):
+            app.install_curated("omen")
+        archive = repo / "skin_catalog/packages/omen.zip"
+        result = app.import_zip_bytes("omen.zip", archive.read_bytes())
+        self.assertEqual(result["skin_id"], "omen")
+
     def test_skin_store_api_installs_curated_and_rejects_external_install(self) -> None:
         repo = self.root / "repo"
         catalog_root = repo / "skin_catalog"
         self.featured.generate_catalog(self.source_zip, catalog_root)
+        fixture_catalog = json.loads((catalog_root / "catalog.json").read_text(encoding="utf-8"))
+        for entry in fixture_catalog["skins"]:
+            entry["license"]["redistributable"] = True
+        (catalog_root / "catalog.json").write_text(json.dumps(fixture_catalog), encoding="utf-8")
         companion_static = repo / "companion_console"
         companion_static.mkdir(parents=True)
         (companion_static / "index.html").write_text("<!doctype html><title>陪伴控制台</title>", encoding="utf-8")

@@ -15,7 +15,7 @@ my-skin/
 原生皮肤包 ZIP 可以通过皮肤商店安装，也可以用 helper 安装到用户皮肤目录：
 
 ```bash
-python3 scripts/pet_helper.py install-skin /path/to/my-skin.zip --output-root ~/.config/mascotmate-desktop/skins
+python3 scripts/pet_helper.py install-skin /path/to/my-skin.zip --output-root ~/.local/share/mascotmate-desktop/skins
 ```
 
 ## 必填字段

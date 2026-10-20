@@ -1,15 +1,19 @@
 # 状态与配置文件
 
-运行时数据写入用户配置目录：
+v1.3 的配置、状态、事件、画像、截图、皮肤和缓存统一写入应用数据目录：
 
-```text
-~/.config/mascotmate-desktop/
-```
+| 平台 | 数据目录 |
+| --- | --- |
+| Windows | `%APPDATA%\mascotmate-desktop` |
+| macOS | `~/Library/Application Support/mascotmate-desktop` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/mascotmate-desktop` |
+
+下文路径以 Linux 默认目录为例。显式 CLI 路径优先，其次是 `CRAYON_PET_CONFIG_DIR`，最后是平台默认值。旧目录不会自动读取或迁移，旧文件不删除。
 
 ## 状态文件
 
 ```text
-~/.config/mascotmate-desktop/state.json
+~/.local/share/mascotmate-desktop/state.json
 ```
 
 示例：
@@ -43,33 +47,38 @@
 ## 陪伴事件日志
 
 ```text
-~/.config/mascotmate-desktop/companion_events.json
+~/.local/share/mascotmate-desktop/companion_events.json
 ```
 
-`CompanionEventStore.gd` 会记录最近 200 条结构化陪伴事件，包括用户互动、自动提示、自动动作和轻特效。事件日志只作为 Companion Model v2 的事实来源，不参与当前行为决策；文件缺失或损坏时会自动从空日志恢复。
+`CompanionEventStore.gd` 的 v2 存储同时保存最近 200 条结构化明细与长期日聚合 `daily`。每次用户或自动事件先写入日聚合，再裁剪明细；日聚合记录事件、用户互动、模式、时段以及照料/陪玩/打扰计数，永久保留。
+
+3/7/30 天分别包含今天及之前 2/6/29 个本地自然日。日期在事件记录时确定，之后不因时区变化重新归档。累计统计由全部日聚合派生，重复刷新不会重复计数。
+
+文件通过 `.tmp` 原子替换，并保留上一次有效的 `.bak`；主文件 JSON 或聚合结构损坏时读取有效备份。主文件和备份均不可用时从空数据启动。写入失败保留内存中的待保存数据及原有文件，可通过 `last_save_error` 检查。
+
 
 ## 陪伴记忆
 
 ```text
-~/.config/mascotmate-desktop/companion_memory.json
+~/.local/share/mascotmate-desktop/companion_memory.json
 ```
 
-`CompanionMemory.gd` 会从最近 200 条陪伴事件聚合今日计数、近 3 天计数、偏好互动、常用模式/时段、关系熟悉度和最近表达。当前记忆会影响气泡文案选择、主动提示阈值、自动行为权重和非工作时段冷却；不会改变核心状态数值。文件缺失或损坏时会从事件日志重新聚合。
+`CompanionMemory.gd` 会从长期日聚合读取今日计数、近 3 个自然日计数、偏好互动、常用模式/时段、关系熟悉度和最近表达。当前记忆会影响气泡文案选择、主动提示阈值、自动行为权重和非工作时段冷却；不会改变核心状态数值。文件缺失或损坏时会从事件日志重新聚合。
 
 ## 长期陪伴画像
 
 ```text
-~/.config/mascotmate-desktop/companion_profile.json
+~/.local/share/mascotmate-desktop/companion_profile.json
 ```
 
-`CompanionLongTermProfile.gd` 会保存长期聚合结果，包括常见互动、常用模式、常用时段、照料/陪玩倾向、打扰容忍度和 7/30 天趋势摘要。画像只保存聚合结果和少量去重标记，不保存大量原始事件。当前画像会进入表达上下文、行为适配和控制台快照；只温和影响主动提示阈值、自动行为权重和非工作时段冷却，不改变核心状态数值。
+`CompanionLongTermProfile.gd` 会保存长期聚合结果，包括常见互动、常用模式、常用时段、照料/陪玩倾向、打扰容忍度和 7/30 天趋势摘要。画像由事件存储的日聚合派生，不再依赖明细去重和裁剪后的日志。当前画像会进入表达上下文、行为适配和控制台快照；只温和影响主动提示阈值、自动行为权重和非工作时段冷却，不改变核心状态数值。
 
 ## 陪伴控制台诊断文件
 
 ```text
-~/.config/mascotmate-desktop/companion_debug_snapshot.json
-~/.config/mascotmate-desktop/companion_scenario_result.json
-~/.config/mascotmate-desktop/companion_console_command.json
+~/.local/share/mascotmate-desktop/companion_debug_snapshot.json
+~/.local/share/mascotmate-desktop/companion_scenario_result.json
+~/.local/share/mascotmate-desktop/companion_console_command.json
 ```
 
 浏览器陪伴控制台会读取运行时快照和场景回放结果。快照包含当前状态、行为模式、文案语气、时段、忙碌状态、透明窗口状态、皮肤人格、短期记忆、长期画像、AI health、最近表达来源统计、最近事件和最近一次 decision。
@@ -81,7 +90,7 @@ Godot 会在启动、配置/状态变化、场景回放和退出时主动写入�
 ## 应用与截图贴图配置
 
 ```text
-~/.config/mascotmate-desktop/config.json
+~/.local/share/mascotmate-desktop/config.json
 ```
 
 保存内容：
@@ -117,7 +126,7 @@ Godot 会在启动、配置/状态变化、场景回放和退出时主动写入�
 ## 截图历史
 
 ```text
-~/.config/mascotmate-desktop/screenshots/
+~/.local/share/mascotmate-desktop/screenshots/
 ```
 
 截图文件命名格式：
@@ -132,7 +141,7 @@ clipboard_<timestamp>_<ticks>.png
 ## 用户皮肤
 
 ```text
-~/.config/mascotmate-desktop/skins/
+~/.local/share/mascotmate-desktop/skins/
 ```
 
 浏览器皮肤商店和 `scripts/import_shimeji_skin.py` 会把 Shimeji-ee 导入结果写到这个目录。每个皮肤是一个独立目录，包含 `skin.json` 和 `frames/`。
@@ -142,49 +151,49 @@ clipboard_<timestamp>_<ticks>.png
 重置桌宠状态：
 
 ```bash
-rm -f ~/.config/mascotmate-desktop/state.json
+rm -f ~/.local/share/mascotmate-desktop/state.json
 ```
 
 重置截图贴图设置：
 
 ```bash
-rm -f ~/.config/mascotmate-desktop/config.json
+rm -f ~/.local/share/mascotmate-desktop/config.json
 ```
 
 清理截图历史：
 
 ```bash
-rm -rf ~/.config/mascotmate-desktop/screenshots
+rm -rf ~/.local/share/mascotmate-desktop/screenshots
 ```
 
 清理陪伴事件日志：
 
 ```bash
-rm -f ~/.config/mascotmate-desktop/companion_events.json
+rm -f ~/.local/share/mascotmate-desktop/companion_events.json
 ```
 
 清理陪伴记忆：
 
 ```bash
-rm -f ~/.config/mascotmate-desktop/companion_memory.json
+rm -f ~/.local/share/mascotmate-desktop/companion_memory.json
 ```
 
 清理长期陪伴画像：
 
 ```bash
-rm -f ~/.config/mascotmate-desktop/companion_profile.json
+rm -f ~/.local/share/mascotmate-desktop/companion_profile.json
 ```
 
 清理陪伴控制台诊断文件：
 
 ```bash
-rm -f ~/.config/mascotmate-desktop/companion_debug_snapshot.json
-rm -f ~/.config/mascotmate-desktop/companion_scenario_result.json
-rm -f ~/.config/mascotmate-desktop/companion_console_command.json
+rm -f ~/.local/share/mascotmate-desktop/companion_debug_snapshot.json
+rm -f ~/.local/share/mascotmate-desktop/companion_scenario_result.json
+rm -f ~/.local/share/mascotmate-desktop/companion_console_command.json
 ```
 
 清理用户导入皮肤：
 
 ```bash
-rm -rf ~/.config/mascotmate-desktop/skins
+rm -rf ~/.local/share/mascotmate-desktop/skins
 ```

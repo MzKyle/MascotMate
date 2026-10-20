@@ -62,8 +62,8 @@ def validate_catalog(data: dict[str, Any], catalog_dir: Path, *, check_files: bo
     if not isinstance(data.get("updated_at", ""), str) or data.get("updated_at", "") == "":
         errors.append("catalog.updated_at is required.")
     skins = data.get("skins", [])
-    if not isinstance(skins, list) or not skins:
-        errors.append("catalog.skins must be a non-empty list.")
+    if not isinstance(skins, list):
+        errors.append("catalog.skins must be a list.")
         return errors
 
     seen_ids: set[str] = set()

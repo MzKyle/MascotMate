@@ -72,6 +72,7 @@ var feedback_window_until := 0.0
 var tease_reward_recorded := false
 var tease_nudge := Vector2.ZERO
 var auto_behavior_lock_until := 0.0
+var companion_summary_date := ""
 var companion_debug_timer: Timer
 var companion_debug_snapshot_path := ""
 var companion_scenario_result_path := ""
@@ -107,7 +108,16 @@ func _ready() -> void:
 	window_controller.ensure_on_screen()
 	physics.set_position_from_window(Vector2(window_controller.position()))
 	physics.set_gravity_enabled(gravity_enabled)
-	call_deferred("_maybe_play_first_run_onboarding")
+	var args = OS.get_cmdline_user_args()
+	var check_index = args.find("--package-check")
+	if check_index >= 0 and check_index + 1 < args.size():
+		_run_package_check.call_deferred(args[check_index + 1])
+	else:
+		call_deferred("_maybe_play_first_run_onboarding")
+
+
+func _run_package_check(report_path: String) -> void:
+	await preload("res://scripts/PackageCheck.gd").new().run(self, report_path)
 
 
 func _input(event: InputEvent) -> void:
@@ -1451,10 +1461,6 @@ func _record_companion_event(kind: String, source: String, meta := {}, tags := [
 	if companion_event_store == null or not companion_event_store.has_method("record_event"):
 		return
 	var event = companion_event_store.record_event(kind, source, _event_context(), meta, tags, state_before, state_after)
-	if typeof(event) == TYPE_DICTIONARY and not event.is_empty() and companion_memory != null and companion_memory.has_method("refresh"):
-		companion_memory.refresh()
-	if typeof(event) == TYPE_DICTIONARY and not event.is_empty() and companion_profile != null and companion_profile.has_method("refresh"):
-		companion_profile.refresh()
 	if typeof(event) == TYPE_DICTIONARY and not event.is_empty():
 		_maybe_summarize_memory(false)
 	_write_companion_debug_snapshot()
@@ -1533,6 +1539,11 @@ func _write_companion_debug_snapshot() -> void:
 
 
 func _on_companion_debug_timer() -> void:
+	var today = CompanionEventStoreScript.date_for_unix(int(Time.get_unix_time_from_system()))
+	if companion_summary_date != today:
+		companion_summary_date = today
+		companion_memory.refresh()
+		companion_profile.refresh()
 	if _companion_console_active():
 		_write_companion_debug_snapshot()
 

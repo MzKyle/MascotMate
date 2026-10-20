@@ -22,10 +22,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from app_paths import data_dir
+from catalog_policy import public_entry
+
+
 from import_shimeji_skin import install_skin_source
+from skin_sdk import resolve_frame_root
 
 
-CONFIG_DIR_NAME = "mascotmate-desktop"
 MAX_IMPORT_BYTES = 100 * 1024 * 1024
 INSTALLABLE_SOURCE_TYPES = {"curated_package", "local_package"}
 COMPANION_COMMANDS = {
@@ -60,10 +64,7 @@ COMPANION_SCENARIOS = {
 
 
 def default_config_dir() -> Path:
-    if sys.platform == "win32":
-        base = Path.home() / "AppData" / "Roaming"
-        return base / CONFIG_DIR_NAME
-    return Path.home() / ".config" / CONFIG_DIR_NAME
+    return data_dir()
 
 
 def is_safe_relative_ref(value: str) -> bool:
@@ -158,7 +159,7 @@ def _parse_multipart_file(raw: bytes, content_type: str) -> tuple[str, bytes]:
 class SkinStoreApp:
     def __init__(self, repo_root: Path, config_dir: Path) -> None:
         self.repo_root = repo_root.resolve()
-        self.config_dir = config_dir.resolve()
+        self.config_dir = data_dir(config_dir)
         self.catalog_dir = self.repo_root / "skin_catalog"
         self.static_dir = self.repo_root / "skin_store"
         self.companion_static_dir = self.repo_root / "companion_console"
@@ -173,7 +174,7 @@ class SkinStoreApp:
         curated = []
         catalog = self._load_json(self.catalog_dir / "catalog.json")
         for entry in catalog.get("skins", []) if isinstance(catalog.get("skins"), list) else []:
-            if not isinstance(entry, dict):
+            if not public_entry(entry):
                 continue
             item = dict(entry)
             if str(item.get("source_type", "curated_package")) in INSTALLABLE_SOURCE_TYPES:
@@ -470,11 +471,12 @@ class SkinStoreApp:
                 data = self._load_json(skin_json)
                 if str(data.get("id", "")) != skin_id:
                     continue
-                frame_root = str(data.get("frame_root", "frames"))
-                if not is_safe_relative_ref(frame_root):
+                manifest = dict(data)
+                manifest.setdefault("frame_root", "frames")
+                allowed_root = resolve_frame_root(manifest, skin_json, self.repo_root, self.config_dir).resolve()
+                if not (is_subpath(allowed_root, self.repo_root) or is_subpath(allowed_root, self.config_dir)):
                     raise FileNotFoundError(relative)
-                target = (skin_json.parent / frame_root / relative).resolve()
-                allowed_root = (skin_json.parent / frame_root).resolve()
+                target = (allowed_root / relative).resolve()
                 if not is_subpath(target, allowed_root) or not target.is_file():
                     raise FileNotFoundError(relative)
                 return target
@@ -483,7 +485,7 @@ class SkinStoreApp:
     def _curated_entry(self, skin_id: str) -> dict[str, Any]:
         catalog = self._load_json(self.catalog_dir / "catalog.json")
         for entry in catalog.get("skins", []) if isinstance(catalog.get("skins"), list) else []:
-            if isinstance(entry, dict) and str(entry.get("id", "")) == skin_id:
+            if public_entry(entry) and str(entry.get("id", "")) == skin_id:
                 return entry
         return {}
 

@@ -1,107 +1,56 @@
-# 发布流程
+# v1.3 稳定版发布流程
 
-## 版本发布前
-
-建议确认工作区：
+## 本地检查
 
 ```bash
-git status --short
+python scripts/release_version.py --tag v1.3.0
+python scripts/generate_godot_manifest.py --check
+python scripts/validate_resources.py
+python scripts/validate_skin_catalog.py --check
+python -m unittest discover tests
+python scripts/run_godot_smoke.py
 ```
 
-确认动作清单：
+`godot_pet/project.godot` 是版本源，Windows 文件版本为 `X.Y.Z.0`，macOS 为 `X.Y.Z`。修改版本时同步 export preset，检查不一致就阻止打包。发布源码必须已经提交，工作区不能存在未提交改动。
+
+## 构建与验收候选包
+
+在 GitHub Actions 手动运行 **Package candidates**（`.github/workflows/package.yml`）。推送 `v*` tag 也只构建候选包，不直接发布。
+
+Windows/Linux 任务先检查源码，再导出公开 ZIP；对最终 ZIP 重新解压，使用独立的中文、空格目录和全新数据目录验收。检查包内文件哈希、皮肤分发标记、冻结 helper、皮肤导入、商店/控制台 HTTP 服务，以及实际桌面上的透明窗口、菜单、拖拽、甩飞、四方向偷看、设置持久化、截图选区、剪贴板与贴图窗口。Linux 使用 Xvfb、Openbox、picom 与 xclip；Windows 使用 runner 的桌面会话。此自动验收不覆盖系统级全局快捷键与人工视觉检查。
+
+本机等价步骤（设置好 `GODOT_BIN`，并在对应系统运行）：
 
 ```bash
-python3 scripts/generate_godot_manifest.py --check
-python3 scripts/validate_resources.py
-python3 scripts/validate_skin_catalog.py --check
-python3 -m unittest discover tests
-python3 -c "import pathlib, py_compile; [py_compile.compile(str(p), doraise=True) for p in pathlib.Path('scripts').glob('*.py')]"
-python3 scripts/run_godot_smoke.py
+python scripts/build_portable.py --target windows
+python scripts/verify_package.py dist/MascotMateDesktop-windows-x86_64.zip --report dist/acceptance-windows.json
 ```
 
-检查 README 和文档站：
+Linux 将命令里的 `windows` 改成 `linux`，并在可截图、可使用剪贴板的桌面会话运行。
 
-```bash
-cd docs
-python3 -m http.server 4173 --bind 127.0.0.1
-```
+每个平台上传一个 artifact：原始 ZIP、`.zip.sha256` 和 `acceptance-<target>.json`。包内 `BUILD_INFO.json` 包含版本、提交 SHA、架构、公开/候选标记、工作区是否干净与文件哈希。
 
-## 打包
+macOS 通过独立的 **Build macOS candidate (unverified)** 工作流（`macos-candidate.yml`）只构建按真实架构命名的 `MascotMateDesktop-macos-<arch>-candidate.zip`，不执行运行验收。它的失败不阻塞 Windows/Linux，候选包不进入正式 Release。
 
-跨平台 portable zip：
+人工桌面复核建议覆盖：首次上手提示、透明背景边缘、菜单位置、抱起/落地、四方向偷看、F1/F3/F4、行为模式启动时回到安静模式，以及重启后大小和重力设置保留。遇到系统权限或确认弹窗时由用户正常批准，不绕过提示。
 
-```bash
-python3 scripts/build_portable.py --target linux
-python3 scripts/build_portable.py --target windows
-python3 scripts/build_portable.py --target macos
-```
+## 发布已经验收的同一批文件
 
-本地通常只构建当前系统对应的 target；三平台产物由 GitHub Actions 在对应 runner 上构建。
+在 GitHub Actions 运行 **Publish accepted release**（`.github/workflows/promote-release.yml`），填写上述成功构建的 `candidate_run_id`。
 
-发布 ZIP 名称必须与工作流和 README 保持一致：
+工作流验证候选来自本仓库的 Package 工作流、执行成功，随后检出候选提交并下载其原始 artifact。`prepare_release.py` 校验两个平台的版本、提交、SHA-256、公开标记和成品验收报告；拒绝工作区不干净的构建、macOS/私用包、缺失验收、额外 ZIP 或哈希不匹配。
 
-```text
-MascotMateDesktop-linux-x86_64.zip
-MascotMateDesktop-windows-x86_64.zip
-MascotMateDesktop-macos-universal.zip
-```
+只发布这两个 ZIP，不重新构建：
 
-包内会包含 `README.txt`；打包脚本会打印包体大小报告。
+- `MascotMateDesktop-windows-x86_64.zip`
+- `MascotMateDesktop-linux-x86_64.zip`
 
-Linux runtime bundle：
+附件同时提供 `SHA256SUMS.txt` 和两个验收报告。现有同名 tag 必须指向候选提交；现有 Release 不会被覆盖。发布说明包含下载/完整解压步骤、主分支改进、新数据目录、旧目录不会自动加载的变化及 macOS 待验证状态，并追加 GitHub 自动生成的 release notes。
 
-```bash
-scripts/build_godot_linux.sh
-```
+## 公开内容与升级变化
 
-正式 Godot export：
+公开目录仅复制 `license.redistributable` 严格为 `true` 的可安装皮肤及它们引用的 ZIP/预览；允许精选列表为空，保留外站浏览和手动导入。源码中的私用皮肤不删除。4 张偷看图片按当前约定原样保留并继续打包。
 
-```bash
-scripts/setup_godot_export_templates.sh
-scripts/build_godot_linux.sh --export
-```
+新数据根目录见 [状态与配置](configuration/state-and-config.md)。旧目录不自动读取或迁移，原文件保留。日聚合长期保留，原始事件仅保留最近 200 条；3/7/30 天采用包含今天的本地自然日。
 
-## 安装并验证
-
-安装桌面入口：
-
-```bash
-scripts/install_desktop_entry.sh
-```
-
-运行验证：
-
-```bash
-dist/MascotMateDesktop/MascotMateDesktop
-```
-
-验收清单：
-
-- 透明窗口正常
-- 右键菜单可打开
-- 右键“怎么玩？”可重播基础提示
-- 首次启动不出现透明窗口/Godot 安全窗口等技术启动气泡
-- 显示大小可切换
-- 修改显示大小后重启仍保留
-- 重力开关生效
-- 修改重力开关后重启仍保留
-- 行为模式重启后仍回到安静模式
-- 抱起、甩飞、落地正常
-- 拖到屏幕边缘可进入偷看
-- 活泼模式会自动散步或贴边
-- 捣乱模式可开始和停止
-- `F1`、`F3`、`F4` 在目标系统下可用
-- 截图可拖选区域，并能复制图片到剪贴板
-- Windows / macOS 产物来自 GitHub Actions artifact，并按同一清单手动验收
-- GitHub Release body 含三平台下载表、完整解压说明、macOS 不单独移动 `.app` 的提示，并保留自动生成的 release notes
-- macOS 首次全局快捷键可能需要辅助功能权限
-- Linux Wayland 下全局快捷键会降级为应用内快捷键
-
-## 开源发布前检查
-
-- 不提交 `dist/`、`tools/`、`godot_pet/.godot/` 等本地产物
-- 不提交 IDE 工程文件、虚拟环境和本地构建缓存
-- 不提交个人配置目录中的 `state.json`、`config.json` 或截图历史
-- 确认 `LICENSE` 为 Apache License 2.0
-- 确认第三方素材 `NOTICE.md` 仍在对应目录
-- 确认 README 中的仓库链接、文档链接和命令可用
+不要提交 `dist/`、`build/`、`tools/`、Godot 缓存或个人数据。

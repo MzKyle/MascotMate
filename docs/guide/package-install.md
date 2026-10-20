@@ -99,7 +99,7 @@ python3 scripts/build_portable.py --target windows
 python3 scripts/build_portable.py --target macos
 ```
 
-本地通常只构建当前系统对应的 target；三平台产物由 CI 在对应 runner 上构建。
+本地通常只构建当前系统对应的 target；Windows/Linux 产物在 CI 对应 runner 上构建并验收；macOS 只构建未经运行验收的候选包。
 
 产物目录和 ZIP 位于：
 
@@ -107,7 +107,7 @@ python3 scripts/build_portable.py --target macos
 | --- | --- | --- |
 | `linux` | `dist/MascotMateDesktop-linux-x86_64/` | `dist/MascotMateDesktop-linux-x86_64.zip` |
 | `windows` | `dist/MascotMateDesktop-windows-x86_64/` | `dist/MascotMateDesktop-windows-x86_64.zip` |
-| `macos` | `dist/MascotMateDesktop-macos-universal/` | `dist/MascotMateDesktop-macos-universal.zip` |
+| `macos` | `dist/MascotMateDesktop-macos-<arch>-candidate/` | `dist/MascotMateDesktop-macos-<arch>-candidate.zip` |
 
 每个 zip 根目录会包含 `README.txt`。脚本打包完成后会打印 ZIP 大小和顶层目录大小报告，便于检查体积来源。
 
@@ -126,7 +126,7 @@ python3 scripts/build_portable.py --target macos
 | `scripts/pet_helper` | 全局快捷键、截图和剪贴板辅助程序 |
 | `scripts/companion_ai_sidecar.py` | 可选 AI 表达 sidecar |
 
-跨平台 portable zip 与上面的 Linux runtime bundle 不完全相同：zip 使用 Godot export preset 输出平台应用，包内还包含 `LICENSE`、`README.txt` 和打包后的 `scripts/pet_helper` / `pet_helper.exe`。macOS target 会先导出 Godot 生成的 `MascotMateDesktop.zip`，再解出 `.app` 到 `dist/MascotMateDesktop-macos-universal/`，所以发布说明要求用户保留整个解压目录，不要只移动 `.app`。
+跨平台 portable zip 与上面的 Linux runtime bundle 不完全相同：zip 使用 Godot export preset 输出平台应用，包内还包含 `LICENSE`、`README.txt` 和打包后的 `scripts/pet_helper` / `pet_helper.exe`。macOS target 会先导出 Godot 生成的 `MascotMateDesktop.zip`，再解出 `.app` 到 `dist/MascotMateDesktop-macos-<arch>-candidate/`，所以发布说明要求用户保留整个解压目录，不要只移动 `.app`。
 
 ## 发布前检查
 

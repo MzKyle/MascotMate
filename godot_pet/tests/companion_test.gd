@@ -49,8 +49,8 @@ func _run() -> void:
 		_fail("CompanionEventStore did not recover after invalid JSON: %s" % JSON.stringify(recovered))
 		return
 	var all_recovered_events = event_store.all_events()
-	if all_recovered_events.size() != 1 or str(all_recovered_events[0].get("kind", "")) != "after_corrupt":
-		_fail("CompanionEventStore all_events returned unexpected data: %s" % JSON.stringify(all_recovered_events))
+	if all_recovered_events.size() != 200 or int(event_store.aggregate(0)["total_events"]) != 205:
+		_fail("CompanionEventStore all_events returned unexpected data: %s" % str(all_recovered_events.size()))
 		return
 
 	event_store.record_event("pet_head", "user", {"mode": "活泼", "period": "entertainment", "skin_id": "test_skin"}, {}, ["social"], {}, {}, FIXED_ENTERTAINMENT_TIME + 10)

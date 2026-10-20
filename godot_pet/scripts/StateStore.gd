@@ -1,7 +1,6 @@
 extends Node
 
 const STATE_VERSION := 2
-const CONFIG_DIR_NAME := "mascotmate-desktop"
 const SAVE_DEBOUNCE_SECONDS := 5.0
 const MIN_DECAY_SECONDS := 1800
 const MAX_OFFLINE_DECAY_SECONDS := 8 * 60 * 60
@@ -224,10 +223,4 @@ func _now_unix() -> int:
 
 
 func _state_path() -> String:
-	var override_dir = OS.get_environment("CRAYON_PET_CONFIG_DIR").strip_edges()
-	if override_dir != "":
-		return override_dir.path_join("state.json")
-	var home = OS.get_environment("HOME")
-	if home == "":
-		return "user://state.json"
-	return home.path_join(".config").path_join(CONFIG_DIR_NAME).path_join("state.json")
+	return preload("res://scripts/AppPaths.gd").data_dir().path_join("state.json")

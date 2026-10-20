@@ -10,7 +10,7 @@ python3 scripts/build_portable.py --target windows
 python3 scripts/build_portable.py --target macos
 ```
 
-本地通常只构建当前系统对应的 target；三平台产物由 GitHub Actions 在对应 runner 上构建。
+本地通常只构建当前系统对应的 target；Windows/Linux 产物由 GitHub Actions 在对应 runner 上构建并验收；macOS 只构建候选包。
 
 Linux 本地开发/验收 runtime bundle 入口是：
 
@@ -47,9 +47,9 @@ python scripts/run_godot_smoke.py
 2. 清理并创建 `dist/MascotMateDesktop/`
 3. 复制 Godot runtime 为 `GodotPetRuntime`
 4. 复制 `godot_pet/`
-5. 复制 `resource_hd/`、`assets/`、`skin_catalog/` 和 `skin_store/`
+5. 复制 `resource_hd/`、`assets/`、经过可分发标记过滤的 `skin_catalog/` 和 `skin_store/`
 6. 复制 `companion_console/`
-7. 复制 `scripts/pet_helper.py`、`scripts/companion_ai_sidecar.py`、`scripts/import_shimeji_skin.py`、`scripts/cachomon_catalog.py`、`scripts/skin_store_server.py`、`scripts/skin_sdk.py` 和可选的 `scripts/pet_helper`
+7. 复制 `scripts/pet_helper.py`、`scripts/companion_ai_sidecar.py`、`scripts/import_shimeji_skin.py`、`scripts/cachomon_catalog.py`、`scripts/skin_store_server.py`、`scripts/skin_sdk.py`、共用路径/目录策略模块和打包的 `scripts/pet_helper`
 8. 写入启动脚本 `MascotMateDesktop`
 
 启动脚本会设置：
@@ -93,7 +93,7 @@ scripts/setup_godot_export_templates.sh
 2. 生成默认皮肤 `godot_pet/assets/skins/classic_shinchan/skin.json`
 3. 用 PyInstaller 构建 `pet_helper`
 4. 调用 Godot export preset 导出 Linux、Windows 或 macOS
-5. 复制 `LICENSE`、`resource_hd/`、`assets/`、`skin_catalog/`、`skin_store/`、`companion_console/`、helper、`pet_helper.py`、`companion_ai_sidecar.py`、`import_shimeji_skin.py`、`cachomon_catalog.py`、`skin_store_server.py`、`fetch_featured_skins.py` 和 `skin_sdk.py`
+5. 复制 `LICENSE`、`resource_hd/`、`assets/`、经过可分发标记过滤的 `skin_catalog/`、`skin_store/`、`companion_console/`、helper、`pet_helper.py`、`companion_ai_sidecar.py`、`import_shimeji_skin.py`、`cachomon_catalog.py`、`skin_store_server.py`、`fetch_featured_skins.py` 和 `skin_sdk.py`
 6. 写入包内 `README.txt`
 7. 输出平台目录和 ZIP：
 
@@ -101,9 +101,9 @@ scripts/setup_godot_export_templates.sh
 | --- | --- | --- |
 | `linux` | `dist/MascotMateDesktop-linux-x86_64/` | `dist/MascotMateDesktop-linux-x86_64.zip` |
 | `windows` | `dist/MascotMateDesktop-windows-x86_64/` | `dist/MascotMateDesktop-windows-x86_64.zip` |
-| `macos` | `dist/MascotMateDesktop-macos-universal/` | `dist/MascotMateDesktop-macos-universal.zip` |
+| `macos` | `dist/MascotMateDesktop-macos-<arch>-candidate/` | `dist/MascotMateDesktop-macos-<arch>-candidate.zip` |
 
-脚本最后会打印 ZIP 大小和顶层目录大小报告。macOS target 会把 Godot 导出的 `.app` 从临时 ZIP 解到包目录，运行时资源仍放在 `.app` 旁边，因此发布说明需要提醒用户保留整个解压目录。
+脚本最后会打印 ZIP 大小和顶层目录大小报告。macOS 候选构建会恢复 `.app` 执行权限并保留符号链接，按 helper 真实架构命名；会把 Godot 导出的 `.app` 从临时 ZIP 解到包目录，运行时资源仍放在 `.app` 旁边，因此发布说明需要提醒用户保留整个解压目录。
 
 本地私用皮肤只在显式传参时复制，不会进入公开 CI/release：
 
@@ -113,7 +113,7 @@ python3 scripts/build_portable.py --target linux --private-skins-dir private_ski
 
 `private_skins/` 应该包含若干皮肤目录，每个目录都有自己的 `skin.json`。
 
-GitHub Actions 工作流 `.github/workflows/package.yml` 支持手动触发，也会在推送 `v*` 标签时构建三平台 zip artifact。每个平台在打包前都会运行 Python 校验和 Godot headless domain tests/runtime smoke。推送 `v*` 标签时，release job 会下载三平台 artifact，写入固定下载/解压说明，并启用 GitHub 自动生成 release notes。
+GitHub Actions 先构建并验收 Windows/Linux 最终 ZIP。macOS 只保留候选包，不参与稳定版门禁。随后通过 `promote-release.yml` 发布同一批已验收的原始 ZIP；版本、提交和哈希必须一致，详见 [发布流程](workflow/release.md)。
 
 ## desktop entry
 

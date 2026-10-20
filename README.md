@@ -20,8 +20,9 @@ the extracted folder.
 | System | Download | Run |
 | --- | --- | --- |
 | Windows x86_64 | [MascotMateDesktop-windows-x86_64.zip](https://github.com/MzKyle/MascotMate/releases/latest/download/MascotMateDesktop-windows-x86_64.zip) | `MascotMateDesktop.exe` |
-| macOS universal | [MascotMateDesktop-macos-universal.zip](https://github.com/MzKyle/MascotMate/releases/latest/download/MascotMateDesktop-macos-universal.zip) | `MascotMateDesktop.app` |
 | Linux x86_64 | [MascotMateDesktop-linux-x86_64.zip](https://github.com/MzKyle/MascotMate/releases/latest/download/MascotMateDesktop-linux-x86_64.zip) | `MascotMateDesktop` |
+
+macOS v1.3 builds are CI-only candidates, have not passed runtime acceptance, and are not attached to the stable release.
 
 [View all releases](https://github.com/MzKyle/MascotMate/releases)
 
@@ -103,19 +104,26 @@ The built-in skin keeps compatibility with the original local animation assets.
 The skin shop can install packaged featured skins or help import Shimeji-ee ZIPs
 and folders into the local user config directory.
 
-Imported user skins are stored under:
+Imported user skins are stored in `skins/` under the platform data directory. Linux default example:
 
 ```text
-~/.config/mascotmate-desktop/skins/
+~/.local/share/mascotmate-desktop/skins/
 ```
 
 ## Local Data
 
 Runtime data is written to:
 
-```text
-~/.config/mascotmate-desktop/
-```
+| Platform | Data directory |
+| --- | --- |
+| Windows | `%APPDATA%\mascotmate-desktop` |
+| macOS | `~/Library/Application Support/mascotmate-desktop` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/mascotmate-desktop` |
+
+v1.3 does not load or migrate old data directories. Existing files remain untouched. Explicit helper paths override `CRAYON_PET_CONFIG_DIR`, which overrides the defaults above.
+
+Daily aggregates are retained independently of the latest 200 raw events. Three-, seven-, and thirty-day summaries include today and the preceding calendar days.
+
 
 This includes app config, state, screenshot history, companion memory summaries,
 diagnostic snapshots, and imported skins.

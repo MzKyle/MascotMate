@@ -10,7 +10,7 @@
 | `godot_pet/assets/skins/` | 内置皮肤清单 |
 | `skin_catalog/` | 皮肤商店本地 fallback、Cachomon 浏览索引、精选预览、精选 ZIP 和授权 notice |
 | `skin_store/` | 浏览器版皮肤商店静态 HTML/CSS/JS |
-| `~/.config/mascotmate-desktop/skins/` | 用户导入皮肤 |
+| `~/.local/share/mascotmate-desktop/skins/` | 用户导入皮肤 |
 | `assets/effects/` | 爱心、闪光、波纹等互动特效 |
 | `assets/games/` | 饭团等轻互动素材 |
 | `assets/character/` | 贴边偷看图和来源说明 |

@@ -35,6 +35,9 @@ jobs:
       - name: Check Godot manifest
         run: python scripts/generate_godot_manifest.py --check
 
+      - name: Check release version metadata
+        run: python scripts/release_version.py
+
       - name: Validate resources
         run: python scripts/validate_resources.py
 

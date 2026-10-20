@@ -10,7 +10,7 @@ python3 scripts/import_shimeji_skin.py /path/to/shimeji-folder --json-report
 默认输出到：
 
 ```text
-~/.config/mascotmate-desktop/skins/
+~/.local/share/mascotmate-desktop/skins/
 ```
 
 ## 支持范围

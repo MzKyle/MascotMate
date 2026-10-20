@@ -4,10 +4,18 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 from PIL import Image, UnidentifiedImageError
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from app_paths import data_dir
 
 
 SCHEMA_VERSION = 2
@@ -71,12 +79,12 @@ def normalize_skin_manifest(source: dict[str, Any]) -> dict[str, Any]:
     return skin
 
 
-def resolve_frame_root(skin: dict[str, Any], skin_path: Path, repo_root: Path) -> Path:
+def resolve_frame_root(skin: dict[str, Any], skin_path: Path, repo_root: Path, config_dir: Path | None = None) -> Path:
     frame_root = str(skin.get("frame_root", ""))
     if frame_root.startswith("$repo/"):
         return repo_root / frame_root.removeprefix("$repo/")
     if frame_root.startswith("$config/"):
-        return Path.home() / ".config" / "mascotmate-desktop" / frame_root.removeprefix("$config/")
+        return data_dir(config_dir) / frame_root.removeprefix("$config/")
     path = Path(frame_root)
     if path.is_absolute():
         return path
@@ -99,6 +107,7 @@ def validate_skin_manifest(
     repo_root: Path,
     *,
     check_files: bool = True,
+    config_dir: Path | None = None,
 ) -> dict[str, Any]:
     normalized = normalize_skin_manifest(skin)
     errors: list[str] = []
@@ -127,7 +136,7 @@ def validate_skin_manifest(
         errors.append("Skin fallbacks must be an object.")
         fallbacks = {}
 
-    frame_root = resolve_frame_root(normalized, skin_path, repo_root)
+    frame_root = resolve_frame_root(normalized, skin_path, repo_root, config_dir)
     for capability in CORE_CAPABILITIES:
         candidates = capabilities.get(capability, [])
         if not isinstance(candidates, list) or not candidates:

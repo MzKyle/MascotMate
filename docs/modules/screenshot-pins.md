@@ -17,7 +17,7 @@
 配置保存在：
 
 ```text
-~/.config/mascotmate-desktop/config.json
+~/.local/share/mascotmate-desktop/config.json
 ```
 
 默认结构：

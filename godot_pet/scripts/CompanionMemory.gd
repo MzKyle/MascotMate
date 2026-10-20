@@ -3,23 +3,8 @@ extends Node
 const STORE_VERSION := 1
 const FILE_NAME := "companion_memory.json"
 const MAX_RECENT_LINES := 8
-const SHORT_TERM_SECONDS := 3 * 24 * 60 * 60
-const USER_INTERACTION_KINDS := [
-	"pet_head",
-	"poke_body",
-	"grab_start",
-	"release_soft",
-	"throw_fast",
-	"peek_enter",
-	"peek_exit",
-	"feed_start",
-	"feed_success",
-	"tease_start",
-	"tease_success",
-]
-const CARE_KINDS := ["feed_start", "feed_success", "auto_prompt"]
-const PLAY_KINDS := ["tease_start", "tease_success"]
-
+const EventStore = preload("res://scripts/CompanionEventStore.gd")
+const AtomicJson = preload("res://scripts/AtomicJson.gd")
 var memory_path := ""
 var event_store = null
 var data := _default_data()
@@ -27,7 +12,11 @@ var data := _default_data()
 
 func configure(config_dir: String, store = null) -> void:
 	memory_path = config_dir.path_join(FILE_NAME)
+	if event_store != null and event_store.event_recorded.is_connected(_on_event_recorded):
+		event_store.event_recorded.disconnect(_on_event_recorded)
 	event_store = store
+	if event_store != null:
+		event_store.event_recorded.connect(_on_event_recorded)
 	_load_memory()
 	refresh()
 
@@ -37,49 +26,26 @@ func refresh(now_unix := 0) -> void:
 	var previous_dialogue = _sanitize_dialogue(data.get("dialogue", {}))
 	var events = _events_from_store()
 	var today = _date_for_unix(now)
-	var short_term_cutoff = now - SHORT_TERM_SECONDS
-	var daily_counts := {}
-	var short_counts := {}
-	var mode_counts := {}
-	var period_counts := {}
-	var interaction_counts := {}
+	var daily = event_store.aggregate(1, now) if event_store != null else EventStore.empty_summary()
+	var short_term = event_store.aggregate(3, now) if event_store != null else EventStore.empty_summary()
+	var lifetime = event_store.aggregate(0, now) if event_store != null else EventStore.empty_summary()
+	var daily_counts = daily["counts"]
+	var short_counts = short_term["counts"]
+	var mode_counts = short_term["mode_counts"]
+	var period_counts = short_term["period_counts"]
+	var interaction_counts = lifetime["interaction_counts"]
+	var last_event_at = int(lifetime["last_event_at"])
+	var last_event_kind = str(lifetime["last_event_kind"])
+	var user_interactions = int(lifetime["user_interactions"])
+	var care_score = int(lifetime["care_score"])
+	var play_score = int(lifetime["play_score"])
 	var recent_kinds := []
-	var last_event_at := 0
-	var last_event_kind := ""
-	var user_interactions := 0
-	var care_score := 0
-	var play_score := 0
-
+	var today_day = int(Time.get_unix_time_from_datetime_string(today + "T00:00:00"))
+	var first_date = Time.get_datetime_string_from_unix_time(today_day - 2 * 86400).substr(0, 10)
 	for event in events:
-		if typeof(event) != TYPE_DICTIONARY:
-			continue
-		var kind = str(event.get("kind", "")).strip_edges()
-		if kind == "":
-			continue
-		var at = int(event.get("at", 0))
-		if at <= 0:
-			at = now
-		if at >= last_event_at:
-			last_event_at = at
-			last_event_kind = kind
-		if _date_for_unix(at) == today:
-			_increment(daily_counts, kind)
-		if at >= short_term_cutoff:
-			_increment(short_counts, kind)
-			var mode = str(event.get("mode", "")).strip_edges()
-			if mode != "":
-				_increment(mode_counts, mode)
-			var period = str(event.get("period", "")).strip_edges()
-			if period != "":
-				_increment(period_counts, period)
-			recent_kinds.append(kind)
-		if str(event.get("source", "")) == "user" and kind in USER_INTERACTION_KINDS:
-			user_interactions += 1
-			_increment(interaction_counts, kind)
-		if kind in CARE_KINDS:
-			care_score += 1
-		if kind in PLAY_KINDS:
-			play_score += 1
+		var date = str(event.get("date", ""))
+		if date >= first_date and date <= today:
+			recent_kinds.append(str(event.get("kind", "")))
 
 	var favorites = _top_keys(interaction_counts, 3)
 	var familiarity = clampi(1 + user_interactions * 8 + care_score * 4 + play_score * 4, 1, 100)
@@ -154,29 +120,17 @@ func record_expression(key: String, text: String, now_unix := 0) -> void:
 	flush_save()
 
 
+func _on_event_recorded(event: Dictionary) -> void:
+	refresh(int(event.get("at", 0)))
+
+
 func flush_save() -> void:
-	if memory_path == "":
-		return
-	DirAccess.make_dir_recursive_absolute(memory_path.get_base_dir())
-	var file = FileAccess.open(memory_path, FileAccess.WRITE)
-	if file != null:
-		file.store_string(JSON.stringify(data, "\t"))
+	if memory_path != "":
+		AtomicJson.write_dictionary(memory_path, data)
 
 
 func _load_memory() -> void:
-	data = _default_data()
-	if memory_path == "" or not FileAccess.file_exists(memory_path):
-		return
-	var file = FileAccess.open(memory_path, FileAccess.READ)
-	if file == null:
-		return
-	var json = JSON.new()
-	if json.parse(file.get_as_text()) != OK:
-		return
-	var parsed = json.data
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return
-	data = _sanitize_data(parsed)
+	data = _sanitize_data(AtomicJson.read_dictionary(memory_path))
 
 
 func _events_from_store() -> Array:
@@ -271,10 +225,6 @@ func _dictionary_or_default(value, default_value: Dictionary) -> Dictionary:
 	return default_value.duplicate(true)
 
 
-func _increment(counts: Dictionary, key: String) -> void:
-	counts[key] = int(counts.get(key, 0)) + 1
-
-
 func _top_keys(counts: Dictionary, limit: int) -> Array:
 	var keys = counts.keys()
 	keys.sort_custom(func(a, b):
@@ -317,14 +267,7 @@ func _recent_expression_texts() -> Array:
 
 
 func _date_for_unix(unix: int) -> String:
-	var time = _local_datetime_from_unix(unix)
-	return "%04d-%02d-%02d" % [int(time.get("year", 1970)), int(time.get("month", 1)), int(time.get("day", 1))]
-
-
-func _local_datetime_from_unix(unix_time: int) -> Dictionary:
-	var time_zone = Time.get_time_zone_from_system()
-	var bias_minutes = int(time_zone.get("bias", 0)) if typeof(time_zone) == TYPE_DICTIONARY else 0
-	return Time.get_datetime_dict_from_unix_time(unix_time + bias_minutes * 60)
+	return EventStore.date_for_unix(unix)
 
 
 func _coerce_now(now_unix: int) -> int:

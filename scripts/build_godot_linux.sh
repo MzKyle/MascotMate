@@ -24,62 +24,13 @@ rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
 copy_external_assets() {
-  if [[ -d "$ROOT_DIR/resource_hd" ]]; then
-    cp -a "$ROOT_DIR/resource_hd" "$DIST_DIR/resource_hd"
-  fi
-
-  if [[ -d "$ROOT_DIR/assets" ]]; then
-    cp -a "$ROOT_DIR/assets" "$DIST_DIR/assets"
-  fi
-
-  if [[ -d "$ROOT_DIR/skin_catalog" ]]; then
-    cp -a "$ROOT_DIR/skin_catalog" "$DIST_DIR/skin_catalog"
-  fi
-
-  if [[ -d "$ROOT_DIR/skin_store" ]]; then
-    cp -a "$ROOT_DIR/skin_store" "$DIST_DIR/skin_store"
-  fi
-
-  if [[ -d "$ROOT_DIR/companion_console" ]]; then
-    cp -a "$ROOT_DIR/companion_console" "$DIST_DIR/companion_console"
-  fi
-
-  mkdir -p "$DIST_DIR/scripts"
-  cp "$ROOT_DIR/scripts/pet_helper.py" "$DIST_DIR/scripts/pet_helper.py"
-  cp "$ROOT_DIR/scripts/import_shimeji_skin.py" "$DIST_DIR/scripts/import_shimeji_skin.py"
-  cp "$ROOT_DIR/scripts/skin_sdk.py" "$DIST_DIR/scripts/skin_sdk.py"
-  cp "$ROOT_DIR/scripts/cachomon_catalog.py" "$DIST_DIR/scripts/cachomon_catalog.py"
-  cp "$ROOT_DIR/scripts/skin_store_server.py" "$DIST_DIR/scripts/skin_store_server.py"
-  cp "$ROOT_DIR/scripts/companion_ai_sidecar.py" "$DIST_DIR/scripts/companion_ai_sidecar.py"
-  cp "$ROOT_DIR/scripts/fetch_featured_skins.py" "$DIST_DIR/scripts/fetch_featured_skins.py"
-  chmod +x "$DIST_DIR/scripts/pet_helper.py"
-  if [[ ! -x "$ROOT_DIR/build/helper/pet_helper" \
-      || "$ROOT_DIR/scripts/pet_helper.py" -nt "$ROOT_DIR/build/helper/pet_helper" \
-      || "$ROOT_DIR/scripts/import_shimeji_skin.py" -nt "$ROOT_DIR/build/helper/pet_helper" \
-      || "$ROOT_DIR/scripts/skin_sdk.py" -nt "$ROOT_DIR/build/helper/pet_helper" \
-      || "$ROOT_DIR/scripts/cachomon_catalog.py" -nt "$ROOT_DIR/build/helper/pet_helper" \
-      || "$ROOT_DIR/scripts/skin_store_server.py" -nt "$ROOT_DIR/build/helper/pet_helper" \
-      || "$ROOT_DIR/scripts/companion_ai_sidecar.py" -nt "$ROOT_DIR/build/helper/pet_helper" ]]; then
-    if command -v pyinstaller >/dev/null 2>&1; then
-      pyinstaller --onefile --clean --name pet_helper \
-        --distpath "$ROOT_DIR/build/helper" \
-        --workpath "$ROOT_DIR/build/pyinstaller" \
-        --specpath "$ROOT_DIR/build/spec" \
-        "$ROOT_DIR/scripts/pet_helper.py"
-    elif [[ -x "$ROOT_DIR/.venv/bin/pyinstaller" ]]; then
-      "$ROOT_DIR/.venv/bin/pyinstaller" --onefile --clean --name pet_helper \
-        --distpath "$ROOT_DIR/build/helper" \
-        --workpath "$ROOT_DIR/build/pyinstaller" \
-        --specpath "$ROOT_DIR/build/spec" \
-        "$ROOT_DIR/scripts/pet_helper.py"
-    fi
-  fi
-  if [[ -x "$ROOT_DIR/build/helper/pet_helper" ]]; then
-    cp "$ROOT_DIR/build/helper/pet_helper" "$DIST_DIR/scripts/pet_helper"
-    chmod +x "$DIST_DIR/scripts/pet_helper"
-  else
-    echo "pet_helper binary was not built; development bundle will use pet_helper.py if Python is available." >&2
-  fi
+  python3 - "$ROOT_DIR" "$DIST_DIR" <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "scripts"))
+from build_portable import build_helper, copy_external_assets
+copy_external_assets(Path(sys.argv[2]), build_helper())
+PY
 }
 
 if [[ "$USE_EXPORT" == "1" ]]; then

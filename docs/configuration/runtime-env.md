@@ -1,5 +1,9 @@
 # 运行环境变量
 
+## 数据目录
+
+`CRAYON_PET_CONFIG_DIR` 可覆盖整个应用数据根目录（建议使用绝对路径）。所有 Godot 模块和 Python helper 共用此规则，显式 CLI 路径参数优先。平台默认目录见 [状态与配置](configuration/state-and-config.md)。v1.3 不自动加载旧目录。
+
 ## Godot 准备
 
 | 变量 | 说明 |
@@ -56,7 +60,7 @@ CRAYON_PET_ENABLE_GLOBAL_HOTKEYS=0 scripts/run_godot_pet.sh
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `MASCOTMATE_SKIN_CATALOG_URL` | `https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_catalog/catalog.json` | 覆盖皮肤商店读取的在线 `catalog.json`；当前代码默认仍使用这个 legacy raw 地址 |
+| `MASCOTMATE_SKIN_CATALOG_URL` | `https://raw.githubusercontent.com/MzKyle/MascotMate/main/skin_catalog/catalog.json` | 覆盖皮肤商店读取的在线 `catalog.json`；默认使用当前仓库地址 |
 | `CRAYON_PET_SKIN_CATALOG_URL` | 空 | 旧变量名兼容，优先级低于 `MASCOTMATE_SKIN_CATALOG_URL` |
 
 正式远端必须使用 HTTPS。开发调试时允许 `http://127.0.0.1` 或 `http://localhost`：
@@ -65,7 +69,7 @@ CRAYON_PET_ENABLE_GLOBAL_HOTKEYS=0 scripts/run_godot_pet.sh
 MASCOTMATE_SKIN_CATALOG_URL=http://127.0.0.1:8000/catalog.json scripts/run_godot_pet.sh
 ```
 
-这个变量只影响可应用内下载的精选源。Cachomon/Shimeji 浏览索引由 helper 写入 `~/.config/mascotmate-desktop/catalog_cache/cachomon/index.json`，应用只打开原站页面，不代下载第三方 ZIP。
+这个变量只影响可应用内下载的精选源。Cachomon/Shimeji 浏览索引由 helper 写入 `~/.local/share/mascotmate-desktop/catalog_cache/cachomon/index.json`，应用只打开原站页面，不代下载第三方 ZIP。
 
 ## AI 表达增强
 

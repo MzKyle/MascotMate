@@ -23,12 +23,12 @@ v2 的目标是把当前规则系统升级成“本地优先、可解释、低�
 
 当前已完成本地陪伴闭环 v1：
 
-- `CompanionEventStore.gd` 持久化最近 200 条用户互动和自动行为事件。
+- `CompanionEventStore.gd` 持久化最近 200 条明细与长期日聚合，用户和自动事件共用入口。
 - `CompanionIntent.gd` 已提供统一 intent schema，`BehaviorBrain.decide()` 在原有 decision 字段外附带完整 `intent` 元数据。
 - `CompanionBehaviorPolicy.gd` 已承接自动行为规则决策，`BehaviorBrain.gd` 保留调度、冷却记忆、事件记录和 legacy signal 兼容。
 - `CompanionExpressionResolver.gd` 已把用户互动和自动行为 intent 统一解析为 bubble、action、capability、effect、mischief 和 state_delta。
 - 自动 prompt、action、effect 会记录到 `companion_events.json`。
-- `CompanionMemory.gd` 从事件日志聚合今日/近 3 天计数、偏好互动、常用模式/时段和关系熟悉度。
+- `CompanionMemory.gd` 从日聚合读取今日/近 3 个自然日计数、偏好互动、常用模式/时段和关系熟悉度。
 - `SkinManager.gd` 会为皮肤归一化可选 `personality`，缺失时使用默认人格。
 - `CompanionExpressionBank.gd` 负责互动和自动提示气泡的本地表达选择，可读取记忆、人格 tone 和最近文案。
 - 行为适配 v1 已让记忆和皮肤人格影响主动提示阈值、自动行为权重和非工作时段冷却，并在 decision 中附带 `adaptation` 元数据。
@@ -153,7 +153,7 @@ flowchart TB
 | short-term memory | 最近 1-3 天 | 识别今天互动、最近模式、最近偏好 |
 | long-term profile | 长期累积 | 用户偏好、角色关系、互动习惯 |
 
-当前 Memory v1 存储在独立的 `companion_memory.json`，由最近 200 条事件重新聚合：
+当前记忆快照存储在独立的 `companion_memory.json`；v1.3 起统计由事件存储的长期日聚合派生，最近表达仍使用有界明细：
 
 ```json
 {
@@ -464,15 +464,15 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。当�
 持久化路径建议：
 
 ```text
-~/.config/mascotmate-desktop/state.json
-~/.config/mascotmate-desktop/companion_events.json
-~/.config/mascotmate-desktop/companion_memory.json
-~/.config/mascotmate-desktop/companion_profile.json
+~/.local/share/mascotmate-desktop/state.json
+~/.local/share/mascotmate-desktop/companion_events.json
+~/.local/share/mascotmate-desktop/companion_memory.json
+~/.local/share/mascotmate-desktop/companion_profile.json
 ```
 
 事件日志需要上限：
 
-- 默认最多保存 200 条近期事件。
+- 默认最多保存 200 条近期明细，长期日聚合不受此上限影响。
 - 每次写入后裁剪。
 - 长期偏好只保存聚合结果，不保存大量原始细节。
 
@@ -599,7 +599,7 @@ AI 不返回动作命令。动作仍由本地 expression resolver 决定。当�
 - 旧 `behavior.json` 继续有效。
 - 旧 `skin.json` 缺少 `personality` 时使用默认人格。
 - 旧信号保留，新增 v2 intent 可以先只在内部使用。
-- 事件和记忆文件损坏时丢弃并重建，不阻断桌宠启动。
+- 事件主文件损坏时优先恢复有效备份，记忆和画像可从日聚合重新派生，不阻断桌宠启动。
 
 ## 风险与约束
 

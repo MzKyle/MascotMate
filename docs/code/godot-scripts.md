@@ -72,8 +72,8 @@
 | `CompanionExpressionResolver.gd` | 把 intent 转成 bubble、capability、effect、mini_game 或 mischief |
 | `CompanionExpressionBank.gd` | 本地文案库，按 key、tone、关系等级、偏好和最近文案选择气泡 |
 | `CompanionAIExpressionClient.gd` | 可选 AI sidecar 客户端、缓存、校验和 fallback 统计 |
-| `CompanionEventStore.gd` | 最近 200 条结构化陪伴事件 |
-| `CompanionMemory.gd` | 从事件日志聚合短期偏好和最近表达 |
+| `CompanionEventStore.gd` | 最近 200 条明细及长期日聚合 |
+| `CompanionMemory.gd` | 从日聚合读取统计，从近期明细读取最近表达 |
 | `CompanionLongTermProfile.gd` | 长期画像、AI 结构化记忆总结和有效偏好 |
 
 表达系统的边界是：本地文案和可选 AI 只影响气泡内容；行为、动画和状态仍由本地规则控制。
@@ -96,4 +96,4 @@
 - 涉及窗口位置时，先确认使用的是全局屏幕坐标还是窗口局部坐标。
 - 涉及透明窗口时，同时检查鼠标穿透区域。
 - 涉及资源加载时，优先使用 `repo_root` 拼接外部资源路径。
-- 涉及状态持久化时，写入 `~/.config/mascotmate-desktop`。
+- 涉及状态持久化时，写入 `~/.local/share/mascotmate-desktop`。

@@ -15,8 +15,9 @@
 | 系统 | 下载 | 运行 |
 | --- | --- | --- |
 | Windows x86_64 | [MascotMateDesktop-windows-x86_64.zip](https://github.com/MzKyle/MascotMate/releases/latest/download/MascotMateDesktop-windows-x86_64.zip) | `MascotMateDesktop.exe` |
-| macOS universal | [MascotMateDesktop-macos-universal.zip](https://github.com/MzKyle/MascotMate/releases/latest/download/MascotMateDesktop-macos-universal.zip) | `MascotMateDesktop.app` |
 | Linux x86_64 | [MascotMateDesktop-linux-x86_64.zip](https://github.com/MzKyle/MascotMate/releases/latest/download/MascotMateDesktop-linux-x86_64.zip) | `MascotMateDesktop` |
+
+macOS 新版仅保留 CI 候选包，未经运行验收，不作为 v1.3 稳定版附件提供。
 
 [查看全部版本](https://github.com/MzKyle/MascotMate/releases)
 
@@ -85,19 +86,26 @@ Windows 可能会对未签名的本地构建显示 SmartScreen 提示。macOS �
 
 内置皮肤兼容项目原有动画资源。皮肤商店可以安装随包精选皮肤，也可以把 Shimeji-ee ZIP 或文件夹导入为本地皮肤。
 
-用户导入皮肤保存在：
+用户导入皮肤位于平台数据目录的 `skins/` 子目录。Linux 默认示例：
 
 ```text
-~/.config/mascotmate-desktop/skins/
+~/.local/share/mascotmate-desktop/skins/
 ```
 
 ## 本地数据
 
 运行数据写入：
 
-```text
-~/.config/mascotmate-desktop/
-```
+| 平台 | 数据目录 |
+| --- | --- |
+| Windows | `%APPDATA%\mascotmate-desktop` |
+| macOS | `~/Library/Application Support/mascotmate-desktop` |
+| Linux | `${XDG_DATA_HOME:-~/.local/share}/mascotmate-desktop` |
+
+v1.3 不自动读取或迁移旧目录，原文件保持不变。显式 helper 路径优先于 `CRAYON_PET_CONFIG_DIR`，后者优先于上述默认目录。
+
+日聚合独立于最近 200 条明细长期保留；3/7/30 天统计包含今天及之前相应的本地自然日。
+
 
 这里包含应用配置、状态、截图历史、陪伴记忆摘要、诊断快照和导入皮肤。
 

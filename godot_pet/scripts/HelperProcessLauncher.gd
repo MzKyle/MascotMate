@@ -69,6 +69,9 @@ func _helper_script_path() -> String:
 
 
 func _find_python() -> String:
+	var override_path = OS.get_environment("PYTHON").strip_edges()
+	if override_path != "":
+		return override_path
 	for candidate in ["python3", "python"]:
 		var output := []
 		var code = OS.execute(candidate, ["--version"], output, true, true)

@@ -19,9 +19,15 @@ from urllib.parse import parse_qs, quote_plus, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from app_paths import data_dir
+
+
 CACHOMON_SAFE_GRID_URL = "https://cachomon.com/grid.php?a=0&g=1&m=0&t=1"
-USER_AGENT = "MascotMateDesktop/1.0 (+https://github.com/MzKyle/Crayon-Shinchan-Desktop-Pat)"
-CONFIG_DIR_NAME = "mascotmate-desktop"
+USER_AGENT = "MascotMateDesktop/1.0 (+https://github.com/MzKyle/MascotMate)"
 BOX_RE = re.compile(
     r'<div class="shimejibox">.*?(?=<div class="shimejibox">|</div>\s*</div>\s*</div>\s*<div class="footer">)',
     re.DOTALL,
@@ -30,7 +36,7 @@ ATTR_RE_TEMPLATE = r'{name}\s*=\s*["\']([^"\']+)["\']'
 
 
 def config_cache_root() -> Path:
-    return Path.home() / ".config" / CONFIG_DIR_NAME / "catalog_cache" / "cachomon"
+    return data_dir() / "catalog_cache" / "cachomon"
 
 
 def fetch_html(url: str, timeout: float = 12.0) -> str:

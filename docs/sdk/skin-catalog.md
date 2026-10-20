@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `external_browser` | 第三方 Shimeji 浏览条目，例如 Cachomon SFW 列表 | 只打开原站页面，用户下载后拖入或导入 ZIP |
 | `curated_package` | 项目维护、明确允许再分发的精选皮肤包 | 应用内下载、校验 SHA-256、安装并启用 |
-| `local_package` | 本地用户提供、随本机包复制的精选皮肤包 | 应用内安装、校验 SHA-256、安装并启用 |
+| `local_package` | 本地皮肤包；公开精选同样要求明确可分发 | 标记允许分发时可在精选中安装，否则通过用户手动导入 |
 
 默认体验由浏览器版皮肤商店承载：顶部展示本地 ZIP 导入、本地已安装皮肤和随包可直装精选皮肤，下面展示 `external_browser` 条目，让用户能看到真实 Shimeji 皮肤生态。
 
@@ -15,13 +15,13 @@
 右键“皮肤商店”会启动本地 helper：
 
 ```bash
-python3 scripts/pet_helper.py skin-store --repo-root . --config-dir ~/.config/mascotmate-desktop --open-browser
+python3 scripts/pet_helper.py skin-store --repo-root . --config-dir ~/.local/share/mascotmate-desktop --open-browser
 ```
 
 服务只监听 `127.0.0.1`，启动时生成随机 token。浏览器页面通过本地 API 安装精选皮肤、上传并导入 ZIP、从允许直链的 HTTPS ZIP 下载并导入、启用已安装皮肤或打开第三方原站。安装、导入或启用成功后，helper 会写入：
 
 ```text
-~/.config/mascotmate-desktop/skin_store_command.json
+~/.local/share/mascotmate-desktop/skin_store_command.json
 ```
 
 Godot 运行时会轮询这个文件并立即切换皮肤。
@@ -33,8 +33,8 @@ Godot 运行时会轮询这个文件并立即切换皮肤。
 本地缓存位置：
 
 ```text
-~/.config/mascotmate-desktop/catalog_cache/cachomon/index.json
-~/.config/mascotmate-desktop/catalog_cache/cachomon/previews/
+~/.local/share/mascotmate-desktop/catalog_cache/cachomon/index.json
+~/.local/share/mascotmate-desktop/catalog_cache/cachomon/previews/
 ```
 
 随包 fallback：
@@ -76,10 +76,12 @@ python3 scripts/pet_helper.py fetch-cachomon-index --safe --json
 当前代码默认的远端精选源地址：
 
 ```text
-https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_catalog/catalog.json
+https://raw.githubusercontent.com/MzKyle/MascotMate/main/skin_catalog/catalog.json
 ```
 
-这是 `SkinCatalogClient.gd` 里的 legacy 默认值；要迁移远端精选源，需要同步代码默认值、文档和相关测试。网络不可用或远端格式错误时，运行时会回退到随包复制的本地 `skin_catalog/catalog.json`。远端 `curated_package` 只收录明确允许再分发的皮肤；本机验收包可以使用 `local_package` 放入用户本地提供的 ZIP 转换结果。当前本地直装精选包含 `Omen` 和 `Xenom`，说明文件位于 `skin_catalog/notices/omen_xenom/`。
+网络不可用或远端格式错误时，运行时回退到经过过滤的本地 `skin_catalog/catalog.json`。在线与本地精选中的可安装条目都要求 `license.redistributable` 严格为布尔值 `true`，否则不展示、下载或作为精选安装。
+
+当前仓库的 `Omen`、`Xenom` 标记为 `false`：源码文件保持原样，公开包不包含它们的条目、ZIP 和预览，精选列表允许为空。外站浏览和用户手动导入本地 ZIP 不受该精选过滤影响。下面展示的是会被公开目录过滤的本地条目：
 
 `local_package` 条目字段：
 

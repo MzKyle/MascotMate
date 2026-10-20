@@ -1,0 +1,84 @@
+name: Publish accepted release
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful Package candidates run ID (publishes its original Windows/Linux ZIPs)
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: stable-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve candidate commit
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [[ "$CANDIDATE_RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$CANDIDATE_RUN_ID" > candidate-run.json
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          run = json.loads(Path('candidate-run.json').read_text())
+          assert run['status'] == 'completed' and run['conclusion'] == 'success', 'Candidate run did not pass'
+          assert run['path'] == '.github/workflows/package.yml', 'Wrong candidate workflow'
+          assert run['head_repository']['full_name'] == os.environ['GITHUB_REPOSITORY'], 'Foreign candidate repository'
+          sha = run['head_sha']
+          assert re.fullmatch('[0-9a-f]{40}', sha), 'Invalid source commit'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'commit={sha}\n')
+          PY
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.candidate.outputs.commit }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download original accepted ZIPs and reports
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run_id }}
+          pattern: mascotmate-desktop-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify acceptance and prepare notes
+        id: notes
+        env:
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
+        run: python scripts/prepare_release.py release-assets --commit "$CANDIDATE_COMMIT" --notes release-body.md --github-output "$GITHUB_OUTPUT"
+      - name: Check existing tag
+        env:
+          RELEASE_TAG: ${{ steps.notes.outputs.tag }}
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
+        run: |
+          if git rev-parse --verify "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$CANDIDATE_COMMIT"
+          fi
+      - name: Publish original accepted bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.notes.outputs.tag }}
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
+        run: |
+          gh release create "$RELEASE_TAG" --target "$CANDIDATE_COMMIT" --title "MascotMate Desktop $RELEASE_TAG" --notes-file release-body.md --generate-notes \
+            release-assets/MascotMateDesktop-windows-x86_64.zip \
+            release-assets/MascotMateDesktop-linux-x86_64.zip \
+            release-assets/SHA256SUMS.txt \
+            release-assets/acceptance-windows.json \
+            release-assets/acceptance-linux.json

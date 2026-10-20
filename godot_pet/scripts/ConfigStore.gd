@@ -2,7 +2,6 @@ extends Node
 
 signal config_changed(config)
 
-const CONFIG_DIR_NAME := "mascotmate-desktop"
 const DEFAULT_CONFIG := {
 	"version": 1,
 	"app": {
@@ -241,11 +240,4 @@ func _merged_config(source: Dictionary) -> Dictionary:
 
 
 func _config_dir() -> String:
-	var override_dir = OS.get_environment("CRAYON_PET_CONFIG_DIR").strip_edges()
-	if override_dir != "":
-		return override_dir
-	if OS.get_name() != "Windows" and OS.get_name() != "macOS":
-		var home = OS.get_environment("HOME")
-		if home != "":
-			return home.path_join(".config").path_join(CONFIG_DIR_NAME)
-	return ProjectSettings.globalize_path("user://")
+	return preload("res://scripts/AppPaths.gd").data_dir()

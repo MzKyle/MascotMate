@@ -6,7 +6,6 @@ const PinImageWindowScript = preload("res://scripts/PinImageWindow.gd")
 const SettingsWindowScript = preload("res://scripts/ScreenshotSettingsWindow.gd")
 const SelectionWindowScript = preload("res://scripts/ScreenshotSelectionWindow.gd")
 
-const CONFIG_DIR_NAME := "mascotmate-desktop"
 const HOTKEY_PORT := 38291
 const MAX_HISTORY := 3
 const DEFAULT_CONFIG := {
@@ -562,12 +561,7 @@ func _screenshot_file_name(prefix := "screenshot") -> String:
 
 
 func _config_dir() -> String:
-	if OS.get_name() in ["Windows", "macOS"]:
-		return ProjectSettings.globalize_path("user://")
-	var home = OS.get_environment("HOME")
-	if home == "":
-		return ProjectSettings.globalize_path("user://")
-	return home.path_join(".config").path_join(CONFIG_DIR_NAME)
+	return preload("res://scripts/AppPaths.gd").data_dir()
 
 
 func _helper_command(args: PackedStringArray) -> Dictionary:

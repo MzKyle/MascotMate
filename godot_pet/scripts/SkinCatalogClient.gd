@@ -7,7 +7,7 @@ signal download_progress(skin_id, downloaded_bytes, total_bytes)
 signal skin_downloaded(skin_id, path)
 signal skin_download_failed(skin_id, message)
 
-const DEFAULT_CATALOG_URL := "https://raw.githubusercontent.com/MzKyle/Crayon-Shinchan-Desktop-Pat/main/skin_catalog/catalog.json"
+const DEFAULT_CATALOG_URL := "https://raw.githubusercontent.com/MzKyle/MascotMate/main/skin_catalog/catalog.json"
 const MAX_PACKAGE_BYTES := 100 * 1024 * 1024
 
 var repo_root := ""
@@ -106,7 +106,20 @@ func request_preview(entry: Dictionary) -> void:
 	request.request(target)
 
 
+func _public_entry(entry: Dictionary) -> bool:
+	var source_type = str(entry.get("source_type", "curated_package"))
+	if source_type == "external_browser":
+		return true
+	if source_type not in ["curated_package", "local_package"]:
+		return false
+	var license_info = entry.get("license", {})
+	return typeof(license_info) == TYPE_DICTIONARY and typeof(license_info.get("redistributable")) == TYPE_BOOL and license_info.get("redistributable") == true
+
+
 func download_skin(entry: Dictionary) -> void:
+	if not _public_entry(entry):
+		skin_download_failed.emit(str(entry.get("id", "")), "??????????????????????")
+		return
 	if str(entry.get("source_type", "curated_package")) == "external_browser":
 		emit_signal("skin_download_failed", str(entry.get("id", "")), "第三方皮肤需要打开原站下载后导入。")
 		return
@@ -203,6 +216,8 @@ func _apply_curated_catalog(catalog: Dictionary, base: String, local: bool) -> v
 			if typeof(item) != TYPE_DICTIONARY:
 				continue
 			if str(item.get("id", "")) == "":
+				continue
+			if not _public_entry(item):
 				continue
 			var entry = item.duplicate(true)
 			entry["source_type"] = str(entry.get("source_type", "curated_package"))
@@ -406,6 +421,9 @@ func _helper_script_path() -> String:
 
 
 func _find_python() -> String:
+	var override_path = OS.get_environment("PYTHON").strip_edges()
+	if override_path != "":
+		return override_path
 	for candidate in ["python3", "python"]:
 		var output := []
 		var code = OS.execute(candidate, ["--version"], output, true, true)

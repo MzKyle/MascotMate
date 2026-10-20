@@ -3,24 +3,9 @@ extends Node
 const STORE_VERSION := 1
 const FILE_NAME := "companion_profile.json"
 const DEDUPE_LIMIT := 256
-const SEVEN_DAYS := 7 * 24 * 60 * 60
-const THIRTY_DAYS := 30 * 24 * 60 * 60
-const USER_INTERACTION_KINDS := [
-	"pet_head",
-	"poke_body",
-	"grab_start",
-	"release_soft",
-	"throw_fast",
-	"peek_enter",
-	"peek_exit",
-	"feed_start",
-	"feed_success",
-	"tease_start",
-	"tease_success",
-]
-const CARE_KINDS := ["feed_start", "feed_success", "auto_prompt"]
-const PLAY_KINDS := ["tease_start", "tease_success"]
-const DISRUPTIVE_KINDS := ["poke_body", "grab_start", "throw_fast", "auto_mischief"]
+const EventStore = preload("res://scripts/CompanionEventStore.gd")
+const AtomicJson = preload("res://scripts/AtomicJson.gd")
+const USER_INTERACTION_KINDS = EventStore.USER_INTERACTION_KINDS
 
 var profile_path := ""
 var event_store = null
@@ -30,7 +15,11 @@ var data := _default_data()
 
 func configure(config_dir: String, store = null, memory = null) -> void:
 	profile_path = config_dir.path_join(FILE_NAME)
+	if event_store != null and event_store.event_recorded.is_connected(_on_event_recorded):
+		event_store.event_recorded.disconnect(_on_event_recorded)
 	event_store = store
+	if event_store != null:
+		event_store.event_recorded.connect(_on_event_recorded)
 	memory_store = memory
 	_load_profile()
 	refresh()
@@ -39,27 +28,10 @@ func configure(config_dir: String, store = null, memory = null) -> void:
 func refresh(now_unix := 0) -> void:
 	var now = _coerce_now(now_unix)
 	var previous = _sanitize_data(data)
-	var lifetime = previous.get("lifetime", {}).duplicate(true)
+	var lifetime = event_store.aggregate(0, now) if event_store != null else EventStore.empty_summary()
 	var ai_summary = _sanitize_ai_summary(previous.get("ai_summary", {}))
-	var processed_ids = _clean_string_array(lifetime.get("processed_event_ids", []))
-	var processed_lookup := {}
-	for event_id in processed_ids:
-		processed_lookup[event_id] = true
-	var events = _events_from_store()
-	for event in events:
-		if typeof(event) != TYPE_DICTIONARY:
-			continue
-		var event_id = _event_identity(event)
-		if event_id == "" or processed_lookup.has(event_id):
-			continue
-		processed_lookup[event_id] = true
-		processed_ids.append(event_id)
-		_apply_lifetime_event(lifetime, event)
-	while processed_ids.size() > DEDUPE_LIMIT:
-		processed_lookup.erase(processed_ids.pop_front())
-	lifetime["processed_event_ids"] = processed_ids
+	var trends = {"7d": _aggregate_window(7, now), "30d": _aggregate_window(30, now)}
 
-	var trends = _trend_snapshot(events, now)
 	var memory = memory_store.snapshot() if memory_store != null and memory_store.has_method("snapshot") else {}
 	data = _default_data()
 	data["updated_at"] = now
@@ -101,39 +73,22 @@ func apply_ai_summary(summary: Dictionary, now_unix := 0) -> bool:
 	return true
 
 
+func _on_event_recorded(event: Dictionary) -> void:
+	refresh(int(event.get("at", 0)))
+
+
+func _aggregate_window(days: int, now: int) -> Dictionary:
+	var result = event_store.aggregate(days, now) if event_store != null else EventStore.empty_summary()
+	return _sanitize_window(result, days)
+
+
 func flush_save() -> void:
-	if profile_path == "":
-		return
-	DirAccess.make_dir_recursive_absolute(profile_path.get_base_dir())
-	var file = FileAccess.open(profile_path, FileAccess.WRITE)
-	if file != null:
-		file.store_string(JSON.stringify(data, "\t"))
+	if profile_path != "":
+		AtomicJson.write_dictionary(profile_path, data)
 
 
 func _load_profile() -> void:
-	data = _default_data()
-	if profile_path == "" or not FileAccess.file_exists(profile_path):
-		return
-	var file = FileAccess.open(profile_path, FileAccess.READ)
-	if file == null:
-		return
-	var json = JSON.new()
-	if json.parse(file.get_as_text()) != OK:
-		return
-	var parsed = json.data
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return
-	data = _sanitize_data(parsed)
-
-
-func _events_from_store() -> Array:
-	if event_store == null:
-		return []
-	if event_store.has_method("all_events"):
-		return event_store.all_events()
-	if event_store.has_method("recent_events"):
-		return event_store.recent_events(200)
-	return []
+	data = _sanitize_data(AtomicJson.read_dictionary(profile_path))
 
 
 func _default_data() -> Dictionary:
@@ -244,58 +199,6 @@ func _dictionary_or_default(value, fallback: Dictionary) -> Dictionary:
 			result[key] = value[key]
 		return result
 	return fallback.duplicate(true)
-
-
-func _apply_lifetime_event(lifetime: Dictionary, event: Dictionary) -> void:
-	var kind = str(event.get("kind", "")).strip_edges()
-	if kind == "":
-		return
-	lifetime["total_events"] = int(lifetime.get("total_events", 0)) + 1
-	lifetime["last_event_at"] = max(int(lifetime.get("last_event_at", 0)), int(event.get("at", 0)))
-	_increment(lifetime["counts"], kind)
-	var mode = str(event.get("mode", "")).strip_edges()
-	if mode != "":
-		_increment(lifetime["mode_counts"], mode)
-	var period = str(event.get("period", "")).strip_edges()
-	if period != "":
-		_increment(lifetime["period_counts"], period)
-	if kind in CARE_KINDS:
-		lifetime["care_score"] = int(lifetime.get("care_score", 0)) + 1
-	if kind in PLAY_KINDS:
-		lifetime["play_score"] = int(lifetime.get("play_score", 0)) + 1
-	if kind in DISRUPTIVE_KINDS:
-		lifetime["disruption_score"] = int(lifetime.get("disruption_score", 0)) + 1
-
-
-func _trend_snapshot(events: Array, now: int) -> Dictionary:
-	return {
-		"7d": _window_from_events(events, now - SEVEN_DAYS, 7),
-		"30d": _window_from_events(events, now - THIRTY_DAYS, 30),
-	}
-
-
-func _window_from_events(events: Array, cutoff: int, days: int) -> Dictionary:
-	var result = _empty_window(days)
-	for event in events:
-		if typeof(event) != TYPE_DICTIONARY:
-			continue
-		var at = int(event.get("at", 0))
-		if at < cutoff:
-			continue
-		var kind = str(event.get("kind", "")).strip_edges()
-		if kind == "":
-			continue
-		result["total_events"] = int(result["total_events"]) + 1
-		_increment(result["counts"], kind)
-		if str(event.get("source", "")) == "user" and kind in USER_INTERACTION_KINDS:
-			result["user_interactions"] = int(result["user_interactions"]) + 1
-		var mode = str(event.get("mode", "")).strip_edges()
-		if mode != "":
-			_increment(result["mode_counts"], mode)
-		var period = str(event.get("period", "")).strip_edges()
-		if period != "":
-			_increment(result["period_counts"], period)
-	return result
 
 
 func _derive_preferences(lifetime: Dictionary, trends: Dictionary, memory: Dictionary) -> Dictionary:
@@ -414,20 +317,6 @@ func _interruption_tolerance(lifetime: Dictionary, trends: Dictionary) -> String
 	if positive + disruption >= 8 or active_mode > quiet_mode * 2:
 		return "high"
 	return "medium"
-
-
-func _event_identity(event: Dictionary) -> String:
-	var event_id = str(event.get("id", "")).strip_edges()
-	if event_id != "":
-		return event_id
-	var kind = str(event.get("kind", "")).strip_edges()
-	if kind == "":
-		return ""
-	return "%s:%d:%s" % [kind, int(event.get("at", 0)), str(event.get("source", ""))]
-
-
-func _increment(target: Dictionary, key: String) -> void:
-	target[key] = int(target.get(key, 0)) + 1
 
 
 func _first_key(counts) -> String:
