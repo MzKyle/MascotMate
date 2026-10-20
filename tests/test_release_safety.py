@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import plistlib
 import stat
 import subprocess
 import sys
@@ -21,9 +22,29 @@ import package_archive
 import release_version
 import skin_sdk
 import pet_helper
+import build_portable
 
 
 class ReleaseSafetyTests(unittest.TestCase):
+    def test_macos_export_normalizes_godot_bundle_name_and_restores_execute_permission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            def godot_export(command):
+                with zipfile.ZipFile(command[-1], "w") as archive:
+                    archive.writestr("MascotMate Desktop.app/Contents/Info.plist", plistlib.dumps({"CFBundleExecutable": "MascotMate Desktop"}))
+                    program = zipfile.ZipInfo("MascotMate Desktop.app/Contents/MacOS/MascotMate Desktop")
+                    program.create_system = 3
+                    program.external_attr = (stat.S_IFREG | 0o644) << 16
+                    archive.writestr(program, b"exported executable")
+            with patch.object(build_portable, "find_godot", return_value="godot"), patch.object(build_portable, "run", side_effect=godot_export):
+                build_portable.export_project("macos", package)
+            program = package / "MascotMateDesktop.app/Contents/MacOS/MascotMate Desktop"
+            self.assertEqual(program.read_bytes(), b"exported executable")
+            self.assertFalse((package / "MascotMate Desktop.app").exists())
+            self.assertFalse((package / "MascotMateDesktop.zip").exists())
+            if os.name != "nt":
+                self.assertTrue(program.stat().st_mode & stat.S_IXUSR)
+
     @unittest.skipUnless(hasattr(os, "fork"), "Requires a POSIX clipboard-owner process")
     def test_clipboard_owner_does_not_keep_helper_output_pipe_open(self):
         with tempfile.TemporaryDirectory() as directory:

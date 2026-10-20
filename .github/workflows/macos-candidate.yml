@@ -3,6 +3,8 @@ name: Build macOS candidate (unverified)
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 

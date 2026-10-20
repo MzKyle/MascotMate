@@ -30,7 +30,7 @@ Linux 将命令里的 `windows` 改成 `linux`，并在可截图、可使用剪�
 
 每个平台上传一个 artifact：原始 ZIP、`.zip.sha256` 和 `acceptance-<target>.json`。包内 `BUILD_INFO.json` 包含版本、提交 SHA、架构、公开/候选标记、工作区是否干净与文件哈希。
 
-macOS 通过独立的 **Build macOS candidate (unverified)** 工作流（`macos-candidate.yml`）只构建按真实架构命名的 `MascotMateDesktop-macos-<arch>-candidate.zip`，不执行运行验收。它的失败不阻塞 Windows/Linux，候选包不进入正式 Release。
+macOS 通过独立的 **Build macOS candidate (unverified)** 工作流（`macos-candidate.yml`）在主分支推送、标签推送或手动触发时，只构建按真实架构命名的 `MascotMateDesktop-macos-<arch>-candidate.zip`，不执行运行验收。它的失败不阻塞 Windows/Linux，候选包不进入正式 Release。
 
 人工桌面复核建议覆盖：首次上手提示、透明背景边缘、菜单位置、抱起/落地、四方向偷看、F1/F3/F4、行为模式启动时回到安静模式，以及重启后大小和重力设置保留。遇到系统权限或确认弹窗时由用户正常批准，不绕过提示。
 

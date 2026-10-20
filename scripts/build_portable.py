@@ -280,7 +280,13 @@ def export_project(target: str, package_dir: Path) -> None:
     if target == "macos":
         extract_archive(export_path, package_dir)
         export_path.unlink()
+        # Godot can name the bundle after config/name rather than the ZIP.
+        bundles = sorted(package_dir.glob("*.app"))
+        if len(bundles) != 1 or not bundles[0].is_dir():
+            raise RuntimeError(f"Expected one exported macOS app bundle, found {len(bundles)}")
         app = package_dir / "MascotMateDesktop.app"
+        if bundles[0] != app:
+            bundles[0].rename(app)
         with (app / "Contents" / "Info.plist").open("rb") as handle:
             executable = plistlib.load(handle)["CFBundleExecutable"]
         program = app / "Contents" / "MacOS" / executable
