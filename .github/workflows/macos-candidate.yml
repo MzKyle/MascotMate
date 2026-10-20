@@ -28,7 +28,7 @@ jobs:
       - name: Build architecture-labeled candidate (no runtime acceptance)
         env:
           GODOT_BIN: ${{ steps.godot.outputs.godot_bin }}
-        run: python scripts/build_portable.py --target macos
+        run: python scripts/build_portable.py --target macos --require-clean
       - uses: actions/upload-artifact@v4
         with:
           name: mascotmate-macos-candidate-unverified

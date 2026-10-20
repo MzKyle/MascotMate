@@ -305,9 +305,17 @@ def zip_package(package_dir: Path, artifact_name: str) -> Path:
     return zip_path
 
 
+def working_tree_status(require_clean: bool = False) -> str:
+    status = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()
+    if require_clean and status:
+        raise RuntimeError(f"Packaging requires a clean source tree. Commit these changes first:\n{status}")
+    return status
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", choices=sorted(TARGETS), default=current_target())
+    parser.add_argument("--require-clean", action="store_true", help="Reject uncommitted source changes before and after export (used by CI).")
     parser.add_argument(
         "--private-skins-dir",
         type=Path,
@@ -320,6 +328,7 @@ def main() -> int:
     if args.target in ("windows", "linux") and platform.machine().lower() not in ("amd64", "x86_64"):
         raise SystemExit("Stable Windows/Linux packages require an x86_64 build host and helper.")
     version = check_versions()
+    working_tree_status(args.require_clean)
     target_info = TARGETS[args.target]
     run([sys.executable, str(ROOT / "scripts" / "generate_godot_manifest.py")])
     helper_path = build_helper()
@@ -333,9 +342,10 @@ def main() -> int:
     copy_external_assets(package_dir, helper_path, args.private_skins_dir)
     write_portable_readme(package_dir, args.target)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    status = working_tree_status(args.require_clean)
     info = {"version": version, "commit": commit, "target": args.target,
             "architecture": platform.machine().lower(), "public": args.private_skins_dir is None,
-            "dirty": bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip()),
+            "dirty": bool(status),
             "candidate": args.target == "macos", "files": {}}
     for path in sorted(package_dir.rglob("*")):
         if path.is_file() and not path.is_symlink():

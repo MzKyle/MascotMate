@@ -50,7 +50,7 @@ jobs:
       - name: Build public ZIP
         env:
           GODOT_BIN: ${{ steps.godot.outputs.godot_bin }}
-        run: python scripts/build_portable.py --target ${{ matrix.target }}
+        run: python scripts/build_portable.py --target ${{ matrix.target }} --require-clean
       - name: Install Linux desktop acceptance tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb openbox picom xclip libgl1-mesa-dri

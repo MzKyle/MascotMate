@@ -1,0 +1,3 @@
+# Godot rewrites import metadata with LF on every platform.
+# Keep it consistent with checkout to avoid a false dirty state on Windows.
+*.import text eol=lf

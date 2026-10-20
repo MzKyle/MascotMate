@@ -17,7 +17,7 @@ python scripts/run_godot_smoke.py
 
 主分支推送或手动运行 **Package candidates**（`.github/workflows/package.yml`）都会构建并验收候选包。推送与项目版本一致的 `v*` tag 时，工作流在 Windows/Linux 最终 ZIP 都通过验收后，直接发布同一批文件并标记为 Latest。
 
-Windows/Linux 任务先检查源码，再导出公开 ZIP；对最终 ZIP 重新解压，使用独立的中文、空格目录和全新数据目录验收。检查包内文件哈希、皮肤分发标记、冻结 helper、皮肤导入、商店/控制台 HTTP 服务，以及实际桌面上的透明窗口、菜单、拖拽、甩飞、四方向偷看、设置持久化、截图选区、剪贴板与贴图窗口。Linux 使用 Xvfb、Openbox、picom 与 xclip；Windows 使用 runner 的桌面会话。此自动验收不覆盖系统级全局快捷键与人工视觉检查。
+Windows/Linux 任务先检查源码，再以 `--require-clean` 导出公开 ZIP；构建前后都必须保持源码干净，否则立即显示具体文件并失败。对最终 ZIP 重新解压，使用独立的中文、空格目录和全新数据目录验收。检查包内文件哈希、皮肤分发标记、冻结 helper、皮肤导入、商店/控制台 HTTP 服务，以及实际桌面上的透明窗口、菜单、拖拽、甩飞、四方向偷看、设置持久化、截图选区、剪贴板与贴图窗口。Linux 使用 Xvfb、Openbox、picom 与 xclip；Windows 使用 runner 的桌面会话。此自动验收不覆盖系统级全局快捷键与人工视觉检查。
 
 本机等价步骤（设置好 `GODOT_BIN`，并在对应系统运行）：
 
