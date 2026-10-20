@@ -598,7 +598,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def configure_stdio() -> None:
+    # Frozen executables ignore PYTHONUTF8. JSON/IPC output must also work on
+    # English Windows installations when skin paths or names contain Chinese.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main() -> int:
+    configure_stdio()
     args = parse_args()
     try:
         if args.command == "hotkeys":

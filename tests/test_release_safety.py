@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import stat
@@ -18,9 +19,22 @@ import catalog_policy
 import package_archive
 import release_version
 import skin_sdk
+import pet_helper
 
 
 class ReleaseSafetyTests(unittest.TestCase):
+    def test_helper_protocol_is_utf8_on_english_windows(self):
+        output = io.BytesIO()
+        stream = io.TextIOWrapper(output, encoding="cp1252")
+        try:
+            with patch.object(sys, "stdout", stream), patch.object(sys, "stderr", stream):
+                pet_helper.configure_stdio()
+                print(json.dumps({"path": "全新 data/皮肤"}, ensure_ascii=False))
+                stream.flush()
+            self.assertEqual(json.loads(output.getvalue().decode("utf-8"))["path"], "全新 data/皮肤")
+        finally:
+            stream.detach()
+
     def test_platform_paths_and_override_precedence(self):
         with patch.dict(os.environ, {}, clear=True), patch("pathlib.Path.home", return_value=Path("/home/test")):
             with patch.object(sys, "platform", "linux"):

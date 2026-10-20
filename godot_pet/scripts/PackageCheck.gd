@@ -34,7 +34,8 @@ func run(main, report_path: String) -> void:
 		checks["peek_" + edge] = main.peek_mode and main.peek_controller.sprite.texture != null
 		main._exit_peek_mode(false)
 	# Capture the actual desktop, exercise region selection, then the clipboard helper and pin windows.
-	var capture = DisplayServer.screen_get_image()
+	var screen = main.screenshot_pins._mouse_screen()
+	var capture = DisplayServer.screen_get_image(screen)
 	checks["screen_capture"] = capture != null and not capture.is_empty()
 	if checks["screen_capture"]:
 		var selector = preload("res://scripts/ScreenshotSelectionWindow.gd").new()
