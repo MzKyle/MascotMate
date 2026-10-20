@@ -177,4 +177,4 @@ if __name__ == "__main__":
     parser.add_argument("archive", type=Path)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
-    print(json.dumps(verify(args.archive, args.report), ensure_ascii=False, indent=2))
+    print(json.dumps(verify(args.archive, args.report), ensure_ascii=True, indent=2))

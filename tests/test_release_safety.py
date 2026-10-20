@@ -5,6 +5,7 @@ import io
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -23,6 +24,22 @@ import pet_helper
 
 
 class ReleaseSafetyTests(unittest.TestCase):
+    @unittest.skipUnless(hasattr(os, "fork"), "Requires a POSIX clipboard-owner process")
+    def test_clipboard_owner_does_not_keep_helper_output_pipe_open(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            xclip = root / "xclip"
+            xclip.write_text(f"#!{sys.executable}\nimport os, sys, time\nsys.stdin.buffer.read()\nif os.fork() == 0:\n    time.sleep(5)\n    os._exit(0)\n", encoding="utf-8")
+            xclip.chmod(0o755)
+            image = root / "image.png"
+            image.write_bytes(b"clipboard fixture")
+            env = os.environ.copy()
+            env.update({"PATH": str(root), "PYTHONPATH": str(SCRIPTS)})
+            # A background clipboard owner inheriting stdout would block this
+            # captured helper invocation until it exits, just like Godot OS.execute.
+            result = subprocess.run([sys.executable, "-c", "import sys, pet_helper; sys.exit(pet_helper.copy_image_linux(__import__('pathlib').Path(sys.argv[1])))", str(image)], env=env, capture_output=True, timeout=3)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_helper_protocol_is_utf8_on_english_windows(self):
         output = io.BytesIO()
         stream = io.TextIOWrapper(output, encoding="cp1252")

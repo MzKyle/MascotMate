@@ -317,7 +317,7 @@ def copy_image_linux(path: Path) -> int:
     wl_copy = shutil.which("wl-copy")
     if wl_copy:
         with path.open("rb") as image_file:
-            proc = subprocess.run([wl_copy, "--type", "image/png"], stdin=image_file)
+            proc = subprocess.run([wl_copy, "--type", "image/png"], stdin=image_file, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if proc.returncode == 0:
             return 0
 
@@ -327,6 +327,10 @@ def copy_image_linux(path: Path) -> int:
             proc = subprocess.run(
                 [xclip, "-selection", "clipboard", "-target", "image/png", "-i"],
                 stdin=image_file,
+                # Clipboard owners stay alive after the CLI parent exits. Do not
+                # let them retain the Godot/verification output pipes.
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
         return proc.returncode
 
