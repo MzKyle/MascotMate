@@ -238,7 +238,7 @@ def copy_external_assets(package_dir: Path, helper_path: Path, private_skins_dir
     scripts_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(helper_path, scripts_dir / helper_path.name)
     shutil.copy2(ROOT / "scripts" / "pet_helper.py", scripts_dir / "pet_helper.py")
-    for name in ("app_paths.py", "catalog_policy.py"):
+    for name in ("app_paths.py", "catalog_policy.py", "command_queue.py"):
         shutil.copy2(ROOT / "scripts" / name, scripts_dir / name)
     importer = ROOT / "scripts" / "import_shimeji_skin.py"
     if importer.exists():

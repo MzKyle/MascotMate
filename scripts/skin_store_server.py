@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import io
+import logging
 import mimetypes
 import secrets
 import sys
@@ -24,6 +25,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from app_paths import data_dir
 from catalog_policy import public_entry
+from command_queue import CommandQueue, QueueFull
 
 
 from import_shimeji_skin import install_skin_source
@@ -31,6 +33,7 @@ from skin_sdk import resolve_frame_root
 
 
 MAX_IMPORT_BYTES = 100 * 1024 * 1024
+LOG = logging.getLogger(__name__)
 INSTALLABLE_SOURCE_TYPES = {"curated_package", "local_package"}
 COMPANION_COMMANDS = {
     "set_behavior_mode",
@@ -165,8 +168,7 @@ class SkinStoreApp:
         self.companion_static_dir = self.repo_root / "companion_console"
         self.user_skin_root = self.config_dir / "skins"
         self.config_path = self.config_dir / "config.json"
-        self.command_path = self.config_dir / "skin_store_command.json"
-        self.companion_command_path = self.config_dir / "companion_console_command.json"
+        self.commands = CommandQueue(self.config_dir)
         self.companion_snapshot_path = self.config_dir / "companion_debug_snapshot.json"
         self.companion_scenario_result_path = self.config_dir / "companion_scenario_result.json"
 
@@ -189,8 +191,8 @@ class SkinStoreApp:
             if isinstance(entry, dict):
                 external.append(dict(entry))
 
-        installed = self.installed_skins(token)
         current_skin_id = self.current_skin_id()
+        installed = self.installed_skins(token, current=current_skin_id)
         installed_ids = {str(item.get("id", "")) for item in installed}
         for entry in curated:
             skin_id = str(entry.get("id", ""))
@@ -226,12 +228,11 @@ class SkinStoreApp:
         if not installed:
             raise ValueError("皮肤安装失败。")
         installed_id = str(installed[0].report.get("skin_id", skin_id))
-        self.select_skin(installed_id)
         return {
             "ok": True,
             "skin_id": installed_id,
-            "message": "皮肤已安装。",
             "report": installed[0].report,
+            **self._request_installed_skin(installed_id),
         }
 
     def import_zip_bytes(self, filename: str, data: bytes) -> dict[str, Any]:
@@ -259,12 +260,10 @@ class SkinStoreApp:
         selected_id = str(selected.report.get("skin_id", "")).strip()
         if selected_id == "":
             raise ValueError("导入完成但无法识别皮肤 ID。")
-        self.select_skin(selected_id)
         return {
             "ok": True,
             "skin_id": selected_id,
             "skin_name": str(selected.report.get("skin_name", selected_id)),
-            "message": "皮肤已导入。",
             "installed": [
                 {
                     "skin_id": str(item.report.get("skin_id", "")),
@@ -274,6 +273,7 @@ class SkinStoreApp:
                 for item in installed
             ],
             "report": selected.report,
+            **self._request_installed_skin(selected_id),
         }
 
     def import_zip_url(self, url: str) -> dict[str, Any]:
@@ -309,8 +309,17 @@ class SkinStoreApp:
     def select_skin(self, skin_id: str) -> dict[str, Any]:
         if skin_id != "classic_shinchan" and skin_id not in {str(item.get("id", "")) for item in self.installed_skins()}:
             raise ValueError("皮肤未安装。")
-        self._write_command(skin_id)
-        return {"ok": True, "skin_id": skin_id}
+        return {"ok": True, "skin_id": skin_id, **self._request_skin(skin_id)}
+
+    def _request_skin(self, skin_id: str) -> dict:
+        return {"command_id": self.commands.submit("select_skin", {"skin_id": skin_id})["id"]}
+
+    def _request_installed_skin(self, skin_id: str) -> dict:
+        try:
+            return self._request_skin(skin_id)
+        except (OSError, QueueFull, ValueError):
+            LOG.warning("Skin %s installed but activation could not be accepted", skin_id, exc_info=True)
+            return {"activation_error": True}
 
     def open_source(self, skin_id: str) -> dict[str, Any]:
         entry = self._external_entry(skin_id)
@@ -322,8 +331,9 @@ class SkinStoreApp:
         webbrowser.open(url)
         return {"ok": True, "url": url, "message": "已打开原站页面。"}
 
-    def installed_skins(self, token: str | None = None) -> list[dict[str, Any]]:
-        current = self.current_skin_id()
+    def installed_skins(self, token: str | None = None, *, current: str | None = None) -> list[dict[str, Any]]:
+        if current is None:
+            current = self.current_skin_id()
         default_preview = self._default_preview_url(token)
         result = [{
             "id": "classic_shinchan",
@@ -352,9 +362,12 @@ class SkinStoreApp:
         return result
 
     def current_skin_id(self) -> str:
-        for path in (self.config_path, self.config_path.with_suffix(".json.bak")):
-            config = self._load_json(path)
-            app = config.get("app")
+        for suffix in ("", ".swap", ".bak", ".bak.swap"):
+            path = self.config_path.with_name(self.config_path.name + suffix)
+            config = self._read_object(path)
+            if config is None:
+                continue
+            app = config.get("app", {})
             if isinstance(app, dict) and isinstance(app.get("skin_id", ""), str):
                 return app.get("skin_id", "").strip() or "classic_shinchan"
         return "classic_shinchan"
@@ -372,18 +385,23 @@ class SkinStoreApp:
         return target
 
     def companion_snapshot(self) -> dict[str, Any]:
+        snapshot = self._runtime_document(self.companion_snapshot_path)
         return {
             "ok": True,
-            "exists": self.companion_snapshot_path.is_file(),
-            "snapshot": self._load_json(self.companion_snapshot_path),
+            "exists": bool(snapshot),
+            "snapshot": snapshot,
         }
 
     def companion_scenario_result(self) -> dict[str, Any]:
+        result = self._runtime_document(self.companion_scenario_result_path)
         return {
             "ok": True,
-            "exists": self.companion_scenario_result_path.is_file(),
-            "result": self._load_json(self.companion_scenario_result_path),
+            "exists": bool(result),
+            "result": result,
         }
+
+    def _runtime_document(self, path: Path) -> dict:
+        return self._load_json(path) or self._load_json(path.with_name(path.name + ".swap"))
 
     def write_companion_command(self, body: dict[str, Any]) -> dict[str, Any]:
         command = str(body.get("command", "")).strip()
@@ -453,8 +471,8 @@ class SkinStoreApp:
             payload = {"scenario_id": scenario_id}
         else:
             payload = {}
-        self._write_companion_command(command, payload)
-        return {"ok": True, "command": command, "payload": payload, "message": "命令已发送。"}
+        receipt = self.commands.submit(command, payload)
+        return {"ok": True, "command_id": receipt["id"], "command": command, "payload": payload}
 
     def asset_file(self, relative: str) -> Path:
         target = (self.repo_root / relative).resolve()
@@ -541,36 +559,16 @@ class SkinStoreApp:
         relative = images[0].relative_to(self.repo_root)
         return self._asset_url(str(relative).replace("\\", "/"), token)
 
-    def _write_command(self, skin_id: str) -> None:
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "command": "select_skin",
-            "skin_id": skin_id,
-            "nonce": secrets.token_hex(8),
-            "created_at": time.time(),
-        }
-        temp = self.command_path.with_suffix(".tmp")
-        temp.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
-        temp.replace(self.command_path)
-
-    def _write_companion_command(self, command: str, payload: dict[str, Any]) -> None:
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        body = {
-            "command": command,
-            "payload": payload,
-            "nonce": secrets.token_hex(8),
-            "created_at": time.time(),
-        }
-        temp = self.companion_command_path.with_suffix(".tmp")
-        temp.write_text(json.dumps(body, ensure_ascii=False) + "\n", encoding="utf-8")
-        temp.replace(self.companion_command_path)
-
     def _load_json(self, path: Path) -> dict[str, Any]:
+        return self._read_object(path) or {}
+
+    @staticmethod
+    def _read_object(path: Path) -> dict[str, Any] | None:
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
-            return {}
-        return data if isinstance(data, dict) else {}
+            return None
+        return data if isinstance(data, dict) else None
 
 
 class SkinStoreHTTPServer(ThreadingHTTPServer):
@@ -579,6 +577,12 @@ class SkinStoreHTTPServer(ThreadingHTTPServer):
         self.app = app
         self.token = token
         self.last_request_at = time.monotonic()
+
+    def service_actions(self) -> None:
+        try:
+            self.app.commands.maintain()
+        except OSError:
+            LOG.exception("Could not maintain the desktop command queue")
 
 
 class SkinStoreRequestHandler(BaseHTTPRequestHandler):
@@ -590,6 +594,21 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         self.server.last_request_at = time.monotonic()
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.startswith("/api/commands/"):
+            if not self._authorized(parsed):
+                self._json({"ok": False, "error": "unauthorized"}, 403)
+                return
+            try:
+                receipt = self.server.app.commands.status(parsed.path.removeprefix("/api/commands/"))
+            except (OSError, ValueError):
+                LOG.exception("Could not read desktop command status for %s", parsed.path)
+                self._json({"ok": False, "error": "暂时无法确认结果。"}, 503)
+                return
+            if receipt is None:
+                self._json({"ok": False, "error": "暂时无法确认结果。"}, 404)
+            else:
+                self._json({"ok": True, "receipt": receipt})
+            return
         if parsed.path == "/api/companion/snapshot":
             if not self._authorized(parsed):
                 self._json({"ok": False, "error": "unauthorized"}, 403)
@@ -667,34 +686,44 @@ class SkinStoreRequestHandler(BaseHTTPRequestHandler):
         try:
             if parsed.path == "/api/import-zip":
                 filename, data = self._read_zip_upload()
-                self._json(self.server.app.import_zip_bytes(filename, data))
+                self._command_response(self.server.app.import_zip_bytes(filename, data))
                 return
             body = self._read_json()
             if parsed.path == "/api/import-url":
-                self._json(self.server.app.import_zip_url(str(body.get("url", ""))))
+                self._command_response(self.server.app.import_zip_url(str(body.get("url", ""))))
                 return
             if parsed.path == "/api/install":
-                self._json(self.server.app.install_curated(str(body.get("id", ""))))
+                self._command_response(self.server.app.install_curated(str(body.get("id", ""))))
                 return
             if parsed.path == "/api/select":
-                self._json(self.server.app.select_skin(str(body.get("id", ""))))
+                self._command_response(self.server.app.select_skin(str(body.get("id", ""))))
                 return
             if parsed.path == "/api/open-source":
                 self._json(self.server.app.open_source(str(body.get("id", ""))))
                 return
             if parsed.path == "/api/companion/command":
-                self._json(self.server.app.write_companion_command(body))
+                self._command_response(self.server.app.write_companion_command(body))
                 return
             self._json({"ok": False, "error": "not found"}, 404)
+        except QueueFull as exc:
+            self._json({"ok": False, "error": str(exc)}, 503)
+        except (BrokenPipeError, ConnectionResetError):
+            LOG.debug("Local browser disconnected from %s", parsed.path)
         except ValueError as exc:
             self._json({"ok": False, "error": str(exc)}, 400)
         except Exception:
-            self._json({"ok": False, "error": "服务器处理上传时失败，请重新打开皮肤商店后再试。"}, 500)
+            LOG.exception("Could not handle local operation %s", parsed.path)
+            self._json({"ok": False, "error": "暂时无法执行操作，请重试。"}, 500)
+
+    def _command_response(self, result: dict) -> None:
+        self._json(result, 202 if "command_id" in result else 200)
 
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0") or "0")
         if length <= 0:
             return {}
+        if length > 64 * 1024:
+            raise ValueError("操作内容过长。")
         data = json.loads(self.rfile.read(length).decode("utf-8"))
         return data if isinstance(data, dict) else {}
 
@@ -765,6 +794,7 @@ def serve_skin_store(
     try:
         while time.monotonic() - server.last_request_at < idle_timeout:
             server.handle_request()
+            server.service_actions()
     finally:
         server.server_close()
     return 0

@@ -31,7 +31,7 @@ static func load_dictionary(path: String, validator := Callable()) -> Dictionary
 	return failure
 
 
-static func read_file(path: String, validator := Callable()) -> Dictionary:
+static func read_file(path: String, validator := Callable(), max_bytes := 0) -> Dictionary:
 	if DirAccess.dir_exists_absolute(path):
 		return _read_error(ERR_FILE_CANT_READ, "expected a file, found a directory")
 	var file := FileAccess.open(path, FileAccess.READ)
@@ -39,6 +39,9 @@ static func read_file(path: String, validator := Callable()) -> Dictionary:
 		var error := FileAccess.get_open_error()
 		return _read_error(error, error_string(error))
 	var length := file.get_length()
+	if max_bytes > 0 and length > max_bytes:
+		file.close()
+		return _read_error(ERR_INVALID_DATA, "file is larger than %d bytes" % max_bytes)
 	var bytes := file.get_buffer(length)
 	var error := file.get_error()
 	file.close()
@@ -88,6 +91,24 @@ static func write_dictionary(path: String, value: Dictionary, validator := Calla
 		result = _save_backup(path + ".bak", primary["bytes"], validator, archive_invalid)
 	if result == OK:
 		result = _publish(temporary, path, primary["error"], archive_invalid)
+	_remove_temporary(temporary)
+	return result
+
+
+# Publish transient data or a new record without rotating a user-data backup.
+static func publish_dictionary(path: String, value: Dictionary, replace := false, max_bytes := 0) -> Error:
+	if path == "":
+		return ERR_INVALID_PARAMETER
+	var exists := FileAccess.file_exists(path)
+	if exists and not replace:
+		return ERR_ALREADY_EXISTS
+	var bytes := JSON.stringify(value).to_utf8_buffer()
+	if max_bytes > 0 and bytes.size() > max_bytes:
+		return ERR_OUT_OF_MEMORY
+	var temporary := path + ".tmp"
+	var result := _stage(temporary, bytes)
+	if result == OK:
+		result = _publish(temporary, path, OK if exists else ERR_FILE_NOT_FOUND, false)
 	_remove_temporary(temporary)
 	return result
 

@@ -8,6 +8,11 @@ const state = {
   current: "",
   busy: new Set(),
 };
+let skinActionVersion = 0;
+let importVersion = 0;
+let catalogVersion = 0;
+let renderedCatalog = 0;
+let lastCatalog = "";
 
 const els = {
   summary: document.querySelector("#summary"),
@@ -42,12 +47,16 @@ async function readJsonResponse(response, fallback) {
   } catch (_error) {
     data = {};
   }
-  if (!response.ok || data.ok === false) throw new Error(data.error || fallback);
+  if (!response.ok || data.ok === false) {
+    const error = new Error(data.error || fallback);
+    error.rejected = true;
+    throw error;
+  }
   return data;
 }
 
-async function apiGet(path) {
-  const response = await fetch(apiUrl(path), { cache: "no-store" });
+async function apiGet(path, signal) {
+  const response = await fetch(apiUrl(path), { cache: "no-store", signal });
   return readJsonResponse(response, "请求失败");
 }
 
@@ -74,7 +83,7 @@ async function apiUpload(path, file) {
   return readJsonResponse(response, "上传失败");
 }
 
-async function loadCatalog() {
+async function loadCatalog(quiet = false) {
   if (window.location.protocol === "file:") {
     els.summary.textContent = "请从桌宠右键菜单重新打开皮肤商店";
     showToast("本页面需要由本地 helper 服务打开，不能直接双击 HTML 文件。");
@@ -84,16 +93,24 @@ async function loadCatalog() {
     showToast("缺少本地会话 token，请从桌宠菜单重新打开皮肤商店。");
     return;
   }
-  els.summary.textContent = "正在加载皮肤...";
+  const version = ++catalogVersion;
   try {
     const data = await apiGet("/api/catalog");
+    if (version < renderedCatalog) return;
+    renderedCatalog = version;
+    const serialized = JSON.stringify(data);
     state.featured = data.featured || [];
     state.external = data.external || [];
     state.installed = data.installed || [];
     state.current = data.current_skin_id || "";
     els.summary.textContent = `${state.installed.length} 个本地皮肤，${state.featured.length} 个精选直装，${state.external.length} 个 Shimeji 浏览条目，当前：${state.current || "默认"}`;
-    render();
+    if (lastCatalog !== serialized) {
+      lastCatalog = serialized;
+      render();
+    }
   } catch (error) {
+    if (version < renderedCatalog || quiet) return;
+    renderedCatalog = version;
     els.summary.textContent = "皮肤商店连接失败";
     showToast(error.message);
   }
@@ -248,22 +265,67 @@ function bindActions() {
 
 async function runAction(button, action, id) {
   if (state.busy.has(id)) return;
+  const version = ++skinActionVersion;
   state.busy.add(id);
-  const original = button.textContent;
   button.disabled = true;
-  button.textContent = action === "open-source" ? "打开中..." : "处理中...";
-  try {
-    if (action === "install") await apiPost("/api/install", { id });
-    if (action === "select") await apiPost("/api/select", { id });
-    if (action === "open-source") await apiPost("/api/open-source", { id });
-    showToast(action === "open-source" ? "已打开原站页面，下载 ZIP 后可拖入本页。" : "皮肤已启用。");
-    await loadCatalog();
-  } catch (error) {
-    showToast(error.message);
-    button.disabled = false;
-    button.textContent = original;
-  } finally {
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
     state.busy.delete(id);
+    button.disabled = action !== "open-source" && state.current === id;
+  };
+  try {
+    if (action === "open-source") {
+      await apiPost("/api/open-source", { id });
+      if (version === skinActionVersion) showToast("已打开原站页面，下载 ZIP 后可拖入本页。");
+      return;
+    }
+    const result = await apiPost(action === "install" ? "/api/install" : "/api/select", { id });
+    await settleSkin(result, version, action, release);
+  } catch (error) {
+    if (version === skinActionVersion) {
+      showToast(error.rejected
+        ? (action === "select" ? "皮肤切换失败，请重试。" : error.message)
+        : "暂时无法确认结果。");
+    }
+    if (action !== "open-source") void loadCatalog(true);
+  } finally {
+    release();
+  }
+}
+
+async function settleSkin(result, version, action, release) {
+  const isLatest = () => version === (action === "import" ? importVersion : skinActionVersion);
+  const report = (message) => {
+    if (!isLatest()) return;
+    if (action === "import") els.importStatus.textContent = message;
+    else showToast(message);
+  };
+  const failure = {
+    select: "皮肤切换失败，请重试。",
+    install: "皮肤已安装，启用失败。",
+    import: "皮肤已导入，启用失败。",
+  }[action];
+  const unknown = () => {
+    report("暂时无法确认皮肤是否已启用。");
+    release();
+    void loadCatalog(true);
+  };
+  if (!result.command_id) {
+    if (result.activation_error) report(failure);
+    else unknown();
+    await loadCatalog(true);
+    return;
+  }
+  const receipt = await watchDesktopCommand(result.command_id, apiGet, unknown);
+  await loadCatalog(true);
+  if (!receipt || !isLatest()) return;
+  if (receipt.status !== "succeeded") {
+    report(failure);
+  } else if (action === "import") {
+    const name = result.skin_name || result.skin_id;
+    report(state.current === result.skin_id ? `已启用：${name}` : `已导入：${name}`);
   }
 }
 
@@ -281,19 +343,27 @@ async function importFile(file) {
     showToast("ZIP 文件超过 100MB 上限。");
     return;
   }
+  const version = ++importVersion;
   els.importButton.disabled = true;
   els.importStatus.textContent = `正在导入 ${file.name}...`;
+  let released = false;
+  const release = () => {
+    if (!released) {
+      released = true;
+      els.importButton.disabled = false;
+      els.importInput.value = "";
+    }
+  };
   try {
     const result = await apiUpload("/api/import-zip", file);
-    showToast(result.message || "皮肤已导入并启用。");
-    els.importStatus.textContent = `已启用：${result.skin_name || result.skin_id}`;
-    await loadCatalog();
+    await settleSkin(result, version, "import", release);
   } catch (error) {
-    els.importStatus.textContent = "导入失败，请检查 ZIP 是否为皮肤包。";
-    showToast(importErrorMessage(error));
+    if (version === importVersion) {
+      els.importStatus.textContent = error.rejected ? "导入失败，请检查 ZIP 是否为皮肤包。" : "暂时无法确认导入结果。";
+    }
+    void loadCatalog(true);
   } finally {
-    els.importButton.disabled = false;
-    els.importInput.value = "";
+    release();
   }
 }
 
@@ -303,19 +373,27 @@ async function importUrl() {
     showToast("请先粘贴 ZIP 下载链接。");
     return;
   }
+  const version = ++importVersion;
   els.downloadImportButton.disabled = true;
   els.importStatus.textContent = "正在从原站下载并解析...";
+  let released = false;
+  const release = () => {
+    if (!released) {
+      released = true;
+      els.downloadImportButton.disabled = false;
+    }
+  };
   try {
     const result = await apiPost("/api/import-url", { url });
-    showToast(result.message || "皮肤已导入并启用。");
-    els.importStatus.textContent = `已启用：${result.skin_name || result.skin_id}`;
-    els.sourceUrlInput.value = "";
-    await loadCatalog();
+    if (els.sourceUrlInput.value.trim() === url) els.sourceUrlInput.value = "";
+    await settleSkin(result, version, "import", release);
   } catch (error) {
-    els.importStatus.textContent = "下载或导入失败。";
-    showToast(importErrorMessage(error));
+    if (version === importVersion) {
+      els.importStatus.textContent = error.rejected ? "下载或导入失败。" : "暂时无法确认导入结果。";
+    }
+    void loadCatalog(true);
   } finally {
-    els.downloadImportButton.disabled = false;
+    release();
   }
 }
 
@@ -354,13 +432,6 @@ function escapeAttr(value) {
   return escapeHtml(value);
 }
 
-function importErrorMessage(error) {
-  if (error instanceof TypeError) {
-    return "无法连接本地皮肤商店服务，请从桌宠右键菜单重新打开皮肤商店。";
-  }
-  return error.message || "导入失败。";
-}
-
 let toastTimer = 0;
 function showToast(message) {
   window.clearTimeout(toastTimer);
@@ -369,7 +440,7 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => els.toast.classList.remove("show"), 3000);
 }
 
-els.refreshButton.addEventListener("click", loadCatalog);
+els.refreshButton.addEventListener("click", () => loadCatalog());
 els.searchInput.addEventListener("input", render);
 els.sourceFilter.addEventListener("change", render);
 els.statusFilter.addEventListener("change", render);

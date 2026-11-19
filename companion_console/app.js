@@ -2,13 +2,27 @@ const params = new URLSearchParams(window.location.search);
 const token = params.get("token") || "";
 
 const $ = (id) => document.getElementById(id);
+const settingFields = {
+  set_dialogue_tone: ["dialogueTone"],
+  set_adaptation: ["adaptEnabled", "adaptStrength"],
+  set_ai_expression: ["aiEnabled", "aiProvider", "aiTimeout"],
+  set_ai_memory_summary: ["summaryEnabled", "summaryProvider", "summaryTimeout", "summaryMinEvents", "summaryMinInterval"],
+};
+const lastValues = new Map();
+const latestSettings = new Map();
+let commandVersion = 0;
+let submissions = Promise.resolve();
+let snapshotVersion = 0;
+let renderedSnapshot = 0;
+let scenarioVersion = 0;
+let renderedScenario = 0;
 
 function headers() {
   return token ? { "X-MascotMate-Token": token } : {};
 }
 
-async function apiGet(path) {
-  const response = await fetch(path, { headers: headers(), cache: "no-store" });
+async function apiGet(path, signal) {
+  const response = await fetch(path, { headers: headers(), cache: "no-store", signal });
   const data = await response.json();
   if (!response.ok || data.ok === false) {
     throw new Error(data.error || `HTTP ${response.status}`);
@@ -21,10 +35,13 @@ async function apiPost(path, payload) {
     method: "POST",
     headers: { ...headers(), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10000),
   });
   const data = await response.json();
   if (!response.ok || data.ok === false) {
-    throw new Error(data.error || `HTTP ${response.status}`);
+    const error = new Error(data.error || `HTTP ${response.status}`);
+    error.rejected = true;
+    throw error;
   }
   return data;
 }
@@ -59,7 +76,15 @@ function boolText(value) {
   return value ? "是" : "否";
 }
 
-function renderSnapshot(snapshot) {
+function renderSetting(id, value, forceFields) {
+  if (!forceFields.includes(id) && lastValues.get(id) === value) return;
+  lastValues.set(id, value);
+  const input = $(id);
+  if (input.type === "checkbox") input.checked = value;
+  else input.value = value;
+}
+
+function renderSnapshot(snapshot, forceFields) {
   setText("updated", `更新 ${formatTime(snapshot.generated_at)}`);
   setText("mode", valueAt(snapshot, ["runtime", "behavior_mode"]));
   setText("period", valueAt(snapshot, ["runtime", "period"]));
@@ -75,19 +100,19 @@ function renderSnapshot(snapshot) {
   setMeter("affection", state.affection);
 
   const adaptation = valueAt(snapshot, ["config", "behavior_adaptation"], {});
-  $("dialogueTone").value = valueAt(snapshot, ["config", "dialogue_tone"], "gentle");
-  $("adaptEnabled").checked = Boolean(adaptation.enabled);
-  $("adaptStrength").value = adaptation.strength || "visible";
+  renderSetting("dialogueTone", valueAt(snapshot, ["config", "dialogue_tone"], "gentle"), forceFields);
+  renderSetting("adaptEnabled", Boolean(adaptation.enabled), forceFields);
+  renderSetting("adaptStrength", adaptation.strength || "visible", forceFields);
   const aiConfig = valueAt(snapshot, ["config", "ai_expression"], {});
-  $("aiEnabled").checked = Boolean(aiConfig.enabled);
-  $("aiProvider").value = aiConfig.provider || "local_stub";
-  $("aiTimeout").value = Number(aiConfig.timeout_ms || 800);
+  renderSetting("aiEnabled", Boolean(aiConfig.enabled), forceFields);
+  renderSetting("aiProvider", aiConfig.provider || "local_stub", forceFields);
+  renderSetting("aiTimeout", Number(aiConfig.timeout_ms || 800), forceFields);
   const summaryConfig = valueAt(snapshot, ["config", "ai_memory_summary"], {});
-  $("summaryEnabled").checked = Boolean(summaryConfig.enabled);
-  $("summaryProvider").value = summaryConfig.provider || "local_stub";
-  $("summaryTimeout").value = Number(summaryConfig.timeout_ms || 1500);
-  $("summaryMinEvents").value = Number(summaryConfig.min_events || 12);
-  $("summaryMinInterval").value = Number(summaryConfig.min_interval_seconds || 86400);
+  renderSetting("summaryEnabled", Boolean(summaryConfig.enabled), forceFields);
+  renderSetting("summaryProvider", summaryConfig.provider || "local_stub", forceFields);
+  renderSetting("summaryTimeout", Number(summaryConfig.timeout_ms || 1500), forceFields);
+  renderSetting("summaryMinEvents", Number(summaryConfig.min_events || 12), forceFields);
+  renderSetting("summaryMinInterval", Number(summaryConfig.min_interval_seconds || 86400), forceFields);
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.classList.toggle("active", button.dataset.mode === valueAt(snapshot, ["runtime", "behavior_mode"], ""));
   });
@@ -211,35 +236,83 @@ function escapeHtml(value) {
   }[char]));
 }
 
-async function loadSnapshot() {
+async function loadSnapshot(forceFields = []) {
+  const version = ++snapshotVersion;
   try {
     const data = await apiGet("/api/companion/snapshot");
-    if (data.exists && data.snapshot) renderSnapshot(data.snapshot);
+    if (version < renderedSnapshot) return;
+    renderedSnapshot = version;
+    if (data.exists && data.snapshot) renderSnapshot(data.snapshot, forceFields);
     $("connection").textContent = data.exists ? "已连接" : "等待快照";
     $("connection").className = `status-pill ${data.exists ? "ok" : ""}`;
   } catch (error) {
+    if (version < renderedSnapshot) return;
+    renderedSnapshot = version;
     $("connection").textContent = "连接失败";
     $("connection").className = "status-pill error";
   }
 }
 
 async function loadScenarioResult() {
+  const version = ++scenarioVersion;
   try {
     const data = await apiGet("/api/companion/scenario-result");
-    if (data.exists) renderScenarios(data.result);
+    if (data.exists && version >= renderedScenario) {
+      renderedScenario = version;
+      renderScenarios(data.result);
+    }
   } catch (_error) {
     return;
   }
 }
 
 async function sendCommand(payload) {
-  $("commandStatus").textContent = "发送中";
+  const version = ++commandVersion;
+  const command = payload.command;
+  latestSettings.set(command, version);
+  const showFeedback = (message) => {
+    const status = $("commandStatus");
+    if (version === commandVersion && status.textContent !== message) status.textContent = message;
+  };
+  showFeedback("");
+  // Preserve click order within this page while later commands wait independently.
+  const response = submissions.then(() => apiPost("/api/companion/command", payload));
+  submissions = response.catch(() => {});
+  const unknown = () => showFeedback("暂时无法确认结果。");
   try {
-    const data = await apiPost("/api/companion/command", payload);
-    $("commandStatus").textContent = data.message || "已发送";
+    const data = await response;
+    if (!data.command_id) {
+      unknown();
+      return;
+    }
+    const receipt = await watchDesktopCommand(data.command_id, apiGet, unknown);
+    if (!receipt) return;
+    const succeeded = receipt.status === "succeeded";
+    showFeedback(succeeded ? "" : commandFailure(command, receipt));
+    const fields = latestSettings.get(command) === version ? settingFields[command] : [];
+    void loadSnapshot(fields);
+    if (command === "run_scenario" && succeeded) void loadScenarioResult();
   } catch (error) {
-    $("commandStatus").textContent = error.message;
+    if (error.rejected) {
+      showFeedback(commandFailure(command));
+      if (latestSettings.get(command) === version) void loadSnapshot(settingFields[command]);
+    } else {
+      unknown();
+    }
   }
+}
+
+function commandFailure(command, receipt) {
+  if (receipt?.status === "expired") return "桌宠未执行此操作，请重试。";
+  if (receipt?.error === "disabled" && command === "check_ai_health") return "AI 表达尚未开启。";
+  if (receipt?.error === "disabled" && command === "summarize_memory") return "AI 记忆总结尚未开启。";
+  return {
+    set_behavior_mode: "模式切换失败，请重试。",
+    check_ai_health: "AI 状态检查失败，请重试。",
+    summarize_memory: "记忆总结失败，请重试。",
+    rebuild_memory: "记忆重建失败，请重试。",
+    run_scenario: "回放失败，请重试。",
+  }[command] || "设置保存失败，请重试。";
 }
 
 function bindControls() {
@@ -281,14 +354,13 @@ function bindControls() {
   }));
   $("summarizeMemory").addEventListener("click", () => sendCommand({ command: "summarize_memory" }));
   $("rebuildMemory").addEventListener("click", () => sendCommand({ command: "rebuild_memory" }));
-  $("scenarioButtons").addEventListener("click", async (event) => {
+  $("scenarioButtons").addEventListener("click", (event) => {
     const button = event.target.closest("[data-scenario]");
     if (!button) return;
-    await sendCommand({
+    sendCommand({
       command: "run_scenario",
       payload: { scenario_id: button.dataset.scenario },
     });
-    setTimeout(loadScenarioResult, 700);
   });
 }
 

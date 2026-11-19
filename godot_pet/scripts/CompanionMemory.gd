@@ -21,7 +21,7 @@ func configure(config_dir: String, store = null) -> void:
 	refresh()
 
 
-func refresh(now_unix := 0) -> void:
+func refresh(now_unix := 0) -> Error:
 	var now = _coerce_now(now_unix)
 	var previous_dialogue = _sanitize_dialogue(data.get("dialogue", {}))
 	var events = _events_from_store()
@@ -76,7 +76,7 @@ func refresh(now_unix := 0) -> void:
 		"play_score": clampi(play_score * 10, 0, 100),
 	}
 	data["dialogue"] = previous_dialogue
-	flush_save()
+	return flush_save()
 
 
 func snapshot() -> Dictionary:
@@ -124,9 +124,8 @@ func _on_event_recorded(event: Dictionary) -> void:
 	refresh(int(event.get("at", 0)))
 
 
-func flush_save() -> void:
-	if memory_path != "":
-		AtomicJson.write_dictionary(memory_path, data)
+func flush_save() -> Error:
+	return AtomicJson.write_dictionary(memory_path, data)
 
 
 func _load_memory() -> void:

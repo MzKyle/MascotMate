@@ -25,7 +25,7 @@ func configure(config_dir: String, store = null, memory = null) -> void:
 	refresh()
 
 
-func refresh(now_unix := 0) -> void:
+func refresh(now_unix := 0) -> Error:
 	var now = _coerce_now(now_unix)
 	var previous = _sanitize_data(data)
 	var lifetime = event_store.aggregate(0, now) if event_store != null else EventStore.empty_summary()
@@ -41,7 +41,7 @@ func refresh(now_unix := 0) -> void:
 	data["ai_summary"] = ai_summary
 	data["effective_preferences"] = _derive_effective_preferences(data["preferences"], ai_summary)
 	data["relationship"] = _relationship_from_memory(memory)
-	flush_save()
+	return flush_save()
 
 
 func snapshot() -> Dictionary:
@@ -65,11 +65,15 @@ func apply_ai_summary(summary: Dictionary, now_unix := 0) -> bool:
 	var sanitized = _sanitize_ai_summary(summary)
 	if sanitized.is_empty():
 		return false
-	data = _sanitize_data(data)
+	var next := _sanitize_data(data)
 	sanitized["updated_at"] = _coerce_now(now_unix)
-	data["ai_summary"] = sanitized
-	data["effective_preferences"] = _derive_effective_preferences(data.get("preferences", {}), sanitized)
-	flush_save()
+	next["ai_summary"] = sanitized
+	next["effective_preferences"] = _derive_effective_preferences(next.get("preferences", {}), sanitized)
+	var error := AtomicJson.write_dictionary(profile_path, next)
+	if error != OK:
+		push_warning("Could not save AI memory summary: %s" % error_string(error))
+		return false
+	data = next
 	return true
 
 
@@ -82,9 +86,8 @@ func _aggregate_window(days: int, now: int) -> Dictionary:
 	return _sanitize_window(result, days)
 
 
-func flush_save() -> void:
-	if profile_path != "":
-		AtomicJson.write_dictionary(profile_path, data)
+func flush_save() -> Error:
+	return AtomicJson.write_dictionary(profile_path, data)
 
 
 func _load_profile() -> void:

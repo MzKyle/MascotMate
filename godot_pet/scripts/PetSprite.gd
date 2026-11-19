@@ -51,11 +51,26 @@ func configure(root: String, manifest: Dictionary) -> void:
 	_clear_cache()
 
 
-func configure_skin(skin_manifest: Dictionary, frame_root_path: String) -> void:
+func configure_skin(skin_manifest: Dictionary, frame_root_path: String, prepared := {}) -> void:
 	skin = skin_manifest.duplicate(true)
 	actions = skin.get("actions", {})
 	frame_root = frame_root_path
 	_clear_cache()
+	if not prepared.is_empty():
+		var action_id: String = prepared["action"]
+		_cache_action(action_id, prepared["entry"])
+
+
+func prepare_skin_action(skin_manifest: Dictionary, frame_root_path: String, candidates: Array) -> Dictionary:
+	var next_actions: Dictionary = skin_manifest.get("actions", {})
+	for action_id in candidates:
+		var config = next_actions.get(action_id)
+		if typeof(config) != TYPE_DICTIONARY:
+			continue
+		var entry := _load_action_entry(config, frame_root_path)
+		if not entry.is_empty():
+			return {"action": action_id, "entry": entry}
+	return {}
 
 
 func set_display_scale(value: float) -> void:
@@ -204,17 +219,21 @@ func _cache_entry_for_action(action_id: String, config: Dictionary) -> Dictionar
 		_touch_cache_key(action_id)
 		return action_cache[action_id]
 	cache_misses += 1
-	var entry = _load_action_entry(config)
+	var entry = _load_action_entry(config, frame_root)
 	if entry.is_empty():
 		return {}
+	_cache_action(action_id, entry)
+	return entry
+
+
+func _cache_action(action_id: String, entry: Dictionary) -> void:
 	action_cache[action_id] = entry
 	cache_frame_count += int(entry.get("frame_count", 0))
 	_touch_cache_key(action_id)
 	_evict_cache(action_id)
-	return entry
 
 
-func _load_action_entry(config: Dictionary) -> Dictionary:
+func _load_action_entry(config: Dictionary, assets_root: String) -> Dictionary:
 	var loaded := []
 	var loaded_anchors := []
 	var durations := []
@@ -224,13 +243,14 @@ func _load_action_entry(config: Dictionary) -> Dictionary:
 	var anchors = config.get("anchors", [])
 	var durations_ms = config.get("durations_ms", [])
 	var precomputed_used_rects = config.get("used_rects", [])
-	if typeof(frames) != TYPE_ARRAY:
+	var size_value = config.get("size", [130, 130])
+	if typeof(frames) != TYPE_ARRAY or typeof(size_value) != TYPE_ARRAY or size_value.size() < 2:
 		return {}
 	var valid_anchor_count := 0
 	var valid_duration_count := 0
 	for i in range(frames.size()):
 		var rel_path = str(frames[i])
-		var loaded_frame = _load_frame(rel_path, precomputed_used_rects, i)
+		var loaded_frame = _load_frame(assets_root, rel_path, precomputed_used_rects, i)
 		if loaded_frame.is_empty():
 			continue
 		loaded.append(loaded_frame["texture"])
@@ -244,7 +264,6 @@ func _load_action_entry(config: Dictionary) -> Dictionary:
 			valid_duration_count += 1
 	if loaded.is_empty():
 		return {}
-	var size_value = config.get("size", [130, 130])
 	var entry_base_size = Vector2(float(size_value[0]), float(size_value[1]))
 	var entry_anchors = loaded_anchors if valid_anchor_count == loaded.size() else []
 	return {
@@ -260,8 +279,8 @@ func _load_action_entry(config: Dictionary) -> Dictionary:
 	}
 
 
-func _load_frame(relative_path: String, precomputed_used_rects, index: int) -> Dictionary:
-	var path = frame_root.path_join(relative_path) if frame_root != "" else repo_root.path_join("resource_hd").path_join(relative_path)
+func _load_frame(assets_root: String, relative_path: String, precomputed_used_rects, index: int) -> Dictionary:
+	var path = assets_root.path_join(relative_path) if assets_root != "" else repo_root.path_join("resource_hd").path_join(relative_path)
 	if not FileAccess.file_exists(path):
 		return {}
 	var image = Image.new()

@@ -9,6 +9,7 @@ import unittest
 import urllib.error
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -228,22 +229,28 @@ class SkinStoreTests(unittest.TestCase):
             self.assertEqual(status, 403)
             self.assertFalse(body["ok"])
             status, body = post_json(f"{base}/api/companion/command", {"command": "set_behavior_mode", "payload": {"mode": "活泼"}}, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["payload"]["mode"], "活泼")
-            companion_command = json.loads((config_dir / "companion_console_command.json").read_text(encoding="utf-8"))
+            mode_id = body["command_id"]
+            companion_command = json.loads((config_dir / "commands-v1" / mode_id / "request.json").read_text(encoding="utf-8"))
             self.assertEqual(companion_command["command"], "set_behavior_mode")
             self.assertEqual(companion_command["payload"]["mode"], "活泼")
             status, body = post_json(f"{base}/api/companion/command", {"command": "set_dialogue_tone", "payload": {"tone": "calm"}}, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["payload"], {"tone": "calm"})
-            companion_command = json.loads((config_dir / "companion_console_command.json").read_text(encoding="utf-8"))
+            companion_command = json.loads((config_dir / "commands-v1" / body["command_id"] / "request.json").read_text(encoding="utf-8"))
             self.assertEqual(companion_command["command"], "set_dialogue_tone")
             self.assertEqual(companion_command["payload"]["tone"], "calm")
-            status, body = post_json(f"{base}/api/companion/command", {"command": "set_adaptation", "payload": {"enabled": "false", "strength": "bold"}}, token)
+            status, body = get_json_status(f"{base}/api/commands/{mode_id}")
+            self.assertEqual(status, 403)
+            status, body = get_json_status(f"{base}/api/commands/{mode_id}", token)
             self.assertEqual(status, 200)
+            self.assertEqual(body["receipt"]["status"], "pending")
+            status, body = post_json(f"{base}/api/companion/command", {"command": "set_adaptation", "payload": {"enabled": "false", "strength": "bold"}}, token)
+            self.assertEqual(status, 202)
             self.assertEqual(body["payload"], {"enabled": False, "strength": "bold"})
             status, body = post_json(f"{base}/api/companion/command", {"command": "set_ai_expression", "payload": {"enabled": "true", "provider": "local_stub", "timeout_ms": 1200}}, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["payload"], {"enabled": True, "provider": "local_stub", "timeout_ms": 1200})
             status, body = post_json(f"{base}/api/companion/command", {"command": "set_ai_expression", "payload": {"provider": "bad"}}, token)
             self.assertEqual(status, 400)
@@ -257,7 +264,7 @@ class SkinStoreTests(unittest.TestCase):
                     "min_interval_seconds": 3600,
                 },
             }, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["payload"], {
                 "enabled": True,
                 "provider": "local_stub",
@@ -266,16 +273,16 @@ class SkinStoreTests(unittest.TestCase):
                 "min_interval_seconds": 3600,
             })
             status, body = post_json(f"{base}/api/companion/command", {"command": "check_ai_health"}, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["command"], "check_ai_health")
             status, body = post_json(f"{base}/api/companion/command", {"command": "summarize_memory"}, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["command"], "summarize_memory")
             status, body = post_json(f"{base}/api/companion/command", {"command": "run_scenario", "payload": {"scenario_id": "busy_guard"}}, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["payload"]["scenario_id"], "busy_guard")
             status, body = post_json(f"{base}/api/companion/command", {"command": "run_scenario", "payload": {"scenario_id": "profile_care"}}, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["payload"]["scenario_id"], "profile_care")
             status, body = post_json(f"{base}/api/companion/command", {"command": "run_scenario", "payload": {"scenario_id": "../bad"}}, token)
             self.assertEqual(status, 400)
@@ -289,17 +296,17 @@ class SkinStoreTests(unittest.TestCase):
             self.assertIn("不存在", body["error"])
 
             status, body = post_json(f"{base}/api/install", {"id": "omen"}, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["skin_id"], "omen")
             self.assertTrue((config_dir / "skins" / "omen" / "skin.json").is_file())
 
-            command = json.loads((config_dir / "skin_store_command.json").read_text(encoding="utf-8"))
+            command = json.loads((config_dir / "commands-v1" / body["command_id"] / "request.json").read_text(encoding="utf-8"))
             self.assertEqual(command["command"], "select_skin")
-            self.assertEqual(command["skin_id"], "omen")
+            self.assertEqual(command["payload"]["skin_id"], "omen")
 
             source_url = f"{base}/asset/skin_catalog/packages/xenom.zip?token={token}"
             status, body = post_json(f"{base}/api/import-url", {"url": source_url}, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["skin_id"], "xenom")
             self.assertTrue((config_dir / "skins" / "xenom" / "skin.json").is_file())
 
@@ -313,7 +320,7 @@ class SkinStoreTests(unittest.TestCase):
             self.assertFalse(body["ok"])
 
             status, body = post_file(f"{base}/api/import-zip", upload_source, token)
-            self.assertEqual(status, 200)
+            self.assertEqual(status, 202)
             self.assertEqual(body["skin_id"], "xenom")
             self.assertTrue((config_dir / "skins" / "xenom" / "skin.json").is_file())
 
@@ -323,6 +330,18 @@ class SkinStoreTests(unittest.TestCase):
             self.assertIn("xenom", local_ids)
             self.assertEqual(config_path.read_text(encoding="utf-8"), original_config)
             self.assertEqual(refreshed["current_skin_id"], "classic_shinchan")
+
+            def send_health_check(_index):
+                return post_json(f"{base}/api/companion/command", {"command": "check_ai_health"}, token)
+
+            with ThreadPoolExecutor(max_workers=6) as workers:
+                replies = list(workers.map(send_health_check, range(12)))
+            self.assertTrue(all(status == 202 for status, _body in replies), replies)
+            ids = {body["command_id"] for _status, body in replies}
+            self.assertEqual(len(ids), 12)
+            for command_id in ids:
+                record = config_dir / "commands-v1" / command_id / "request.json"
+                self.assertEqual(json.loads(record.read_text(encoding="utf-8"))["command"], "check_ai_health")
         finally:
             server.shutdown()
             server.server_close()

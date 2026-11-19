@@ -12,8 +12,6 @@ const PetMenuControllerScript = preload("res://scripts/PetMenuController.gd")
 const FeedbackEffectsScript = preload("res://scripts/FeedbackEffects.gd")
 const MiniGamesScript = preload("res://scripts/MiniGames.gd")
 const SkinCatalogClientScript = preload("res://scripts/SkinCatalogClient.gd")
-const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
-const CompanionConsoleBridgeScript = preload("res://scripts/CompanionConsoleBridge.gd")
 const CompanionEventStoreScript = preload("res://scripts/CompanionEventStore.gd")
 const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
 const CompanionLongTermProfileScript = preload("res://scripts/CompanionLongTermProfile.gd")
@@ -104,58 +102,6 @@ func _run() -> void:
 		_fail("Public skin fallback exposed a restricted package.")
 		return
 
-	var skin_store_bridge = SkinStoreBridgeScript.new()
-	root_node.add_child(skin_store_bridge)
-	await process_frame
-	skin_store_bridge.configure(repo_root, config_dir)
-	var requested_skin := {"id": ""}
-	skin_store_bridge.skin_requested.connect(func(skin_id): requested_skin["id"] = skin_id)
-	DirAccess.make_dir_recursive_absolute(config_dir)
-	var command_file = FileAccess.open(config_dir.path_join("skin_store_command.json"), FileAccess.WRITE)
-	if command_file == null:
-		_fail("SkinStoreBridge command file could not be written.")
-		return
-	command_file.store_string(JSON.stringify({
-		"command": "select_skin",
-		"skin_id": "classic_shinchan",
-		"nonce": "runtime-smoke",
-	}))
-	command_file = null
-	skin_store_bridge._poll_command()
-	if str(requested_skin["id"]) != "classic_shinchan":
-		_fail("SkinStoreBridge did not emit the requested skin id.")
-		return
-	skin_manager.reload_skins()
-	if not skin_manager.select_skin(str(requested_skin["id"])):
-		_fail("SkinStoreBridge requested skin could not be selected.")
-		return
-
-	var console_bridge = CompanionConsoleBridgeScript.new()
-	root_node.add_child(console_bridge)
-	await process_frame
-	console_bridge.configure(repo_root, config_dir)
-	var console_command := {"payload": {}}
-	console_bridge.command_received.connect(func(command): console_command["payload"] = command)
-	var console_command_file = FileAccess.open(config_dir.path_join("companion_console_command.json"), FileAccess.WRITE)
-	if console_command_file == null:
-		_fail("CompanionConsoleBridge command file could not be written.")
-		return
-	console_command_file.store_string(JSON.stringify({
-		"command": "set_behavior_mode",
-		"payload": {"mode": "活泼"},
-		"nonce": "runtime-smoke-console",
-	}))
-	console_command_file = null
-	console_bridge._poll_command()
-	var emitted_console_command = console_command.get("payload", {})
-	if str(emitted_console_command.get("command", "")) != "set_behavior_mode" or str(emitted_console_command.get("payload", {}).get("mode", "")) != "活泼":
-		_fail("CompanionConsoleBridge did not emit the command payload: %s" % JSON.stringify(console_command))
-		return
-	if FileAccess.file_exists(config_dir.path_join("companion_console_command.json")):
-		_fail("CompanionConsoleBridge did not remove the handled command file.")
-		return
-
-
 	var config_store = ConfigStoreScript.new()
 	root_node.add_child(config_store)
 	config_store.configure()
@@ -245,7 +191,7 @@ func _run() -> void:
 	if typeof(debug_snapshot.get("ai_memory_summary", {})) != TYPE_DICTIONARY or typeof(debug_snapshot.get("config", {}).get("ai_memory_summary", {})) != TYPE_DICTIONARY:
 		_fail("Main debug snapshot did not include AI memory summary diagnostics: %s" % JSON.stringify(debug_snapshot))
 		return
-	main_debug._on_companion_console_command({
+	main_debug._execute_desktop_command({
 		"command": "set_adaptation",
 		"payload": {"enabled": true, "strength": "subtle"},
 	})
@@ -253,7 +199,7 @@ func _run() -> void:
 	if not bool(updated_adaptation.get("enabled", false)) or str(updated_adaptation.get("strength", "")) != "subtle":
 		_fail("Main console adaptation command did not update config: %s" % JSON.stringify(config_store.get_config()))
 		return
-	main_debug._on_companion_console_command({
+	main_debug._execute_desktop_command({
 		"command": "set_ai_expression",
 		"payload": {"enabled": false, "provider": "openai_compatible", "timeout_ms": 500},
 	})
@@ -261,7 +207,7 @@ func _run() -> void:
 	if bool(updated_ai_config.get("enabled", true)) or str(updated_ai_config.get("provider", "")) != "openai_compatible" or int(updated_ai_config.get("timeout_ms", 0)) != 500:
 		_fail("Main console AI expression command did not update config: %s" % JSON.stringify(config_store.get_config()))
 		return
-	main_debug._on_companion_console_command({
+	main_debug._execute_desktop_command({
 		"command": "set_ai_memory_summary",
 		"payload": {"enabled": true, "provider": "local_stub", "timeout_ms": 1600, "min_events": 6, "min_interval_seconds": 900},
 	})
@@ -269,19 +215,19 @@ func _run() -> void:
 	if not bool(updated_summary_config.get("enabled", false)) or int(updated_summary_config.get("min_events", 0)) != 6 or int(updated_summary_config.get("min_interval_seconds", 0)) != 900:
 		_fail("Main console AI memory summary command did not update config: %s" % JSON.stringify(config_store.get_config()))
 		return
-	await main_debug._on_companion_console_command({"command": "check_ai_health"})
+	await main_debug._execute_desktop_command({"command": "check_ai_health"})
 	if str(ai_client.status().get("health", {}).get("status", "")) != "disabled":
 		_fail("Main console AI health command did not update disabled health: %s" % JSON.stringify(ai_client.status()))
 		return
-	main_debug._on_companion_console_command({"command": "set_behavior_mode", "payload": {"mode": "捣乱"}})
+	main_debug._execute_desktop_command({"command": "set_behavior_mode", "payload": {"mode": "捣乱"}})
 	if main_debug.behavior_mode != "捣乱":
 		_fail("Main console mode command did not change behavior mode.")
 		return
-	main_debug._on_companion_console_command({"command": "set_dialogue_tone", "payload": {"tone": "short_cute"}})
+	main_debug._execute_desktop_command({"command": "set_dialogue_tone", "payload": {"tone": "short_cute"}})
 	if main_debug.dialogue_tone != "short_cute" or str(config_store.app_config().get("dialogue_tone", "")) != "short_cute":
 		_fail("Main console dialogue tone command did not update config: %s" % JSON.stringify(config_store.get_config()))
 		return
-	main_debug._on_companion_console_command({
+	main_debug._execute_desktop_command({
 		"command": "set_adaptation",
 		"payload": {"enabled": true, "strength": "visible"},
 	})

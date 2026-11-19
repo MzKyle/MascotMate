@@ -32,6 +32,9 @@ jobs:
       - name: Run Python tests
         run: python -m unittest discover tests
 
+      - name: Test browser command feedback
+        run: node --test tests/command_feedback.test.js
+
       - name: Check Godot manifest
         run: python scripts/generate_godot_manifest.py --check
 

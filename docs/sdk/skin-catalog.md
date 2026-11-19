@@ -18,13 +18,7 @@
 python3 scripts/pet_helper.py skin-store --repo-root . --config-dir ~/.local/share/mascotmate-desktop --open-browser
 ```
 
-服务只监听 `127.0.0.1`，启动时生成随机 token。浏览器页面通过本地 API 安装精选皮肤、上传并导入 ZIP、从允许直链的 HTTPS ZIP 下载并导入、启用已安装皮肤或打开第三方原站。安装、导入或启用成功后，helper 会写入：
-
-```text
-~/.local/share/mascotmate-desktop/skin_store_command.json
-```
-
-Godot 运行时会轮询这个文件并立即切换皮肤。
+服务只监听 `127.0.0.1`，启动时生成随机 token。浏览器页面通过本地 API 安装精选皮肤、上传并导入 ZIP、从允许直链的 HTTPS ZIP 下载并导入、启用已安装皮肤或打开第三方原站。helper 完成安装或导入后，将启用请求交给桌宠。Godot 保存皮肤设置并应用皮肤后，浏览器刷新当前皮肤。启用失败时，已安装的皮肤仍可在本地列表中找到。
 
 ## Cachomon 浏览索引
 

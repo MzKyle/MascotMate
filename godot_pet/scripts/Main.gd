@@ -16,6 +16,9 @@ const SkinManagerScript = preload("res://scripts/SkinManager.gd")
 const AnimationResolverScript = preload("res://scripts/AnimationResolver.gd")
 const SkinStoreBridgeScript = preload("res://scripts/SkinStoreBridge.gd")
 const CompanionConsoleBridgeScript = preload("res://scripts/CompanionConsoleBridge.gd")
+const CommandQueueScript = preload("res://scripts/CommandQueue.gd")
+const DesktopCommands = preload("res://scripts/DesktopCommands.gd")
+const AtomicJson = preload("res://scripts/AtomicJson.gd")
 const CompanionEventStoreScript = preload("res://scripts/CompanionEventStore.gd")
 const CompanionMemoryScript = preload("res://scripts/CompanionMemory.gd")
 const CompanionLongTermProfileScript = preload("res://scripts/CompanionLongTermProfile.gd")
@@ -51,6 +54,7 @@ var skin_manager
 var animation_resolver
 var skin_store_bridge
 var companion_console_bridge
+var command_queue
 var companion_event_store
 var companion_memory
 var companion_profile
@@ -75,6 +79,7 @@ var auto_behavior_lock_until := 0.0
 var companion_summary_date := ""
 var companion_debug_timer: Timer
 var companion_debug_snapshot_path := ""
+var companion_snapshot_error: Error = OK
 var companion_scenario_result_path := ""
 var last_behavior_decision := {}
 var last_behavior_context := {}
@@ -108,6 +113,7 @@ func _ready() -> void:
 	window_controller.ensure_on_screen()
 	physics.set_position_from_window(Vector2(window_controller.position()))
 	physics.set_gravity_enabled(gravity_enabled)
+	_write_companion_debug_snapshot()
 	var args = OS.get_cmdline_user_args()
 	var check_index = args.find("--package-check")
 	if check_index >= 0 and check_index + 1 < args.size():
@@ -268,14 +274,16 @@ func _create_nodes() -> void:
 	skin_store_bridge = SkinStoreBridgeScript.new()
 	add_child(skin_store_bridge)
 	skin_store_bridge.configure(repo_root, config_store.config_dir)
-	skin_store_bridge.skin_requested.connect(_on_skin_store_skin_requested)
 	skin_store_bridge.notify.connect(_on_skin_store_notify)
 
 	companion_console_bridge = CompanionConsoleBridgeScript.new()
 	add_child(companion_console_bridge)
 	companion_console_bridge.configure(repo_root, config_store.config_dir)
-	companion_console_bridge.command_received.connect(_on_companion_console_command)
 	companion_console_bridge.notify.connect(_on_companion_console_notify)
+
+	command_queue = CommandQueueScript.new()
+	add_child(command_queue)
+	command_queue.configure(config_store.config_dir, _execute_desktop_command)
 
 	companion_debug_timer = Timer.new()
 	add_child(companion_debug_timer)
@@ -845,51 +853,33 @@ func _set_dialogue_tone(value: String, announce := true) -> Error:
 	return OK
 
 
-func _set_behavior_adaptation(values: Dictionary, announce := true) -> Error:
+func _set_behavior_adaptation(values: Dictionary) -> Error:
 	var error: Error = config_store.set_behavior_adaptation_config(values) if config_store != null else ERR_UNCONFIGURED
 	if error != OK:
-		if announce:
-			show_bubble("行为适配设置保存失败，请重试。")
 		return error
 	_apply_behavior_configuration()
-	if announce:
-		var next_config: Dictionary = config_store.app_config()["behavior_adaptation"]
-		var strength_label = {
-			"subtle": "轻微",
-			"visible": "明显",
-			"bold": "强",
-		}.get(str(next_config.get("strength", "visible")), "明显")
-		show_bubble("行为适配：%s，%s。" % ["开启" if bool(next_config.get("enabled", true)) else "关闭", strength_label], 2.0)
 	_write_companion_debug_snapshot()
 	return OK
 
 
-func _set_ai_expression_config(values: Dictionary, announce := true) -> Error:
+func _set_ai_expression_config(values: Dictionary) -> Error:
 	var error: Error = config_store.set_ai_expression_config(values) if config_store != null else ERR_UNCONFIGURED
 	if error != OK:
-		if announce:
-			show_bubble("AI 表达设置保存失败，请重试。")
 		return error
 	var next_config: Dictionary = config_store.app_config()["ai_expression"]
 	if companion_ai_expression_client != null and companion_ai_expression_client.has_method("configure"):
 		companion_ai_expression_client.configure(next_config)
-	if announce:
-		show_bubble("AI 表达：%s。" % ("开启" if bool(next_config.get("enabled", false)) else "关闭"), 2.0)
 	_write_companion_debug_snapshot()
 	return OK
 
 
-func _set_ai_memory_summary_config(values: Dictionary, announce := true) -> Error:
+func _set_ai_memory_summary_config(values: Dictionary) -> Error:
 	var error: Error = config_store.set_ai_memory_summary_config(values) if config_store != null else ERR_UNCONFIGURED
 	if error != OK:
-		if announce:
-			show_bubble("AI 记忆总结设置保存失败，请重试。")
 		return error
 	var next_config: Dictionary = config_store.app_config()["ai_memory_summary"]
 	if companion_ai_expression_client != null and companion_ai_expression_client.has_method("configure_memory_summary"):
 		companion_ai_expression_client.configure_memory_summary(next_config)
-	if announce:
-		show_bubble("AI 记忆总结：%s。" % ("开启" if bool(next_config.get("enabled", false)) else "关闭"), 2.0)
 	_write_companion_debug_snapshot()
 	return OK
 
@@ -942,17 +932,21 @@ func _open_companion_console() -> void:
 	show_bubble("陪伴控制台启动失败，请检查 helper。", 2.8)
 
 
-func _set_skin(skin_id: String, announce := true) -> Error:
+func _set_skin(skin_id: String) -> Error:
 	if skin_manager == null or pet_sprite == null or config_store == null:
 		return ERR_UNCONFIGURED
 	if not skin_manager.has_skin(skin_id):
-		if announce:
-			show_bubble("皮肤不可用。")
 		return ERR_DOES_NOT_EXIST
+	var next_skin: Dictionary = skin_manager.skins_by_id[skin_id]
+	var candidate_resolver = AnimationResolverScript.new()
+	candidate_resolver.configure(next_skin)
+	var resting: String = candidate_resolver.resolve("resting")
+	candidate_resolver.free()
+	var prepared: Dictionary = pet_sprite.prepare_skin_action(next_skin, next_skin["_frame_root_abs"], [resting, "resting"])
+	if prepared.is_empty():
+		return ERR_FILE_CANT_READ
 	var error: Error = config_store.set_app_config({"skin_id": skin_id})
 	if error != OK:
-		if announce:
-			show_bubble("皮肤切换失败，请重试。")
 		return error
 	if peek_mode:
 		_exit_peek_mode(false)
@@ -962,21 +956,13 @@ func _set_skin(skin_id: String, announce := true) -> Error:
 	animation_resolver.configure(skin_manager.current_skin)
 	if brain != null:
 		brain.set_skin_behavior_profile(skin_manager.current_skin.get("behavior_profile", {}))
-	pet_sprite.configure_skin(skin_manager.current_skin, skin_manager.current_frame_root)
+	pet_sprite.configure_skin(skin_manager.current_skin, skin_manager.current_frame_root, prepared)
 	pet_sprite.set_display_scale(display_scale)
-	_play_capability("resting")
+	pet_sprite.play(prepared["action"])
 	_sync_window_size(true)
 	_update_mouse_passthrough()
-	if announce:
-		show_bubble("已切换：%s。" % skin_manager.selected_skin_name())
 	_write_companion_debug_snapshot()
 	return OK
-
-
-func _on_skin_store_skin_requested(skin_id: String) -> void:
-	if skin_manager != null:
-		skin_manager.reload_skins()
-	_set_skin(skin_id)
 
 
 func _on_skin_store_notify(message: String) -> void:
@@ -987,82 +973,8 @@ func _on_companion_console_notify(message: String) -> void:
 	show_bubble(message, 2.8)
 
 
-func _on_companion_console_command(command: Dictionary) -> void:
-	var command_name = str(command.get("command", "")).strip_edges()
-	var payload = command.get("payload", {})
-	if typeof(payload) != TYPE_DICTIONARY:
-		payload = {}
-	match command_name:
-		"set_behavior_mode":
-			var mode = str(payload.get("mode", command.get("mode", ""))).strip_edges()
-			_set_behavior_mode(mode)
-		"set_dialogue_tone":
-			var tone = str(payload.get("tone", command.get("tone", ""))).strip_edges()
-			_set_dialogue_tone(tone)
-		"set_adaptation":
-			var values = payload.duplicate(true)
-			if command.has("enabled"):
-				values["enabled"] = command["enabled"]
-			if command.has("strength"):
-				values["strength"] = command["strength"]
-			_set_behavior_adaptation(values)
-		"set_ai_expression":
-			var ai_values = payload.duplicate(true)
-			if command.has("enabled"):
-				ai_values["enabled"] = command["enabled"]
-			if command.has("provider"):
-				ai_values["provider"] = command["provider"]
-			if command.has("timeout_ms"):
-				ai_values["timeout_ms"] = command["timeout_ms"]
-			_set_ai_expression_config(ai_values)
-		"set_ai_memory_summary":
-			var summary_values = payload.duplicate(true)
-			if command.has("enabled"):
-				summary_values["enabled"] = command["enabled"]
-			if command.has("provider"):
-				summary_values["provider"] = command["provider"]
-			if command.has("timeout_ms"):
-				summary_values["timeout_ms"] = command["timeout_ms"]
-			if command.has("min_events"):
-				summary_values["min_events"] = command["min_events"]
-			if command.has("min_interval_seconds"):
-				summary_values["min_interval_seconds"] = command["min_interval_seconds"]
-			_set_ai_memory_summary_config(summary_values)
-		"check_ai_health":
-			var health = {}
-			if companion_ai_expression_client != null and companion_ai_expression_client.has_method("check_health"):
-				health = await companion_ai_expression_client.check_health()
-			var status_text = str(health.get("status", "unknown")) if typeof(health) == TYPE_DICTIONARY else "unknown"
-			show_bubble("AI health：%s。" % status_text, 1.8)
-			_write_companion_debug_snapshot()
-		"summarize_memory":
-			var summary = await _maybe_summarize_memory(true)
-			var reason = str(summary.get("fallback_reason", "")) if typeof(summary) == TYPE_DICTIONARY else "unknown"
-			show_bubble("记忆总结：%s。" % ("完成" if typeof(summary) == TYPE_DICTIONARY and str(summary.get("source", "")) == "ai" else reason), 2.2)
-		"rebuild_memory":
-			if companion_memory != null and companion_memory.has_method("refresh"):
-				companion_memory.refresh()
-				if companion_memory.has_method("flush_save"):
-					companion_memory.flush_save()
-			if companion_profile != null and companion_profile.has_method("refresh"):
-				companion_profile.refresh()
-				if companion_profile.has_method("flush_save"):
-					companion_profile.flush_save()
-			show_bubble("陪伴记忆已重建。", 2.0)
-			_write_companion_debug_snapshot()
-		"run_scenario":
-			var scenario_id = str(payload.get("scenario_id", command.get("scenario_id", "all"))).strip_edges()
-			if scenario_id == "":
-				scenario_id = "all"
-			var result = _run_companion_scenarios(scenario_id)
-			var failed = 0
-			for item in result.get("scenarios", []):
-				if typeof(item) == TYPE_DICTIONARY and not bool(item.get("passed", false)):
-					failed += 1
-			show_bubble("回放完成：%d 个异常。" % failed, 2.2)
-		_:
-			show_bubble("未知控制台命令。", 1.8)
-			_write_companion_debug_snapshot()
+func _execute_desktop_command(command: Dictionary) -> Dictionary:
+	return await DesktopCommands.execute(self, command)
 
 
 func _on_behavior_decision_observed(decision: Dictionary, context: Dictionary) -> void:
@@ -1530,8 +1442,8 @@ func _maybe_summarize_memory(force := false):
 	var result = await companion_ai_expression_client.summarize_memory(_memory_summary_payload(recent_events, profile_snapshot), force)
 	if typeof(result) == TYPE_DICTIONARY and str(result.get("source", "")) == "ai":
 		var summary = result.get("summary", {})
-		if typeof(summary) == TYPE_DICTIONARY and companion_profile != null and companion_profile.has_method("apply_ai_summary"):
-			companion_profile.apply_ai_summary(summary, int(result.get("at", 0)))
+		if typeof(summary) != TYPE_DICTIONARY or companion_profile == null or not companion_profile.apply_ai_summary(summary, int(result.get("at", 0))):
+			result = {"source": "fallback", "fallback_reason": "summary_save_failed", "summary": {}}
 	_write_companion_debug_snapshot()
 	return result
 
@@ -1550,7 +1462,10 @@ func _memory_summary_payload(recent_events: Array, profile_snapshot: Dictionary)
 func _write_companion_debug_snapshot() -> void:
 	if companion_debug_snapshot_path == "":
 		return
-	_write_json_file(companion_debug_snapshot_path, _companion_debug_snapshot())
+	var error := AtomicJson.publish_dictionary(companion_debug_snapshot_path, _companion_debug_snapshot(), true)
+	if error != OK and error != companion_snapshot_error:
+		push_warning("Could not write companion snapshot: %s" % error_string(error))
+	companion_snapshot_error = error
 
 
 func _on_companion_debug_timer() -> void:
@@ -1559,12 +1474,13 @@ func _on_companion_debug_timer() -> void:
 		companion_summary_date = today
 		companion_memory.refresh()
 		companion_profile.refresh()
-	if _companion_console_active():
+	if companion_snapshot_error != OK or _companion_console_active():
 		_write_companion_debug_snapshot()
 
 
 func _companion_console_active() -> bool:
-	return companion_console_bridge != null and int(companion_console_bridge.helper_pid) > 0
+	return companion_console_bridge != null and int(companion_console_bridge.helper_pid) > 0 \
+		and OS.is_process_running(companion_console_bridge.helper_pid)
 
 
 func _companion_debug_snapshot() -> Dictionary:
@@ -1638,21 +1554,14 @@ func _current_behavior_period(now_unix: int) -> String:
 	return ""
 
 
-func _write_json_file(path: String, payload: Dictionary) -> void:
-	if path == "":
-		return
-	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
-	var file = FileAccess.open(path, FileAccess.WRITE)
-	if file != null:
-		file.store_string(JSON.stringify(payload, "\t"))
-
-
 func _run_companion_scenarios(requested_id := "all") -> Dictionary:
 	var runner = CompanionScenarioRunnerScript.new()
 	var skin_profile = skin_manager.current_skin.get("behavior_profile", {}) if skin_manager != null else {}
 	runner.configure(_behavior_config_with_app_overrides(), skin_profile, _selected_personality(), companion_event_store)
 	var result = runner.run(requested_id)
-	_write_json_file(companion_scenario_result_path, result)
+	var error := AtomicJson.publish_dictionary(companion_scenario_result_path, result, true)
+	if error != OK:
+		result["save_error"] = error
 	_write_companion_debug_snapshot()
 	return result
 

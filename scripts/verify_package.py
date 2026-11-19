@@ -16,6 +16,7 @@ import zipfile
 from pathlib import Path
 
 from catalog_policy import INSTALLABLE_SOURCE_TYPES, catalog_asset, public_entry
+from command_queue import CommandQueue
 from package_archive import extract_archive
 
 
@@ -64,7 +65,7 @@ def run_checked(command: list[str], cwd: Path, env: dict) -> subprocess.Complete
     return result
 
 
-def check_server(helper: Path, command: str, package: Path, data: Path, cwd: Path, env: dict) -> None:
+def check_server(helper: Path, command: str, package: Path, data: Path, cwd: Path, env: dict) -> str | None:
     process = subprocess.Popen([str(helper), command, "--repo-root", str(package), "--config-dir", str(data), "--idle-timeout", "30"], cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", start_new_session=os.name != "nt")
     try:
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -79,11 +80,26 @@ def check_server(helper: Path, command: str, package: Path, data: Path, cwd: Pat
         parts = urllib.parse.urlsplit(url)
         base = f"{parts.scheme}://{parts.netloc}"
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        for path in ("/", "/companion/", "/api/catalog"):
+        for path in ("/", "/companion/", "/command_feedback.js", "/api/catalog"):
             with opener.open(base + path + "?" + parts.query, timeout=10) as response:
                 payload = response.read()
                 if response.status != 200 or not payload:
                     raise RuntimeError(f"Empty {command} response for {path}")
+        if command == "companion-console":
+            request = urllib.request.Request(
+                base + "/api/companion/command?" + parts.query,
+                data=b'{"command":"set_dialogue_tone","payload":{"tone":"calm"}}',
+                headers={"Content-Type": "application/json"},
+            )
+            with opener.open(request, timeout=10) as response:
+                body = json.load(response)
+                if response.status != 202 or not body.get("command_id"):
+                    raise RuntimeError(f"Frozen helper did not accept the desktop command: {body}")
+            with opener.open(base + "/api/commands/" + body["command_id"] + "?" + parts.query, timeout=10) as response:
+                if json.load(response)["receipt"]["status"] != "pending":
+                    raise RuntimeError("Desktop command should be pending before the packaged app starts")
+            return body["command_id"]
+        return None
     finally:
         if os.name == "nt":
             subprocess.run([str(Path(os.environ["SystemRoot"]) / "System32" / "taskkill.exe"), "/PID", str(process.pid), "/T", "/F"], capture_output=True, timeout=10)
@@ -138,8 +154,8 @@ def verify(archive: Path, report_path: Path) -> dict:
         run_checked([str(helper), "install-skin", str(fixture), "--output-root", str(data / "skins"), "--json-report"], cwd, env)
         if not (data / "skins" / "package-check" / "skin.json").is_file():
             raise RuntimeError("Frozen helper did not install the acceptance skin")
-        for command in ("skin-store", "companion-console"):
-            check_server(helper, command, package, data, cwd, env)
+        check_server(helper, "skin-store", package, data, cwd, env)
+        command_id = check_server(helper, "companion-console", package, data, cwd, env)
         program = package / ("MascotMateDesktop.exe" if info["target"] == "windows" else "MascotMateDesktop")
         if info["target"] == "windows":
             import pefile
@@ -161,6 +177,9 @@ def verify(archive: Path, report_path: Path) -> dict:
             raise RuntimeError(f"Exported app acceptance failed: {app_report}\n{result.stdout}\n{result.stderr}")
         if Path(app_report["resource_root"]).resolve() != package.resolve() or Path(app_report["data_dir"]).resolve() != data.resolve():
             raise RuntimeError("Exported app resolved resources or data outside the extracted package/test directory")
+        receipt = CommandQueue(data).status(command_id) if command_id else None
+        if not receipt or receipt["status"] != "succeeded":
+            raise RuntimeError(f"Exported app did not complete the frozen helper's command: {receipt}")
         restart_path = root / "restart-check.json"
         run_checked([str(program), "--", "--package-check", str(restart_path)], cwd, env)
         restart = json.loads(restart_path.read_text(encoding="utf-8"))

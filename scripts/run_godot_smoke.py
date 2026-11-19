@@ -16,6 +16,7 @@ PROJECT = ROOT / "godot_pet"
 TEST_SCRIPTS = [
     "res://tests/config_test.gd",
     "res://tests/persistence_test.gd",
+    "res://tests/command_queue_test.gd",
     "res://tests/behavior_test.gd",
     "res://tests/window_test.gd",
     "res://tests/companion_test.gd",
@@ -90,10 +91,17 @@ def main() -> int:
                 print(proc.stdout, end="")
             if proc.stderr:
                 print(proc.stderr, end="")
-            if proc.returncode != 0:
+            if proc.returncode != 0 or "SCRIPT ERROR:" in proc.stderr:
                 print(f"{label} failed with exit code {proc.returncode}.", file=sys.stderr)
-                return proc.returncode
-    return 0
+                return proc.returncode or 1
+    print("Python/Godot command integration", flush=True)
+    return subprocess.run(
+        [sys.executable, str(ROOT / "tests" / "test_command_integration.py")],
+        cwd=ROOT,
+        env={**os.environ, "GODOT_BIN": str(godot.resolve())},
+        timeout=100,
+        check=False,
+    ).returncode
 
 
 if __name__ == "__main__":
