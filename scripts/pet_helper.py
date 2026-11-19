@@ -233,6 +233,7 @@ def run_skin_store(args: argparse.Namespace) -> int:
         open_browser=args.open_browser,
         idle_timeout=args.idle_timeout,
         port=args.port,
+        session_file=args.session_file,
     ))
 
 
@@ -246,6 +247,7 @@ def run_companion_console(args: argparse.Namespace) -> int:
         open_browser=args.open_browser,
         idle_timeout=args.idle_timeout,
         port=args.port,
+        session_file=args.session_file,
     ))
 
 
@@ -586,6 +588,7 @@ def parse_args() -> argparse.Namespace:
     skin_store.add_argument("--open-browser", action="store_true")
     skin_store.add_argument("--idle-timeout", type=float, default=900.0)
     skin_store.add_argument("--port", type=int, default=0)
+    skin_store.add_argument("--session-file", type=Path, help=argparse.SUPPRESS)
 
     companion_console = subparsers.add_parser("companion-console")
     companion_console.add_argument("--repo-root", type=Path, required=True)
@@ -593,6 +596,7 @@ def parse_args() -> argparse.Namespace:
     companion_console.add_argument("--open-browser", action="store_true")
     companion_console.add_argument("--idle-timeout", type=float, default=900.0)
     companion_console.add_argument("--port", type=int, default=0)
+    companion_console.add_argument("--session-file", type=Path, help=argparse.SUPPRESS)
 
     companion_ai = subparsers.add_parser("companion-ai-sidecar")
     companion_ai.add_argument("--provider", choices=["local_stub", "openai_compatible"], default="local_stub")

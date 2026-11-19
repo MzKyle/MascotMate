@@ -6,7 +6,6 @@ signal notify(message)
 
 var repo_root := ""
 var config_dir := ""
-var helper_pid := -1
 var helper_launcher = HelperProcessLauncherScript.new()
 
 
@@ -27,17 +26,21 @@ func open_console() -> bool:
 		"--idle-timeout",
 		"900",
 	])
-	helper_pid = helper_launcher.launch(args)
-	if helper_pid <= 0 and helper_launcher.last_error == "not_found":
-		emit_signal("notify", "找不到陪伴控制台 helper。")
-		return false
-	if helper_pid <= 0:
-		emit_signal("notify", "陪伴控制台启动失败。")
+	if not helper_launcher.open_in_browser(args):
+		var message := "找不到陪伴控制台 helper。" if helper_launcher.last_error == "not_found" else "陪伴控制台启动失败。"
+		emit_signal("notify", message)
 		return false
 	emit_signal("notify", "已在浏览器打开陪伴控制台。")
 	return true
 
 
+func is_running() -> bool:
+	return helper_launcher.is_running()
+
+
 func stop() -> void:
 	helper_launcher.stop()
-	helper_pid = helper_launcher.helper_pid
+
+
+func _exit_tree() -> void:
+	stop()

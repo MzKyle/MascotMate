@@ -17,6 +17,7 @@ TEST_SCRIPTS = [
     "res://tests/config_test.gd",
     "res://tests/persistence_test.gd",
     "res://tests/command_queue_test.gd",
+    "res://tests/helper_lifecycle_test.gd",
     "res://tests/behavior_test.gd",
     "res://tests/window_test.gd",
     "res://tests/companion_test.gd",
@@ -70,6 +71,7 @@ def main() -> int:
                 "CRAYON_PET_TRANSPARENT": "0",
                 "CRAYON_PET_MOUSE_PASSTHROUGH": "0",
                 "CRAYON_PET_ENABLE_GLOBAL_HOTKEYS": "0",
+                "MASCOTMATE_TEST_PYTHON": sys.executable,
             })
             proc = subprocess.run(
                 [

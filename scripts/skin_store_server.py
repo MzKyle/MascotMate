@@ -9,6 +9,7 @@ import logging
 import mimetypes
 import secrets
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -782,21 +783,47 @@ def serve_skin_store(
     idle_timeout: float = 900.0,
     port: int = 0,
     open_path: str = "/",
+    session_file: Path | None = None,
 ) -> int:
+    if session_file is not None and not session_file.is_file():
+        return 0
     server = make_server(repo_root, config_dir, port=port)
     host, actual_port = server.server_address
     clean_path = open_path if open_path.startswith("/") else "/" + open_path
     url = f"http://{host}:{actual_port}{clean_path}?token={urllib.parse.quote(server.token)}"
-    print(json.dumps({"url": url, "port": actual_port}, ensure_ascii=False), flush=True)
-    if open_browser:
-        webbrowser.open(url)
-    server.timeout = 0.5
+    url_file = None
     try:
+        if session_file is not None:
+            url_file = session_file.with_name(session_file.name + ".url")
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=url_file.parent, delete=False) as handle:
+                    temporary = Path(handle.name)
+                    handle.write(url)
+                temporary.replace(url_file)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+            if not session_file.is_file():
+                return 0
+        print(json.dumps({"url": url, "port": actual_port}, ensure_ascii=False), flush=True)
+        if open_browser:
+            if session_file is None:
+                webbrowser.open(url)
+            else:
+                # A browser opener can wait for the browser to close. Keep it
+                # out of the managed server's request and shutdown loop.
+                threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+        server.timeout = 0.5
         while time.monotonic() - server.last_request_at < idle_timeout:
+            if session_file is not None and not session_file.is_file():
+                break
             server.handle_request()
             server.service_actions()
     finally:
         server.server_close()
+        if url_file is not None:
+            url_file.unlink(missing_ok=True)
     return 0
 
 
@@ -807,6 +834,7 @@ def serve_companion_console(
     open_browser: bool = False,
     idle_timeout: float = 900.0,
     port: int = 0,
+    session_file: Path | None = None,
 ) -> int:
     return serve_skin_store(
         repo_root,
@@ -815,4 +843,5 @@ def serve_companion_console(
         idle_timeout=idle_timeout,
         port=port,
         open_path="/companion/",
+        session_file=session_file,
     )

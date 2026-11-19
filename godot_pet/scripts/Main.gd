@@ -167,10 +167,6 @@ func _notification(what: int) -> void:
 		if companion_profile != null and companion_profile.has_method("flush_save"):
 			companion_profile.flush_save()
 		_write_companion_debug_snapshot()
-		if skin_store_bridge != null:
-			skin_store_bridge.stop()
-		if companion_console_bridge != null:
-			companion_console_bridge.stop()
 		get_tree().quit()
 
 
@@ -1474,13 +1470,12 @@ func _on_companion_debug_timer() -> void:
 		companion_summary_date = today
 		companion_memory.refresh()
 		companion_profile.refresh()
-	if companion_snapshot_error != OK or _companion_console_active():
+	if _companion_console_active():
 		_write_companion_debug_snapshot()
 
 
 func _companion_console_active() -> bool:
-	return companion_console_bridge != null and int(companion_console_bridge.helper_pid) > 0 \
-		and OS.is_process_running(companion_console_bridge.helper_pid)
+	return companion_console_bridge != null and companion_console_bridge.is_running()
 
 
 func _companion_debug_snapshot() -> Dictionary:
