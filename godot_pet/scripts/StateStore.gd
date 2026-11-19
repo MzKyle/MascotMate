@@ -1,5 +1,6 @@
 extends Node
 
+const AtomicJson = preload("res://scripts/AtomicJson.gd")
 const STATE_VERSION := 2
 const SAVE_DEBOUNCE_SECONDS := 5.0
 const MIN_DECAY_SECONDS := 1800
@@ -27,6 +28,8 @@ var state := {
 var state_path := ""
 var save_timer: Timer
 var dirty := false
+var _load_error: Error = OK
+var _last_save_error: Error = OK
 
 
 func _ready() -> void:
@@ -43,42 +46,52 @@ func _exit_tree() -> void:
 	flush_save()
 
 
-func load_state() -> void:
-	state = _default_state()
-	if not FileAccess.file_exists(state_path):
-		state["last_decay_at"] = _now_unix()
-		_request_save()
-		return
-	var file = FileAccess.open(state_path, FileAccess.READ)
-	if file == null:
-		return
-	var parsed = JSON.parse_string(file.get_as_text())
-	if typeof(parsed) == TYPE_DICTIONARY:
-		for key in CORE_FIELDS:
-			if parsed.has(key):
-				state[key] = clamp(int(parsed[key]), 0, 100)
-		state["version"] = STATE_VERSION
-		state["last_decay_at"] = int(parsed.get("last_decay_at", _now_unix()))
-		if parsed.has("memory") and typeof(parsed["memory"]) == TYPE_DICTIONARY:
-			state["memory"] = _merged_memory(parsed["memory"])
-		_request_save()
-
-
-func save_state() -> void:
-	flush_save()
-
-
-func flush_save() -> void:
-	if not dirty:
-		return
-	var dir = state_path.get_base_dir()
-	DirAccess.make_dir_recursive_absolute(dir)
-	var file = FileAccess.open(state_path, FileAccess.WRITE)
-	if file != null:
-		file.store_string(JSON.stringify(state, "\t"))
-		dirty = false
+func load_state() -> Error:
 	if save_timer != null:
 		save_timer.stop()
+	dirty = false
+	state = _default_state()
+	state["last_decay_at"] = _now_unix()
+	var loaded := AtomicJson.load_dictionary(state_path, _valid_state)
+	var error: Error = loaded["error"]
+	var primary_error: Error = loaded["primary_error"]
+	_load_error = primary_error if not AtomicJson.can_replace(primary_error) else OK
+	if not AtomicJson.can_replace(error):
+		_load_error = error
+	if error == OK:
+		var parsed: Dictionary = loaded["data"]
+		state.merge(parsed, true)
+		for key in CORE_FIELDS:
+			state[key] = clampi(int(state[key]), 0, 100)
+		state["version"] = maxi(STATE_VERSION, int(parsed.get("version", 1)))
+		state["last_decay_at"] = int(state["last_decay_at"])
+		state["memory"] = _merged_memory(state["memory"])
+	if _load_error == OK and (error == ERR_FILE_NOT_FOUND or (error == OK and primary_error != OK)):
+		_request_save()
+	return error if _load_error == OK else _load_error
+
+
+func save_state() -> Error:
+	return flush_save()
+
+
+func flush_save() -> Error:
+	if not dirty:
+		return OK
+	if save_timer != null:
+		save_timer.stop()
+	var error := _load_error
+	if error == OK:
+		error = AtomicJson.write_dictionary(state_path, state, _valid_state, true)
+	if error == OK:
+		dirty = false
+	else:
+		if error != _last_save_error:
+			push_warning("Could not save %s: %s" % [state_path, error_string(error)])
+		if _load_error == OK and save_timer != null and save_timer.is_inside_tree():
+			save_timer.start(SAVE_DEBOUNCE_SECONDS)
+	_last_save_error = error
+	return error
 
 
 func snapshot() -> Dictionary:
@@ -194,13 +207,30 @@ func _default_state() -> Dictionary:
 
 func _merged_memory(source: Dictionary) -> Dictionary:
 	var memory = DEFAULT_MEMORY.duplicate(true)
-	for key in memory.keys():
-		if source.has(key):
-			if key == "interaction_counts" and typeof(source[key]) == TYPE_DICTIONARY:
-				memory[key] = source[key].duplicate(true)
-			elif key != "interaction_counts":
-				memory[key] = source[key]
+	memory.merge(source, true)
 	return memory
+
+
+func _valid_state(value: Dictionary) -> bool:
+	var version = value.get("version", 1)
+	if not AtomicJson.is_number(version, true) or float(version) < 0.0:
+		return false
+	for key in CORE_FIELDS + ["last_decay_at"]:
+		if value.has(key) and not AtomicJson.is_number(value[key]):
+			return false
+	var memory = value.get("memory", {})
+	if typeof(memory) != TYPE_DICTIONARY:
+		return false
+	for key in ["last_interaction_at", "last_feed_at", "last_play_at", "last_prompt_at", "last_action_at"]:
+		if memory.has(key) and not AtomicJson.is_number(memory[key]):
+			return false
+	var counts = memory.get("interaction_counts", {})
+	if typeof(counts) != TYPE_DICTIONARY:
+		return false
+	for count in counts.values():
+		if not AtomicJson.is_number(count):
+			return false
+	return true
 
 
 func _set_nonzero_delta(deltas: Dictionary, key: String, value: int) -> void:

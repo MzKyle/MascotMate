@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PROJECT = ROOT / "godot_pet"
 TEST_SCRIPTS = [
     "res://tests/config_test.gd",
+    "res://tests/persistence_test.gd",
     "res://tests/behavior_test.gd",
     "res://tests/window_test.gd",
     "res://tests/companion_test.gd",

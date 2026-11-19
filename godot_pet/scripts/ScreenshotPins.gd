@@ -5,6 +5,7 @@ signal notify(text)
 const PinImageWindowScript = preload("res://scripts/PinImageWindow.gd")
 const SettingsWindowScript = preload("res://scripts/ScreenshotSettingsWindow.gd")
 const SelectionWindowScript = preload("res://scripts/ScreenshotSelectionWindow.gd")
+const ConfigStoreScript = preload("res://scripts/ConfigStore.gd")
 
 const HOTKEY_PORT := 38291
 const MAX_HISTORY := 3
@@ -26,7 +27,6 @@ var repo_root := ""
 var config := DEFAULT_CONFIG.duplicate(true)
 var config_dir := ""
 var screenshot_dir := ""
-var config_path := ""
 var history := []
 var pins := []
 var active_pin: Window
@@ -42,13 +42,13 @@ var config_store
 func configure(root: String, store = null) -> void:
 	repo_root = root
 	config_store = store
-	config_dir = str(config_store.config_dir) if config_store != null else _config_dir()
+	if config_store == null:
+		config_store = ConfigStoreScript.new()
+		add_child(config_store)
+		config_store.configure()
+	config_dir = config_store.config_dir
 	screenshot_dir = config_dir.path_join("screenshots")
-	config_path = config_dir.path_join("config.json")
-	if config_store != null:
-		config = _merged_config(config_store.get_config())
-	else:
-		_load_config()
+	config = _merged_config(config_store.screenshot_pins_config())
 	_load_history()
 	_start_udp()
 	_start_hotkey_helper()
@@ -164,12 +164,10 @@ func set_pins_visible(value: bool) -> void:
 
 
 func _on_settings_saved(next_config: Dictionary) -> void:
-	config = _merged_config(next_config)
-	if config_store != null:
-		config_store.set_screenshot_pins_config(config)
-		config = _merged_config(config_store.get_config())
-	else:
-		_save_config()
+	if config_store.set_screenshot_pins_config(_merged_config(next_config)) != OK:
+		emit_signal("notify", "截图贴图设置保存失败，请重试。")
+		return
+	config = _merged_config(config_store.screenshot_pins_config())
 	_trim_pins_to_limit()
 	_restart_hotkey_helper()
 	emit_signal("notify", "截图贴图设置已保存。")
@@ -487,24 +485,6 @@ func _load_history() -> void:
 		history.append(screenshot_dir.path_join(file))
 		if history.size() >= MAX_HISTORY:
 			break
-
-
-func _load_config() -> void:
-	config = DEFAULT_CONFIG.duplicate(true)
-	if FileAccess.file_exists(config_path):
-		var file = FileAccess.open(config_path, FileAccess.READ)
-		if file != null:
-			var parsed = JSON.parse_string(file.get_as_text())
-			if typeof(parsed) == TYPE_DICTIONARY:
-				config = _merged_config(parsed)
-	_save_config()
-
-
-func _save_config() -> void:
-	DirAccess.make_dir_recursive_absolute(config_dir)
-	var file = FileAccess.open(config_path, FileAccess.WRITE)
-	if file != null:
-		file.store_string(JSON.stringify(config, "\t"))
 
 
 func _merged_config(source: Dictionary) -> Dictionary:

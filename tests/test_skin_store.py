@@ -195,6 +195,9 @@ class SkinStoreTests(unittest.TestCase):
             self.assertIn("陪伴控制台", html)
 
             config_dir.mkdir(parents=True, exist_ok=True)
+            config_path = config_dir / "config.json"
+            original_config = '{"version":1,"app":{"skin_id":"classic_shinchan","display_scale":1.25},"pins":{"max_count":2}}'
+            config_path.write_text(original_config, encoding="utf-8")
             (config_dir / "companion_debug_snapshot.json").write_text(json.dumps({
                 "version": 1,
                 "runtime": {"behavior_mode": "活泼"},
@@ -290,9 +293,7 @@ class SkinStoreTests(unittest.TestCase):
             self.assertEqual(body["skin_id"], "omen")
             self.assertTrue((config_dir / "skins" / "omen" / "skin.json").is_file())
 
-            config = json.loads((config_dir / "config.json").read_text(encoding="utf-8"))
             command = json.loads((config_dir / "skin_store_command.json").read_text(encoding="utf-8"))
-            self.assertEqual(config["app"]["skin_id"], "omen")
             self.assertEqual(command["command"], "select_skin")
             self.assertEqual(command["skin_id"], "omen")
 
@@ -320,6 +321,8 @@ class SkinStoreTests(unittest.TestCase):
             local_ids = {item["id"] for item in refreshed["installed"]}
             self.assertIn("omen", local_ids)
             self.assertIn("xenom", local_ids)
+            self.assertEqual(config_path.read_text(encoding="utf-8"), original_config)
+            self.assertEqual(refreshed["current_skin_id"], "classic_shinchan")
         finally:
             server.shutdown()
             server.server_close()

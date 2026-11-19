@@ -832,26 +832,28 @@ func _set_behavior_mode(value: String, announce := true) -> void:
 	_write_companion_debug_snapshot()
 
 
-func _set_dialogue_tone(value: String, announce := true) -> void:
-	if config_store != null and config_store.has_method("set_dialogue_tone"):
-		config_store.set_dialogue_tone(value)
-		dialogue_tone = str(config_store.app_config().get("dialogue_tone", "gentle"))
-	else:
-		dialogue_tone = str(ConfigStoreScript.DEFAULT_CONFIG["app"]["dialogue_tone"])
+func _set_dialogue_tone(value: String, announce := true) -> Error:
+	var error: Error = config_store.set_dialogue_tone(value) if config_store != null else ERR_UNCONFIGURED
+	if error != OK:
+		if announce:
+			show_bubble("文案语气保存失败，请重试。")
+		return error
+	dialogue_tone = str(config_store.app_config()["dialogue_tone"])
 	if announce:
 		show_bubble("文案语气：%s。" % _dialogue_tone_label(dialogue_tone), 1.8)
 	_write_companion_debug_snapshot()
+	return OK
 
 
-func _set_behavior_adaptation(values: Dictionary, announce := true) -> void:
-	var next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true)
-	if config_store != null and config_store.has_method("set_behavior_adaptation_config"):
-		config_store.set_behavior_adaptation_config(values)
-		next_config = config_store.app_config().get("behavior_adaptation", next_config)
-		if typeof(next_config) != TYPE_DICTIONARY:
-			next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["behavior_adaptation"].duplicate(true)
+func _set_behavior_adaptation(values: Dictionary, announce := true) -> Error:
+	var error: Error = config_store.set_behavior_adaptation_config(values) if config_store != null else ERR_UNCONFIGURED
+	if error != OK:
+		if announce:
+			show_bubble("行为适配设置保存失败，请重试。")
+		return error
 	_apply_behavior_configuration()
 	if announce:
+		var next_config: Dictionary = config_store.app_config()["behavior_adaptation"]
 		var strength_label = {
 			"subtle": "轻微",
 			"visible": "明显",
@@ -859,34 +861,37 @@ func _set_behavior_adaptation(values: Dictionary, announce := true) -> void:
 		}.get(str(next_config.get("strength", "visible")), "明显")
 		show_bubble("行为适配：%s，%s。" % ["开启" if bool(next_config.get("enabled", true)) else "关闭", strength_label], 2.0)
 	_write_companion_debug_snapshot()
+	return OK
 
 
-func _set_ai_expression_config(values: Dictionary, announce := true) -> void:
-	var next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_expression"].duplicate(true)
-	if config_store != null and config_store.has_method("set_ai_expression_config"):
-		config_store.set_ai_expression_config(values)
-		next_config = config_store.app_config().get("ai_expression", next_config)
-		if typeof(next_config) != TYPE_DICTIONARY:
-			next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_expression"].duplicate(true)
+func _set_ai_expression_config(values: Dictionary, announce := true) -> Error:
+	var error: Error = config_store.set_ai_expression_config(values) if config_store != null else ERR_UNCONFIGURED
+	if error != OK:
+		if announce:
+			show_bubble("AI 表达设置保存失败，请重试。")
+		return error
+	var next_config: Dictionary = config_store.app_config()["ai_expression"]
 	if companion_ai_expression_client != null and companion_ai_expression_client.has_method("configure"):
 		companion_ai_expression_client.configure(next_config)
 	if announce:
 		show_bubble("AI 表达：%s。" % ("开启" if bool(next_config.get("enabled", false)) else "关闭"), 2.0)
 	_write_companion_debug_snapshot()
+	return OK
 
 
-func _set_ai_memory_summary_config(values: Dictionary, announce := true) -> void:
-	var next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true)
-	if config_store != null and config_store.has_method("set_ai_memory_summary_config"):
-		config_store.set_ai_memory_summary_config(values)
-		next_config = config_store.app_config().get("ai_memory_summary", next_config)
-		if typeof(next_config) != TYPE_DICTIONARY:
-			next_config = ConfigStoreScript.DEFAULT_CONFIG["app"]["ai_memory_summary"].duplicate(true)
+func _set_ai_memory_summary_config(values: Dictionary, announce := true) -> Error:
+	var error: Error = config_store.set_ai_memory_summary_config(values) if config_store != null else ERR_UNCONFIGURED
+	if error != OK:
+		if announce:
+			show_bubble("AI 记忆总结设置保存失败，请重试。")
+		return error
+	var next_config: Dictionary = config_store.app_config()["ai_memory_summary"]
 	if companion_ai_expression_client != null and companion_ai_expression_client.has_method("configure_memory_summary"):
 		companion_ai_expression_client.configure_memory_summary(next_config)
 	if announce:
 		show_bubble("AI 记忆总结：%s。" % ("开启" if bool(next_config.get("enabled", false)) else "关闭"), 2.0)
 	_write_companion_debug_snapshot()
+	return OK
 
 
 func _apply_behavior_configuration() -> void:
@@ -899,19 +904,22 @@ func _apply_behavior_configuration() -> void:
 
 
 func _set_display_scale(scale: float) -> void:
-	display_scale = clamp(scale, 1.0, 1.5)
+	var next_scale := clampf(scale, 1.0, 1.5)
+	if config_store != null and config_store.set_app_config({"display_scale": next_scale}) != OK:
+		show_bubble("显示大小保存失败，请重试。")
+		return
+	display_scale = next_scale
 	pet_sprite.set_display_scale(display_scale)
-	if config_store != null:
-		config_store.set_app_config({"display_scale": display_scale})
 	_sync_window_size(true)
 	_update_mouse_passthrough()
 	show_bubble("显示大小 %d%%" % int(display_scale * 100))
 
 
 func _set_gravity_enabled(value: bool) -> void:
+	if config_store != null and config_store.set_app_config({"gravity_enabled": value}) != OK:
+		show_bubble("重力设置保存失败，请重试。")
+		return
 	gravity_enabled = value
-	if config_store != null:
-		config_store.set_app_config({"gravity_enabled": value})
 	physics.set_gravity_enabled(value)
 	if value:
 		if not peek_mode and physics.state != "Grabbed":
@@ -934,28 +942,35 @@ func _open_companion_console() -> void:
 	show_bubble("陪伴控制台启动失败，请检查 helper。", 2.8)
 
 
-func _set_skin(skin_id: String) -> void:
-	if skin_manager == null or pet_sprite == null:
-		return
+func _set_skin(skin_id: String, announce := true) -> Error:
+	if skin_manager == null or pet_sprite == null or config_store == null:
+		return ERR_UNCONFIGURED
+	if not skin_manager.has_skin(skin_id):
+		if announce:
+			show_bubble("皮肤不可用。")
+		return ERR_DOES_NOT_EXIST
+	var error: Error = config_store.set_app_config({"skin_id": skin_id})
+	if error != OK:
+		if announce:
+			show_bubble("皮肤切换失败，请重试。")
+		return error
 	if peek_mode:
 		_exit_peek_mode(false)
 	if mini_games != null:
 		mini_games.clear()
-	if not skin_manager.select_skin(skin_id):
-		show_bubble("皮肤不可用。")
-		return
+	skin_manager.select_skin(skin_id)
 	animation_resolver.configure(skin_manager.current_skin)
 	if brain != null:
 		brain.set_skin_behavior_profile(skin_manager.current_skin.get("behavior_profile", {}))
 	pet_sprite.configure_skin(skin_manager.current_skin, skin_manager.current_frame_root)
 	pet_sprite.set_display_scale(display_scale)
 	_play_capability("resting")
-	if config_store != null:
-		config_store.set_app_config({"skin_id": skin_manager.selected_skin_id()})
 	_sync_window_size(true)
 	_update_mouse_passthrough()
-	show_bubble("已切换：%s。" % skin_manager.selected_skin_name())
+	if announce:
+		show_bubble("已切换：%s。" % skin_manager.selected_skin_name())
 	_write_companion_debug_snapshot()
+	return OK
 
 
 func _on_skin_store_skin_requested(skin_id: String) -> void:

@@ -230,7 +230,7 @@ class SkinStoreApp:
         return {
             "ok": True,
             "skin_id": installed_id,
-            "message": "皮肤已安装并启用。",
+            "message": "皮肤已安装。",
             "report": installed[0].report,
         }
 
@@ -264,7 +264,7 @@ class SkinStoreApp:
             "ok": True,
             "skin_id": selected_id,
             "skin_name": str(selected.report.get("skin_name", selected_id)),
-            "message": "皮肤已导入并启用。",
+            "message": "皮肤已导入。",
             "installed": [
                 {
                     "skin_id": str(item.report.get("skin_id", "")),
@@ -309,9 +309,8 @@ class SkinStoreApp:
     def select_skin(self, skin_id: str) -> dict[str, Any]:
         if skin_id != "classic_shinchan" and skin_id not in {str(item.get("id", "")) for item in self.installed_skins()}:
             raise ValueError("皮肤未安装。")
-        self._write_config_skin(skin_id)
         self._write_command(skin_id)
-        return {"ok": True, "skin_id": skin_id, "message": "皮肤已启用。"}
+        return {"ok": True, "skin_id": skin_id}
 
     def open_source(self, skin_id: str) -> dict[str, Any]:
         entry = self._external_entry(skin_id)
@@ -353,10 +352,12 @@ class SkinStoreApp:
         return result
 
     def current_skin_id(self) -> str:
-        config = self._load_json(self.config_path)
-        app = config.get("app", {}) if isinstance(config, dict) else {}
-        skin_id = str(app.get("skin_id", "classic_shinchan")).strip()
-        return skin_id or "classic_shinchan"
+        for path in (self.config_path, self.config_path.with_suffix(".json.bak")):
+            config = self._load_json(path)
+            app = config.get("app")
+            if isinstance(app, dict) and isinstance(app.get("skin_id", ""), str):
+                return app.get("skin_id", "").strip() or "classic_shinchan"
+        return "classic_shinchan"
 
     def static_file(self, relative: str) -> Path:
         target = (self.static_dir / relative).resolve()
@@ -540,22 +541,6 @@ class SkinStoreApp:
         relative = images[0].relative_to(self.repo_root)
         return self._asset_url(str(relative).replace("\\", "/"), token)
 
-    def _write_config_skin(self, skin_id: str) -> None:
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        config = self._load_json(self.config_path)
-        if not isinstance(config, dict):
-            config = {}
-        app = config.get("app", {})
-        if not isinstance(app, dict):
-            app = {}
-        app["skin_id"] = skin_id
-        config["app"] = app
-        if "version" not in config:
-            config["version"] = 1
-        temp = self.config_path.with_suffix(".tmp")
-        temp.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        temp.replace(self.config_path)
-
     def _write_command(self, skin_id: str) -> None:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -583,7 +568,7 @@ class SkinStoreApp:
     def _load_json(self, path: Path) -> dict[str, Any]:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError):
             return {}
         return data if isinstance(data, dict) else {}
 
